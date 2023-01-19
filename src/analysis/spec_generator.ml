@@ -220,7 +220,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) (vctrs : (string, int ref) Hash
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
     | CStr str -> Smt.EConst (CString str), []
     | Id id -> EVar (Var (set_variable_id id side vctrs)), []
-    | Index (e1,e2) when side == 1 -> 
+    | Index (e1,e2) when side == right -> 
         let rtn1, binds1 = exp_to_smt_exp e1 side vctrs in
         let rtn2, binds2 = exp_to_smt_exp e2 side vctrs in
         EFunc ("select", [rtn1; rtn2]), binds1 @ binds2
@@ -280,8 +280,8 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
       | stmt :: tl ->   
         begin match stmt.elt with
         | Assn ({elt = Index (name_exp,index_exp); loc = _},exp) ->
-          let name_exp_smt, _ = exp_to_smt_exp name_exp right vctrs  in
-          let index_exp_smt, _ = exp_to_smt_exp index_exp right vctrs  in
+          let name_exp_smt, _ = exp_to_smt_exp name_exp left vctrs  in
+          let index_exp_smt, _ = exp_to_smt_exp index_exp left vctrs  in
           let exp_smt, _ = exp_to_smt_exp exp right vctrs  in
           let path_name_exp_smt, _ = match exp_to_smt_exp name_exp left vctrs with
                                   | Smt.EVar v, b -> v ,b
@@ -376,27 +376,27 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           List.iter (fun s -> ety_init_list := !ety_init_list @ [s]) ety_inits;
 
           if not (Hashtbl.mem variable_ctr_list id) then
-          Hashtbl.add variable_ctr_list id (ref 1)
-        end
-        | _ -> ()
-    
+          Hashtbl.add variable_ctr_list id (ref 0)
+          end
+          | _ -> Hashtbl.add variable_ctr_list id (ref 0)
   ) !gstates;
   let res = compile_block_to_smt b local_variable_ctr_list in
   if (List.length !ety_init_list == 0) then
-    res, local_variable_ctr_list
+    res (*, local_variable_ctr_list *)
   else
-  ELet (!ety_init_list, res), local_variable_ctr_list
+  ELet (!ety_init_list, res) (* , local_variable_ctr_list *)
 
 let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
-    let block_to_exp, local_variable_ctr_list = (compile_block_to_smt_exp genv b) in
-
+    let block_to_exp (*, local_variable_ctr_list *) = (compile_block_to_smt_exp genv b) in
+    (*
     let remain_variables = ref [] in
     List.iter (fun ((id,_),_) -> 
             if not (Hashtbl.mem variable_ctr_list id)
             then 
             remain_variables := !remain_variables @ [Smt.EBop (Eq, EVar (VarPost id), EVar (Var id))]
     ) !gstates;
-    ELop (And, block_to_exp :: !remain_variables @ [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
+    *)
+    ELop (And, block_to_exp :: (* !remain_variables @ *) [Smt.EBop (Eq, EVar (Var "result"), EConst (CBool true))])
 
 
 let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
@@ -414,9 +414,9 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     terms_list := [];
     Hashtbl.iter (fun id -> fun _ -> (* keep the local variables that defined in last block *)
-                    if (List.exists (fun ((name,_),_) -> String.equal id name) !gstates) then
+                    (* if (List.exists (fun ((name,_),_) -> String.equal id name) !gstates) then
                     Hashtbl.remove variable_ctr_list id
-                    else 
+                    else *)
                     Hashtbl.replace variable_ctr_list id (ref 0)
     ) variable_ctr_list;
 

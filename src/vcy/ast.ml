@@ -64,6 +64,7 @@ let rec sty_of_ty = function
   | TBool -> Smt.TBool
   | TStr -> Smt.TString
   | TArr t -> Smt.TArray (Smt.TInt, sty_of_ty t)
+  | THashTable(k, v) -> Smt.TArray (sty_of_ty k, sty_of_ty v)
   | _ -> raise @@ NotImplemented "Conversion to Servois type not supported"
 
 
@@ -199,7 +200,7 @@ type embedding_map = (ty binding * ety) list
 
 
 let mangle_servois_id id index =
-  Smt.EVar (Var (id ^ "_" ^ string_of_int index))
+  Smt.EVar (Var (id ^ (if index = 0 then "" else "_" ^ string_of_int index)))
 
 let mangle_servois_id_pair id index =
   mangle_servois_id id index, mangle_servois_id id (index + 1)
@@ -364,7 +365,7 @@ let htdata_of_value : value -> value Hashtables.htdata =
 
 let init_mangle : ety -> Smt.exp Smt.bindlist =
   let [@warning "-8"] bind i =
-    let Smt.EVar mangled = (mangle_servois_id i 1) in
+    let Smt.EVar mangled = (mangle_servois_id i 0) in
     (mangled, Smt.EVar (Var i))
   in function
   | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->

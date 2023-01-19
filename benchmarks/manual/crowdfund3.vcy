@@ -1,0 +1,104 @@
+
+void busy(int fuel) {
+    while (fuel > 0) {
+        fuel = fuel - 1;
+    }
+    return;
+}
+
+void lock(int l) { mutex_lock(l); return; }
+void unlock(int l)  { mutex_unlock(l); return; }
+
+
+int f_start_date = 5;
+int f_end_date = 10;
+int f_goal = 10000;
+int f_amount = 15;
+int addr_f_escrow = 101;
+int addr_f_creator = 102;
+int addr_f_receiver = 103;
+bool f_CloseRemainderTo = false;
+int f_close_date = 9;
+
+int addr_noone = -1;
+
+int x = 0;
+
+/* How much an actor has given */
+hashtable[int,int] given = new hashtable[int,int];
+hashtable[int,int] balances = new hashtable[int,int];
+
+int main(int argc, string[] argv) {
+    x = int_of_string(argv[1]);
+    int nowTS = 7;
+
+    mutex_init(0);
+    mutex_init(addr_f_escrow);
+    
+    mutex_init(1);
+    mutex_init(2);
+    mutex_init(3);
+    mutex_init(4);
+    
+    balances[1] = 1000;
+    balances[2] = 1000;
+    balances[3] = 1000;
+    balances[4] = 1000;
+    
+    given[1] = 0;
+    given[2] = 0;
+    given[3] = 0;
+    given[4] = 0;
+    
+    balances[addr_f_escrow] = 0;
+    
+    int rl = 0;
+    int rr = 0;
+    
+    int templ = 0;
+    int tempr = 0;
+    int curBall = 0;
+    int curBalr = 0;
+    
+    commute (true) {
+        { 
+    /* Ensures the donation is within the beginning and ending dates of the fund. */
+        /* Verifies that this is a grouped transaction with the second one being a payment to the escrow. */
+            f_amount = f_amount + 10;
+            templ = ht_get(balances, addr_f_escrow);
+            templ = templ + 10;
+            ht_put(balances, addr_f_escrow, templ);
+            templ = ht_get(balances, 1);
+            templ = templ - 10;
+            ht_put(balances, 1, templ);
+            templ = ht_get(given, 1);
+            templ = templ + 10;
+            ht_put(given, 1, templ);
+            templ = ht_get(balances, 1);
+            templ = templ + 10;
+            ht_put(balances, 1, templ);
+            templ = 0;
+            rl = 1; 
+        }
+        {
+        /* Verifies that this is a grouped transaction with the second one being a payment to the escrow. */
+            f_amount = f_amount + 10;
+            tempr = ht_get(balances, addr_f_escrow);
+            tempr = tempr + 10;
+            ht_put(balances, addr_f_escrow, tempr);
+            tempr = ht_get(balances, 2);
+            tempr = tempr - 10;
+            ht_put(balances, 2, tempr);
+            tempr = ht_get(given, 2);
+            tempr = tempr + 10;
+            ht_put(given, 2, tempr);
+            tempr = ht_get(balances, 2);
+            tempr = tempr + 10;
+            ht_put(balances, 2, tempr);
+            tempr = 0;
+            rr = 1;
+        }
+    }
+    
+    return 0;
+}

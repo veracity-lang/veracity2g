@@ -32,6 +32,7 @@ let generate_embedding_map (vars : ty bindlist) : embedding_map =
 
 let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
   let exp_node e = no_loc @@ smt_translation e embedding in
+  try
   match input with
   | EVar (Var s) | EVar (VarPost s) | EVar (VarM(_, s)) -> 
     let len = String.length s in
@@ -92,9 +93,10 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
         end
       | _ -> raise @@ NotImplemented "Can't currently handle complicated things; requires recursive expression typechecking"
       end
-    | _ -> failwith @@ "Function "^s^" not recognized or supported or improper arguments applied"
+    | _ -> raise @@ Failure ("Function "^s^" not recognized or supported or improper arguments applied")
     end
   | EExists(binding, exp) -> raise @@ Failure "Cannot translate existential quantifier back from smt"
+  with Failure s -> Printf.printf "%s\n" s; CBool false
 
 let exp_of_phi (phi : Servois2.Phi.t) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding

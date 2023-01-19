@@ -11,6 +11,10 @@ let var_of_string s = Smt.Var s
 
 let pure_id = fun x -> Smt.EVar (Var (remove_index x))
 
+let smt_trans e = match e with 
+  | Smt.EVar (Var v) -> smt_e e |> pure_id 
+  | _ -> e
+
 (* Only applies to stdout printing, not debug printing *)
 let suppress_print = ref false
 
@@ -342,13 +346,13 @@ let lib_hashtable : method_library =
         (Smt.EConst (CInt 1)), Smt.TInt;
         pure_id size, Smt.TInt;
         ELop (Add, [pure_id size; EConst(CInt 1)]), Smt.TInt;
-        pure_id @@ smt_e v, tyv;
-        pure_id @@ smt_e k, tyk;
-        EFunc ("select", [pure_id ht; pure_id @@ smt_e k]), tyk;
+        smt_trans v, tyv;
+        smt_trans k, tyk;
+        EFunc ("select", [pure_id ht; smt_trans k]), tyk;
         pure_id keys, Smt.TSet tyk;
-        EFunc (insert_func (), [pure_id @@ smt_e k; pure_id keys]), Smt.TSet tyk;
+        EFunc (insert_func (), [smt_trans k; pure_id keys]), Smt.TSet tyk;
         pure_id ht, Smt.TArray (tyk,tyv);
-        EFunc ("store", [pure_id ht; pure_id @@ smt_e k; pure_id @@ smt_e v]), Smt.TArray (tyk,tyv)
+        EFunc ("store", [pure_id ht; smt_trans k; smt_trans v]), Smt.TArray (tyk,tyv)
         ]
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
@@ -394,8 +398,8 @@ let lib_hashtable : method_library =
       ; asserts = []
       ; terms = [
         pure_id size, Smt.TInt;
-        pure_id @@ smt_e k, tyk;
-        EFunc ("select", [pure_id ht; pure_id @@ smt_e k]), tyv;
+        smt_trans k, tyk;
+        EFunc ("select", [pure_id ht; smt_trans k]), tyv;
         pure_id keys, Smt.TSet tyk;
         pure_id ht, Smt.TArray (tyk,tyv)
       ]

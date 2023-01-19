@@ -13,7 +13,7 @@ int main(int argc, string[] argv) {
     string fname1 = "test1.txt";
     string fname2 = "test2.txt";
     
-    commute (fname1 != fname2) {
+    commute _ /*(fname1 != fname2)*/ {
         { 
             out_channel fout1 = open_write(fname1);
             for(int i=0; i < n; i = i + 1;) { write(fout1, string_of_int(data[i%1024]) ^ "\n"); } 
