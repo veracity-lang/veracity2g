@@ -139,12 +139,21 @@ and stmt =
 | Assume of exp node
 | Havoc of id
 | Require of exp node
+| SBlock of blocklabel option * block node
 
 and tyval = ty * (value ref)
 
 and blockstk = tyval bindlist list
 and callstk = blockstk list
 
+and blocklabel = id * (id list) option
+(* and blocklabel = id * (exp node list) option *)
+
+and group_commute = ((blocklabel list) list) * commute_condition
+
+(* and commute_frag = 
+| Blabel of blocklabel 
+| Blablel of blocklabel list *)
 
 and global_env =
   { methods : tmethod bindlist
@@ -274,6 +283,7 @@ type field = { field_name : id; ftyp : ty }
 type sdecl = { sname : id; fields : field list }
 
 type decl =
+| Commutativity of group_commute list
 | Gvdecl of gdecl node (* Global variable *)
 | Gmdecl of mdecl node (* Method *)
 | Gsdecl of sdecl node (* Struct *)

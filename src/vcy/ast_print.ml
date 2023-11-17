@@ -521,12 +521,18 @@ module AstML = struct
       sp "Assume (%s)" (string_of_exp e)
     | Havoc id ->
       sp "Havoc %s" (string_of_id id)
+    | SBlock (bl, b) -> 
+      sp "SBlock (%s, %s)" (string_of_option string_of_blocklabel bl) (string_of_block b)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s
 
   and string_of_block (b:block node) : string =
     string_of_list string_of_stmt b.elt
+
+  and string_of_blocklabel (bl: blocklabel) : string = 
+    let (id, explist) = bl in
+    sp "(%s,%s)" (string_of_id id) (string_of_option (string_of_list string_of_id) explist)
 
   let string_of_args : (ty * id) list -> string =
     string_of_list (fun (t,i) ->
@@ -557,10 +563,19 @@ module AstML = struct
   let string_of_sdecl (s:sdecl node) : string =
     string_of_node string_of_sdecl_aux s
 
+  let string_of_group_commute (gc: group_commute) : string =
+    let (bls, phi) = gc in 
+    sp "(%s, %s)" (string_of_list (string_of_list string_of_blocklabel) bls) 
+    begin match phi with 
+      | PhiInf   -> "PhiInf" 
+      | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
+    end
+
   let string_of_decl : decl -> string = function
     | Gvdecl d -> sp "Gvdecl (%s)" (string_of_gdecl d)
     | Gmdecl m -> sp "Gmdecl (%s)" (string_of_mdecl m)
     | Gsdecl s -> sp "Gsdecl (%s)" (string_of_sdecl s)
+    | Commutativity gc -> sp "Commutativity (%s)" (string_of_list string_of_group_commute gc)
 
   let string_of_prog : prog -> string =
     string_of_list string_of_decl
