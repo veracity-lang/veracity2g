@@ -38,7 +38,6 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
    in
    sexp_of_sexp_list exp_list
 
-
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
@@ -396,6 +395,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   else
   ELet (!ety_init_list, res), local_variable_ctr_list
 
+let generate_spec_pre_post_condition pre post =
+  let vctrs = variable_ctr_list in
+  match pre, post with 
+  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
+  | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
+  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
+  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
+  
+
 let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
     let block_to_exp, local_variable_ctr_list = (compile_block_to_smt_exp genv b) in
 
@@ -433,7 +441,7 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
-let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) =
+let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
 
@@ -444,12 +452,14 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let mdecls = List.map create_dummy_method blks in
   let methods = List.map (compile_method_to_methodSpec genv) mdecls in
   
+  let pre, post = generate_spec_pre_post_condition pre post in
+
   let preamble = None in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = Smt.EConst (CBool true); state = state; methods= methods; smt_fns = []} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
-  (* Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec); *)
+  Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec);
   spec, mnames
