@@ -15,6 +15,8 @@ let gstates = ref []
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
 
+let pre = ref (EConst (CBool true))
+
 let sexp_of_sexp_list = function
   | [e] -> e
   | es -> ELop(And, es)
@@ -35,7 +37,6 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
    let exp_list = List.map (fun (n,_) -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n))) (get_stypes em_vars)
    in
    sexp_of_sexp_list exp_list
-
 
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
@@ -163,24 +164,26 @@ let set_counter (s: string) (vctrs : (string, int ref) Hashtbl.t) =
     (* if (is_global s) then *)
       Hashtbl.add vctrs s (ref 0)
 
-let set_variable_id (var: string) (side: int) (vctrs : (string, int ref) Hashtbl.t) : string =
-  if not (Hashtbl.mem vctrs var) && (side == 0) then
-    set_counter var vctrs;
+let set_variable_id (var: string) (side: int) (vctrs : (string, int ref) Hashtbl.t) (indexed : bool) : string =
+  if indexed = false then var else begin
+    if not (Hashtbl.mem vctrs var) && (side == 0) then
+      set_counter var vctrs;
 
-  if (Hashtbl.mem vctrs var) then begin
-    let current_id = Hashtbl.find vctrs var in
-    let update_id = if side == 0 
-                    then begin
-                      incr_uid (current_id) 
-                    end
-                    else begin
-                        !current_id 
-                    end in
-    let new_id = if update_id == 0 then var else var ^ "_" ^ (Int.to_string update_id) in
-    new_id
+    if (Hashtbl.mem vctrs var) then begin
+      let current_id = Hashtbl.find vctrs var in
+      let update_id = if side == 0 
+                      then begin
+                        incr_uid (current_id) 
+                      end
+                      else begin
+                          !current_id 
+                      end in
+      let new_id = if update_id == 0 then var else var ^ "_" ^ (Int.to_string update_id) in
+      new_id
+    end
+    else
+      var
   end
-  else
-    var
 
 let get_postconditions () : sexp =
   let exp_list = ref [] in
@@ -214,19 +217,19 @@ let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int
   Hashtbl.iter (fun id -> fun index -> temp := !temp @ [(id, !index)] ) htbl;
   ! temp
  
-let rec exp_to_smt_exp (e: exp node) (side: int) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist = 
+let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist = 
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
     | CStr str -> Smt.EConst (CString str), []
-    | Id id -> EVar (Var (set_variable_id id side vctrs)), []
+    | Id id -> EVar (Var (set_variable_id id side vctrs indexed)), []
     | Index (e1,e2) when side == 1 -> 
-        let rtn1, binds1 = exp_to_smt_exp e1 side vctrs in
-        let rtn2, binds2 = exp_to_smt_exp e2 side vctrs in
+        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs in
+        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
         EFunc ("select", [rtn1; rtn2]), binds1 @ binds2
     | Bop (op, e1, e2) ->
-        let rtn1, binds1 = exp_to_smt_exp e1 side vctrs in
-        let rtn2, binds2 = exp_to_smt_exp e2 side vctrs in
+        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs in
+        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
 
         begin match op with
         | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte -> 
@@ -238,12 +241,12 @@ let rec exp_to_smt_exp (e: exp node) (side: int) (vctrs : (string, int ref) Hash
         | _ -> failwith @@ sp "undefined op: %s" @@ AstML.string_of_binop op
         end
     | Uop (op, e) -> 
-        let rtn, binds = exp_to_smt_exp e side vctrs in
+        let rtn, binds = exp_to_smt_exp e side ~indexed vctrs in
 
         EUop (uop_to_servoisUop op, rtn), binds
 
     | Call (MethodL (id, {pc=Some pc;_}), el) -> 
-      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right vctrs) el in
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
 
       let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var" in     
       let dst_id = remove_index (id_value) in
@@ -260,7 +263,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) (vctrs : (string, int ref) Hash
 
        rtn, List.concat args_binds @ binds
     | Ternary(i, t, e) ->
-        let f x = exp_to_smt_exp x side vctrs in
+        let f x = exp_to_smt_exp x side ~indexed vctrs in
         let i', i_binds = f i in
         let t', t_binds = f t in
         let e', e_binds = f e in
@@ -364,6 +367,11 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
           EExists([(Var havoc_id, TInt (* TODO: make type dynamic *))], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
 
+        | Require(e) ->
+          let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
+          pre := exp_smt;
+          compile_block_to_smt tl vctrs;
+
         | _ -> compile_block_to_smt tl vctrs
         end
   in
@@ -387,6 +395,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   else
   ELet (!ety_init_list, res), local_variable_ctr_list
 
+let generate_spec_pre_post_condition pre post =
+  let vctrs = variable_ctr_list in
+  match pre, post with 
+  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
+  | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
+  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
+  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
+  
+
 let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
     let block_to_exp, local_variable_ctr_list = (compile_block_to_smt_exp genv b) in
 
@@ -409,7 +426,9 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
     let ret = [(Smt.Var "result", updated_return_type)] in 
     let post = generate_method_spec_postcondition genv m.body.elt in
     let terms = compile_block_to_term_list m.body.elt in 
-    let method_spec = { name = m.mname; args = args; ret = ret; pre = EConst (CBool true);
+    let method_spec = { name = m.mname; args = args; ret = ret; 
+                        pre = !pre;
+                        (* pre = EConst (CBool true); *)
                         post = post; terms = terms} in
 
     terms_list := [];
@@ -422,7 +441,8 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
-let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) =
+let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
+  let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
 
   let predicates = generate_spec_predicates embedding_vars in
@@ -432,12 +452,14 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let mdecls = List.map create_dummy_method blks in
   let methods = List.map (compile_method_to_methodSpec genv) mdecls in
   
+  let pre, post = generate_spec_pre_post_condition pre post in
+
   let preamble = None in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = Smt.EConst (CBool true); state = state; methods= methods} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
-  (* Printf.printf "%s\n" (Spec.Spec_ToMLString.spec spec); *)
+  (* Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec); *)
   spec, mnames

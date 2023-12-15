@@ -78,6 +78,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token PURE
 
 %token ASSERT ASSUME HAVOC
+%token PRE POST
 
 %token UNDERSCORE
 
@@ -254,6 +255,9 @@ stmt:
   | ASSERT e=exp SEMI { loc $startpos $endpos @@ Assert e }
   | ASSUME e=exp SEMI { loc $startpos $endpos @@ Assume e }
   | HAVOC i=IDENT SEMI { loc $startpos $endpos @@ Havoc i }
+  | variant=commute_variant phi=commute_condition
+    LBRACE PRE COLON pre=exp blocks=nonempty_list(block) POST COLON post=exp RBRACE
+    { loc $startpos $endpos @@ GCommute(variant,phi,pre,blocks,post) }
 
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }

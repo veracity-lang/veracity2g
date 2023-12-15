@@ -1,0 +1,19 @@
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    
+  
+    commute _ { /* (c > 0) */
+        pre: (true)
+        { 
+            c = c * -1;
+        } 
+        { 
+            
+        }
+        post: (c < 0)
+    }
+    
+    return 0;
+}
+
+
