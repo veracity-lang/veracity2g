@@ -461,5 +461,5 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
-  Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec);
+  (* Printf.printf "%s\n" (Servois2.Spec.Spec_ToMLString.spec spec); *)
   spec, mnames
