@@ -119,6 +119,7 @@ let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
     (* Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete); *)
     exp_of_phi phi embedding
+  (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
 
 let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
