@@ -76,6 +76,7 @@ type ety =
   | ETStr of id
   | ETArr of id * sty
   | ETHashTable of sty * sty * sht_ids
+  | ETChannel of id
 
 type arglist = ty bindlist
 
@@ -410,6 +411,7 @@ let compile_ety_to_sty (id: string) (ty : ety) : (string * sty) list =
   | ETArr (_, sty) -> [(id, Smt.TArray (Smt.TInt, sty))]
   | ETHashTable (styk, styv, {ht=ht_id; keys=ht_keys; size=ht_size}) -> 
     [(ht_id, Smt.TArray (styk, styv)); (ht_keys, Smt.TSet styk); (ht_size, Smt.TInt)]
+  | ETChannel _ -> [(id, Smt.TArray (Smt.TInt, Smt.TString))]
 
 
 (** AST to SMT types *)

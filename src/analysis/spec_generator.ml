@@ -41,7 +41,10 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
-    ) embedding_vars
+    ) embedding_vars @ [ (Var "realWorld_data", Smt.TArray (Smt.TInt, Smt.TArray(Smt.TInt, Smt.TString)))
+                       ; (Var "realWorld_linenum", Smt.TArray (Smt.TInt, Smt.TInt))
+                       ; (Var "realWorld_mapping", Smt.TArray (Smt.TString, Smt.TInt))
+                       ; (Var "realWorld_handles", Smt.TInt)]
 
 let create_dummy_method (b: block node) : mdecl =
   mIndex := !mIndex + 1;
@@ -248,7 +251,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
     | Call (MethodL (id, {pc=Some pc;_}), el) -> 
       let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
 
-      let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var" in     
+      let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var 254" in     
       let dst_id = remove_index (id_value) in
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
@@ -336,7 +339,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let args = List.map (fun exp -> exp_to_smt_exp exp right vctrs) el in
           let args_rtn, args_binds = List.split args in
       
-          let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var" in
+          let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var 342" in
           let dst_id = remove_index (id_value) in
           let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
 

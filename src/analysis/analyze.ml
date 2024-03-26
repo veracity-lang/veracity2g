@@ -11,6 +11,7 @@ let rec assoc_servois_ty (id : id) : embedding_map -> ty binding =
     | ETArr (i, _) when id = i -> v
     | ETHashTable (_,_,{ht;keys;size}) 
       when id = ht || id = keys || id = size -> v
+    | ETChannel i when id = i -> v
     | _ -> assoc_servois_ty id t
     end
 
@@ -25,6 +26,7 @@ let generate_embedding_map (vars : ty bindlist) : embedding_map =
       ETHashTable
         ( sty_of_ty tyk, sty_of_ty tyv, 
           { ht = id ; keys = id ^ "_keys"; size = id ^ "_size" })
+    | TChanR | TChanW -> ETChannel id
     | _ -> raise @@ NotImplemented "Unsupported type embedding"
   in
   List.map (fun v -> v, f v) vars

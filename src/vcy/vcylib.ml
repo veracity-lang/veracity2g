@@ -436,7 +436,15 @@ let lib_io : method_library =
         env, VChanR (s, chan, in_channel_length chan)
       | _ -> raise @@ TypeFailure ("open_read arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, ETChannel chan_name, [fname]) ->
+      { bindings = []
+      ; ret_exp = Smt.EVar (VarPost "realWorld_handles")
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      }
+    )
     }
   ; "open_write",
     { pure = false
