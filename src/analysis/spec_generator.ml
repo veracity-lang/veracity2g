@@ -15,6 +15,8 @@ let gstates = ref []
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
 
+let realWorld_vars = ["realWorld_data"; "realWorld_linenum"; "realWorld_mapping"; "realWorld_handles"]
+
 let pre = ref (EConst (CBool true))
 
 let sexp_of_sexp_list = function
@@ -191,15 +193,19 @@ let set_variable_id (var: string) (side: int) (vctrs : (string, int ref) Hashtbl
 let get_postconditions () : sexp =
   let exp_list = ref [] in
   Hashtbl.iter (fun key -> fun value -> 
-                let ((id,ty),ety) = try List.find (fun ((id,ty),_) -> String.equal key id) !gstates with | x -> print_string key; print_newline (); raise x in
-                let final = match ty with 
-                | THashTable (_,_) ->
-                  final_mangle !value ety 
-                | _ -> let var = if !value == 0 then key else (key ^ "_" ^ Int.to_string (!value)) in
-                        Smt.EBop (Eq, EVar (VarPost key), EVar (Var var));
-                in
-                exp_list := !exp_list @ [final]
-                ) variable_ctr_list;
+                if List.mem key realWorld_vars then exp_list := !exp_list @ [final_mangle_id !value key]
+                else
+                match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
+                | None -> print_string key; print_newline (); raise Not_found
+                | Some ((id,ty),ety) ->
+                  let final = match ty with 
+                  | THashTable (_,_) ->
+                    final_mangle !value ety 
+                  | _ -> let var = if !value == 0 then key else (key ^ "_" ^ Int.to_string (!value)) in
+                          Smt.EBop (Eq, EVar (VarPost key), EVar (Var var));
+                  in
+                  exp_list := !exp_list @ [final]
+                  ) variable_ctr_list;
     sexp_of_sexp_list !exp_list
 
 let reset_to_local_variable_ctrs (old_vctrs : (string * int) list) (new_vctrs : (string, int ref) Hashtbl.t) =
@@ -256,10 +262,14 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
-      let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
+      print_endline(string_of_ety(ety));
+      let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
+      let fun_args = (embedding_type_index, rw_version, ety, (List.tl args_rtn)) in
           
-      let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
+      let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_rw} = pc fun_args in
       
+      begin if updates_rw then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) realWorld_vars
+      else () end;
       Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ; 
       predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
       terms_list := !terms_list @ t;
@@ -344,12 +354,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
 
           let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
-          let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
+          let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
+          let fun_args = (embedding_type_index, rw_version, ety, (List.tl args_rtn)) in
                               
-          let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
+          let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_rw} = pc fun_args in
           
           predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
           terms_list := !terms_list @ t;
+          begin if updates_rw then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) realWorld_vars
+          else () end;
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
           bind binds @@ compile_block_to_smt tl vctrs
@@ -392,6 +405,12 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | _ -> ()
     
   ) !gstates;
+  List.iter (
+    fun [@warning "-8"] id -> 
+          ety_init_list := !ety_init_list @ [init_mangle_id id];
+          if not (Hashtbl.mem variable_ctr_list id) then
+          Hashtbl.add variable_ctr_list id (ref 1)
+  ) realWorld_vars;
   let res = compile_block_to_smt b local_variable_ctr_list in
   if (List.length !ety_init_list == 0) then
     res, local_variable_ctr_list

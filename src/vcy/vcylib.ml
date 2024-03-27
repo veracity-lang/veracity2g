@@ -224,7 +224,7 @@ let lib_hashtable : method_library =
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, _, {ht;keys;size}), []) ->
+      (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), []) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -237,6 +237,7 @@ let lib_hashtable : method_library =
       ; asserts = []
       ; terms = []
       ; preds = []
+      ; updates_rw = false
       }
     )
     }
@@ -257,7 +258,7 @@ let lib_hashtable : method_library =
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, _, {ht;keys;size}), [k]) ->
+      (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), [k]) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -279,6 +280,7 @@ let lib_hashtable : method_library =
       ; terms = []
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
+      ; updates_rw = false
       }
     )
     }
@@ -302,7 +304,7 @@ let lib_hashtable : method_library =
       | _ -> raise @@ TypeFailure ("hashtable put arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, tyv, {ht;keys;size}), [k;v]) ->
+      (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k;v]) ->
       let ht0, ht1   = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -352,6 +354,7 @@ let lib_hashtable : method_library =
         ]
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
+      ; updates_rw = false
       }
     )
     }
@@ -370,10 +373,10 @@ let lib_hashtable : method_library =
         | None -> env, VNull tyv
         | Some d -> env, value_of_htdata d
         end
-      | _ -> raise @@ TypeFailure ("hashtable put arguments", Range.norange)
+      | _ -> raise @@ TypeFailure ("hashtable get arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, tyv, {ht;keys;size}), [k]) ->
+      (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k]) ->
       let ht0, ht1     = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -400,6 +403,7 @@ let lib_hashtable : method_library =
         pure_id ht, Smt.TArray (tyk,tyv)
       ]
       ; preds = []
+      ; updates_rw = false
       }
     )
     }
@@ -437,12 +441,31 @@ let lib_io : method_library =
       | _ -> raise @@ TypeFailure ("open_read arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETChannel chan_name, [fname]) ->
-      { bindings = []
-      ; ret_exp = Smt.EVar (VarPost "realWorld_handles")
+      (mangle, rw_mangle, ETStr fname, []) ->
+      let f0, f1 = mangle_servois_id_pair fname mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_m0, rw_m1 = mangle_servois_id_pair "realWorld_mapping" rw_mangle in
+      let rw_h0, rw_h1 = mangle_servois_id_pair "realWorld_handles" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e f1,
+            f0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc ("store", [rw_ln0; rw_h0; EConst(CInt 0)])
+        ; var_of_string @@ smt_e rw_m1,
+            EFunc ("store", [rw_m0; EVar(Var(fname)); rw_h0])
+        ; var_of_string @@ smt_e rw_h1,
+            ELop (Add, [rw_h0; EConst(CInt 1)])
+        (*; smt_bind k1 k0
+        ; smt_bind v1 v0*)
+        ]
+      ; ret_exp = rw_h0
       ; asserts = []
       ; terms = []
       ; preds = []
+      ; updates_rw = true
       }
     )
     }

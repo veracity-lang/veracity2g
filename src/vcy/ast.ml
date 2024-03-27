@@ -64,7 +64,8 @@ let rec sty_of_ty = function
   | TBool -> Smt.TBool
   | TStr -> Smt.TString
   | TArr t -> Smt.TArray (Smt.TInt, sty_of_ty t)
-  | _ -> raise @@ NotImplemented "Conversion to Servois type not supported"
+  | TChanR | TChanW -> Smt.TInt (* A channel is represented by the int corresponding to its handle number. *)
+  | sty -> raise @@ NotImplemented "Conversion to Servois type not supported"
 
 
 type sht_ids = { ht : id; keys : id; size : id }
@@ -175,7 +176,7 @@ and lib_method =
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
-  ; pc : (int * ety * sexp list -> post_condition) option
+  ; pc : (int * int * ety * sexp list -> post_condition) option
   }
 
 and post_condition =
@@ -184,6 +185,7 @@ and post_condition =
   ; asserts  : sexp list                (* Any additional assertions made *)
   ; terms    : (sexp * sty) list        (* Terms *)
   ; preds    : (string * (sty list)) list (* Any particular predicates *)
+  ; updates_rw : bool (* Does the method update the realWorld SMT variables *)
   }
 
 (*and method_spec = (* TODO For inlining procedure *)
@@ -215,7 +217,7 @@ type embedding_map = (ty binding * ety) list
 
 
 let mangle_servois_id id index =
-  Smt.EVar (Var (id ^ "_" ^ string_of_int index))
+  Smt.EVar (Var (id ^ (if index = 0 then "" else "_" ^ string_of_int index)))
 
 let mangle_servois_id_pair id index =
   mangle_servois_id id index, mangle_servois_id id (index + 1)
@@ -231,6 +233,14 @@ let rec string_of_sty = function
   | Smt.TSet t -> sp "(Set %s)" (string_of_sty t)
   | _ -> failwith "string_of_sty"
   (* | STGen g -> g *) (* TODO: we need this? *)
+
+let string_of_ety = function
+  | ETInt id -> "ETInt " ^ id
+  | ETBool id -> "ETBool " ^ id
+  | ETStr id -> "ETString " ^ id
+  | ETArr(id, sty) -> "ETArr(" ^ id ^ ", " ^ string_of_sty sty ^ ")"
+  | ETHashTable(sty, sty', sht_ids) -> "ETHashTable(" ^ string_of_sty sty ^ ", " ^ string_of_sty sty' ^ ", " ^ "{ ht : " ^ sht_ids.ht ^"; keys : " ^ sht_ids.keys ^ "; size : " ^ sht_ids.size ^ " }"
+  | ETChannel id -> "ETChannel " ^ id
 
 (*
 (*** Inlining analysis types ***)
@@ -378,25 +388,24 @@ let htdata_of_value : value -> value Hashtables.htdata =
   | VInt i -> Hashtables.HTint (Int64.to_int i)
   | v -> Hashtables.HTD v
 
-
-let init_mangle : ety -> Smt.exp Smt.bindlist =
-  let [@warning "-8"] bind i =
-    let Smt.EVar mangled = (mangle_servois_id i 1) in
+let init_mangle_id : id -> Smt.exp Smt.binding = fun i ->
+  let Smt.EVar mangled = (mangle_servois_id i 1) in
     (mangled, Smt.EVar (Var i))
-  in function
+  
+let init_mangle : ety -> Smt.exp Smt.bindlist = function
   | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
-    [bind i]
+    [init_mangle_id i]
   | ETHashTable (_,_,{ht;keys;size}) ->
-    List.map bind [ht;keys;size]
+    List.map init_mangle_id [ht;keys;size]
 
-let final_mangle (mangle : int) : ety -> Smt.exp = 
-  let bind i =
+let final_mangle_id : int -> id -> Smt.exp = fun mangle i ->
     Smt.EBop (Eq, (mangle_servois_id_final i), (mangle_servois_id i mangle))
-  in function
+
+let final_mangle (mangle : int) : ety -> Smt.exp = function
   | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
-    bind i
+    final_mangle_id mangle i
   | ETHashTable (_,_,{ht;keys;size}) ->
-    Smt.ELop (And, (List.map bind [ht;keys;size]))
+    Smt.ELop (And, (List.map (final_mangle_id mangle) [ht;keys;size]))
 
 let remove_index (mangled_id: string) : string =
   let r = Str.regexp "_[0-9]+" in 
@@ -411,7 +420,7 @@ let compile_ety_to_sty (id: string) (ty : ety) : (string * sty) list =
   | ETArr (_, sty) -> [(id, Smt.TArray (Smt.TInt, sty))]
   | ETHashTable (styk, styv, {ht=ht_id; keys=ht_keys; size=ht_size}) -> 
     [(ht_id, Smt.TArray (styk, styv)); (ht_keys, Smt.TSet styk); (ht_size, Smt.TInt)]
-  | ETChannel _ -> [(id, Smt.TArray (Smt.TInt, Smt.TString))]
+  | ETChannel _ -> [(id, Smt.TInt)]
 
 
 (** AST to SMT types *)
