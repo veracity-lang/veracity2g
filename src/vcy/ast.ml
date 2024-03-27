@@ -164,7 +164,8 @@ and global_env =
   { methods : tmethod bindlist
   ; globals : tyval bindlist
   ; structs : tstruct bindlist
-  ; lib_methods : lib_method bindlist
+  ; lib_methods : lib_method bindlist 
+  ; group_commute : group_commute list (* Commutativity relation  *)
   }
 and env =
   { g : global_env  (* Global environment *)
