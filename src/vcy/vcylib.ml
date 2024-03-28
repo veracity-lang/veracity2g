@@ -461,8 +461,6 @@ let lib_io : method_library =
             ELop (Add, [rw_h0; EConst(CInt 1)])
         ; var_of_string @@ smt_e rw_o1,
             EFunc ("insert", [EVar(Var(fname)); rw_o0])
-        (*; smt_bind k1 k0
-        ; smt_bind v1 v0*)
         ]
       ; ret_exp = rw_h0
       ; asserts = []

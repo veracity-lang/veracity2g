@@ -41,17 +41,17 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
    sexp_of_sexp_list (exp_list @ 
       [ Smt.EBop(Eq, EVar (Var "realWorld_opened"), EVar (VarPost "realWorld_opened"))
       ; Smt.EBop(Eq, EVar (Var "realWorld_handles"), EVar (VarPost "realWorld_handles"))
-      ; EForall([("fname", TString)], 
+      ; EForall([(Var "fname", TString)], 
         EBop(Imp, 
           EFunc("member", [EVar(Var("fname")); EVar(Var("realWorld_opened"))]),
           ELop(And, [
             EBop(Eq, 
-              EFunc("select", [EVar(Var("realWorld_data")), EFunc("select", [EVar(Var("realWorld_mapping")); EVar(Var("fname"))])]),
-              EFunc("select", [EVar(VarPost("realWorld_data")), EFunc("select", [EVar(VarPost("realWorld_mapping")); EVar(Var("fname"))])])
+              EFunc("select", [EVar(Var("realWorld_data")); EFunc("select", [EVar(Var("realWorld_mapping")); EVar(Var("fname"))])]),
+              EFunc("select", [EVar(VarPost("realWorld_data")); EFunc("select", [EVar(VarPost("realWorld_mapping")); EVar(Var("fname"))])])
             );
             EBop(Eq, 
-              EFunc("select", [EVar(Var("realWorld_linenum")), EFunc("select", [EVar(Var("realWorld_mapping")); EVar(Var("fname"))])]),
-              EFunc("select", [EVar(VarPost("realWorld_linenum")), EFunc("select", [EVar(VarPost("realWorld_mapping")); EVar(Var("fname"))])])
+              EFunc("select", [EVar(Var("realWorld_linenum")); EFunc("select", [EVar(Var("realWorld_mapping")); EVar(Var("fname"))])]),
+              EFunc("select", [EVar(VarPost("realWorld_linenum")); EFunc("select", [EVar(VarPost("realWorld_mapping")); EVar(Var("fname"))])])
             );
       ])))])
 (* realWorld_opened = realWorld_opened_post and
