@@ -17,3 +17,13 @@ write_line(chan, s)
 postcond:
 (and (= realWorld_data_post (store chan (store (select chan realWorld_linenum_pre) s (select chan realWorld_data_pre)) realWorld_data_pre)) 
      (= realWorld_linenum_post (store chan (select chan realWorld_linenum_pre) realWorld_linenum_pre)))
+
+     
+     
+for state_equal:
+    have a set of open handles associated with filenames
+    precondition that file name has not been opened
+assume filenames are given as integers not as strings (use ocaml to turn strings into unique integers -- keep a translation table)
+
+int FN_ROOT_FOO = 1;
+filename ROOT_FOO = 1;
