@@ -1,0 +1,13 @@
+int main(int argc, string[] argv) {
+	
+	string fname1 = "test.vcy";
+	string fname2 = "out.txt";
+	in_channel i = open_read(fname);
+	in_channel j = open_read(fname);
+	int y = 2;
+	commute _ {
+		{ i = open_read(fname1); }
+		{ j = open_read(fname2); }
+	}
+	return 0;
+}

@@ -430,7 +430,6 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   List.iter (
     fun [@warning "-8"] id -> 
           ety_init_list := !ety_init_list @ [init_mangle_id id];
-          if not (Hashtbl.mem variable_ctr_list id) then
           Hashtbl.add variable_ctr_list id (ref 1)
   ) realWorld_vars;
   let res = compile_block_to_smt b local_variable_ctr_list in
@@ -497,6 +496,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let methods = List.map (compile_method_to_methodSpec genv) mdecls in
   
   let pre, post = generate_spec_pre_post_condition pre post in
+  let pre = ELop(And, [EBop(Eq, EVar (Var "realWorld_opened"), EVar (Var "(as emptyset (Set String))")); pre]) in (* TODO: This is to debug until we have some way of constraining real world *)
 
   let preamble = None in 
 
