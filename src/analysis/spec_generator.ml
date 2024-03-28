@@ -285,7 +285,6 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
-      print_endline(string_of_ety(ety));
       let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
       let fun_args = (embedding_type_index, rw_version, ety, (List.tl args_rtn)) in
           
