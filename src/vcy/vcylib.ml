@@ -447,6 +447,7 @@ let lib_io : method_library =
       let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
       let rw_m0, rw_m1 = mangle_servois_id_pair "realWorld_mapping" rw_mangle in
       let rw_h0, rw_h1 = mangle_servois_id_pair "realWorld_handles" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
       { bindings = 
         [ var_of_string @@ smt_e f1,
             f0
@@ -458,6 +459,8 @@ let lib_io : method_library =
             EFunc ("store", [rw_m0; EVar(Var(fname)); rw_h0])
         ; var_of_string @@ smt_e rw_h1,
             ELop (Add, [rw_h0; EConst(CInt 1)])
+        ; var_of_string @@ smt_e rw_o1,
+            EFunc ("insert", [EVar(Var(fname)); rw_o0])
         (*; smt_bind k1 k0
         ; smt_bind v1 v0*)
         ]
