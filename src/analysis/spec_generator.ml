@@ -68,7 +68,7 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
-    ) embedding_vars @ [ (Var "realWorld_data", Smt.TArray (Smt.TString, Smt.TString))
+    ) embedding_vars @ [ (Var "realWorld_data", Smt.TArray (Smt.TString, Smt.TArray(Smt.TInt, Smt.TString)))
                        ; (Var "realWorld_linenum", Smt.TArray (Smt.TString, Smt.TInt))
                        ; (Var "realWorld_opened", Smt.TSet Smt.TString)]
 
