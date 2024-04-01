@@ -15,7 +15,7 @@ let gstates = ref []
 let terms_list = ref []
 let variable_ctr_list = (Hashtbl.create 50)
 
-let realWorld_vars = ["realWorld_data"; "realWorld_linenum"; "realWorld_mapping"; "realWorld_handles"; "realWorld_opened"]
+let realWorld_vars = ["realWorld_data"; "realWorld_linenum"; "realWorld_opened"]
 
 let pre = ref (EConst (CBool true))
 
@@ -36,11 +36,14 @@ let generate_spec_predicates (embedding_vars : (ty binding * ety) list) : Servoi
 
 
 let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
-   let exp_list = List.map (fun (n,_) -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n))) (get_stypes em_vars)
+   (* The particular value of a channel doesn't matter. The equality is handled by the realWorld reasoning below. *)
+   let exp_list = List.map (fun n -> Smt.EBop (Eq, EVar (Var n), EVar (VarPost n))) (List.map fst (get_stypes em_vars) @ realWorld_vars)
    in
-   sexp_of_sexp_list (exp_list @ 
+   sexp_of_sexp_list exp_list
+   
+   (* @ 
       [ Smt.EBop(Eq, EVar (Var "realWorld_opened"), EVar (VarPost "realWorld_opened"))
-      ; Smt.EBop(Eq, EVar (Var "realWorld_handles"), EVar (VarPost "realWorld_handles"))
+      ; 
       ; EForall([(Var "fname", TString)], 
         EBop(Imp, 
           EFunc("member", [EVar(Var("fname")); EVar(Var("realWorld_opened"))]),
@@ -53,7 +56,7 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
               EFunc("select", [EVar(Var("realWorld_linenum")); EFunc("select", [EVar(Var("realWorld_mapping")); EVar(Var("fname"))])]),
               EFunc("select", [EVar(VarPost("realWorld_linenum")); EFunc("select", [EVar(VarPost("realWorld_mapping")); EVar(Var("fname"))])])
             );
-      ])))])
+      ])))]) *)
 (* realWorld_opened = realWorld_opened_post and
    realWorld_Handles = realWOrld_handles_post
    forall fname : String . fname in realWorld_opened =>
@@ -65,10 +68,8 @@ let generate_spec_statesEqual (em_vars : (ty binding * ety) list) : sexp =
 let generate_spec_state (embedding_vars: (ty binding * ety) list) : sty Smt.bindlist = 
     List.concat_map (fun ((id,ty),ety) -> let list_of_sty = compile_ety_to_sty id ety in
                         List.map (fun (id, sty) -> (Smt.Var id, sty)) list_of_sty
-    ) embedding_vars @ [ (Var "realWorld_data", Smt.TArray (Smt.TInt, Smt.TArray(Smt.TInt, Smt.TString)))
-                       ; (Var "realWorld_linenum", Smt.TArray (Smt.TInt, Smt.TInt))
-                       ; (Var "realWorld_mapping", Smt.TArray (Smt.TString, Smt.TInt))
-                       ; (Var "realWorld_handles", Smt.TInt)
+    ) embedding_vars @ [ (Var "realWorld_data", Smt.TArray (Smt.TString, Smt.TString))
+                       ; (Var "realWorld_linenum", Smt.TArray (Smt.TString, Smt.TInt))
                        ; (Var "realWorld_opened", Smt.TSet Smt.TString)]
 
 let create_dummy_method (b: block node) : mdecl =
@@ -430,7 +431,9 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   List.iter (
     fun [@warning "-8"] id -> 
           ety_init_list := !ety_init_list @ [init_mangle_id id];
-          Hashtbl.add variable_ctr_list id (ref 1)
+          if not (Hashtbl.mem variable_ctr_list id) then
+          Hashtbl.add variable_ctr_list id (ref 1) else
+          Hashtbl.replace variable_ctr_list id (ref 1) (* TODO: Don't need to set existing member to 1 in else case? *)
   ) realWorld_vars;
   let res = compile_block_to_smt b local_variable_ctr_list in
   if (List.length !ety_init_list == 0) then
