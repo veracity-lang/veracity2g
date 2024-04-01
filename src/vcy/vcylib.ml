@@ -445,8 +445,6 @@ let lib_io : method_library =
       let f0, f1 = mangle_servois_id_pair fname mangle in
       let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
       let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
-      let rw_m0, rw_m1 = mangle_servois_id_pair "realWorld_mapping" rw_mangle in
-      let rw_h0, rw_h1 = mangle_servois_id_pair "realWorld_handles" rw_mangle in
       let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
       { bindings = 
         [ var_of_string @@ smt_e f1,
@@ -454,15 +452,11 @@ let lib_io : method_library =
         ; var_of_string @@ smt_e rw_d1,
             rw_d0
         ; var_of_string @@ smt_e rw_ln1,
-            EFunc ("store", [rw_ln0; rw_h0; EConst(CInt 0)])
-        ; var_of_string @@ smt_e rw_m1,
-            EFunc ("store", [rw_m0; EVar(Var(fname)); rw_h0])
-        ; var_of_string @@ smt_e rw_h1,
-            ELop (Add, [rw_h0; EConst(CInt 1)])
+            EFunc ("store", [rw_ln0; f0; EConst(CInt 0)])
         ; var_of_string @@ smt_e rw_o1,
-            EFunc ("insert", [EVar(Var(fname)); rw_o0])
+            EFunc ("insert", [f0; rw_o0])
         ]
-      ; ret_exp = rw_h0
+      ; ret_exp = f1
       ; asserts = []
       ; terms = []
       ; preds = []

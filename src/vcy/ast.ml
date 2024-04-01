@@ -64,7 +64,7 @@ let rec sty_of_ty = function
   | TBool -> Smt.TBool
   | TStr -> Smt.TString
   | TArr t -> Smt.TArray (Smt.TInt, sty_of_ty t)
-  | TChanR | TChanW -> Smt.TInt (* A channel is represented by the int corresponding to its handle number. *)
+  | TChanR | TChanW -> Smt.TString (* A channel is represented by the string representing the directory it accesses. *)
   | sty -> raise @@ NotImplemented "Conversion to Servois type not supported"
 
 
@@ -422,7 +422,7 @@ let compile_ety_to_sty (id: string) (ty : ety) : (string * sty) list =
   | ETArr (_, sty) -> [(id, Smt.TArray (Smt.TInt, sty))]
   | ETHashTable (styk, styv, {ht=ht_id; keys=ht_keys; size=ht_size}) -> 
     [(ht_id, Smt.TArray (styk, styv)); (ht_keys, Smt.TSet styk); (ht_size, Smt.TInt)]
-  | ETChannel _ -> [(id, Smt.TInt)]
+  | ETChannel _ -> [(id, Smt.TString)]
 
 
 (** AST to SMT types *)
