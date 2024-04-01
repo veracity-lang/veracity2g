@@ -409,6 +409,30 @@ let lib_hashtable : method_library =
     }
   ]
 
+(* Read only / write only channels are enforced at type level so we can have the same underlying spec for them. *)
+let open_spec = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETStr fname, []) ->
+      let f0, f1 = mangle_servois_id_pair fname mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e f1,
+            f0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc ("store", [rw_ln0; f0; EConst(CInt 0)])
+        ; var_of_string @@ smt_e rw_o1,
+            EFunc ("insert", [f0; rw_o0])
+        ]
+      ; ret_exp = f1
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      ; updates_rw = true
+      })
+
 let lib_io : method_library =
   [ "print", 
     { pure = false
@@ -440,29 +464,7 @@ let lib_io : method_library =
         env, VChanR (s, chan, in_channel_length chan)
       | _ -> raise @@ TypeFailure ("open_read arguments", Range.norange)
       end
-    ; pc = Some (fun [@warning "-8"]
-      (mangle, rw_mangle, ETStr fname, []) ->
-      let f0, f1 = mangle_servois_id_pair fname mangle in
-      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
-      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
-      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
-      { bindings = 
-        [ var_of_string @@ smt_e f1,
-            f0
-        ; var_of_string @@ smt_e rw_d1,
-            rw_d0
-        ; var_of_string @@ smt_e rw_ln1,
-            EFunc ("store", [rw_ln0; f0; EConst(CInt 0)])
-        ; var_of_string @@ smt_e rw_o1,
-            EFunc ("insert", [f0; rw_o0])
-        ]
-      ; ret_exp = f1
-      ; asserts = []
-      ; terms = []
-      ; preds = []
-      ; updates_rw = true
-      }
-    )
+    ; pc = open_spec
     }
   ; "open_write",
     { pure = false
@@ -471,7 +473,7 @@ let lib_io : method_library =
         env, VChanW (s, open_out s)
       | _ -> raise @@ TypeFailure ("open_write arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = open_spec
     }
   ; "close", 
     { pure = false
@@ -484,7 +486,28 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("close arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            rw_ln0
+        ; var_of_string @@ smt_e rw_o1,
+            EFunc ("setminus", [rw_o0; EFunc("singleton", [c0])])
+        ]
+      ; ret_exp = c1
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ; "read_line", 
     { pure = false
@@ -493,7 +516,28 @@ let lib_io : method_library =
         env, VStr (input_line chan)
       | _ -> raise @@ TypeFailure ("read_line arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc("store", [rw_ln0; c0; ELop(Add, [EFunc("select", [rw_ln0; c0]); EConst (CInt 1)])])
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ; "has_line",
     { pure = false
@@ -513,7 +557,28 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("write arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            EFunc("store", [rw_d0; c0; EFunc("store", [(* TODO WIP *)])])
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc("store", [rw_ln0; c0; ELop(Add, [EFunc("select", [rw_ln0; c0]); EConst (CInt 1)])])
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ]
 
