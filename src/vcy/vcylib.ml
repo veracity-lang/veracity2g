@@ -409,6 +409,7 @@ let lib_hashtable : method_library =
     }
   ]
 
+let array_update ar k f = let open Smt in EFunc("store", [ar; k; f(EFunc("select", [ar; k]))])
 (* Read only / write only channels are enforced at type level so we can have the same underlying spec for them. *)
 let open_spec = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETStr fname, []) ->
@@ -422,13 +423,13 @@ let open_spec = Some (fun [@warning "-8"]
         ; var_of_string @@ smt_e rw_d1,
             rw_d0
         ; var_of_string @@ smt_e rw_ln1,
-            EFunc ("store", [rw_ln0; f0; EConst(CInt 0)])
+            array_update rw_ln0 f0 (fun _ -> EConst (CInt 0))
         ; var_of_string @@ smt_e rw_o1,
             EFunc ("insert", [f0; rw_o0])
         ]
       ; ret_exp = f1
       ; asserts = []
-      ; terms = []
+      ; terms = [pure_id fname, Smt.TString]
       ; preds = []
       ; updates_rw = true
       })
@@ -504,7 +505,7 @@ let lib_io : method_library =
         ]
       ; ret_exp = c1
       ; asserts = []
-      ; terms = []
+      ; terms = [pure_id chan, Smt.TString]
       ; preds = []
       ; updates_rw = true
       })
@@ -558,7 +559,7 @@ let lib_io : method_library =
       | _ -> raise @@ TypeFailure ("write arguments", Range.norange)
       end
     ; pc = Some (fun [@warning "-8"]
-      (mangle, rw_mangle, ETChannel chan, []) ->
+      (mangle, rw_mangle, ETChannel chan, [line]) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
       let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
       let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
@@ -567,21 +568,20 @@ let lib_io : method_library =
         [ var_of_string @@ smt_e c1,
             c0
         ; var_of_string @@ smt_e rw_d1,
-            EFunc("store", [rw_d0; c0; EFunc("store", [(* TODO WIP *)])])
+            array_update rw_d0 c0 (fun f -> array_update f (EFunc("select", [rw_ln0; c0])) (fun _ -> line))
         ; var_of_string @@ smt_e rw_ln1,
-            EFunc("store", [rw_ln0; c0; ELop(Add, [EFunc("select", [rw_ln0; c0]); EConst (CInt 1)])])
+            array_update rw_ln0 c0 (fun v -> ELop(Add, [v; EConst (CInt 1)]))
         ; var_of_string @@ smt_e rw_o1,
             rw_o0
         ]
       ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
       ; asserts = []
-      ; terms = []
+      ; terms = [pure_id @@ smt_e line, Smt.TString]
       ; preds = []
       ; updates_rw = true
       })
     }
   ]
-
 
 let lib_mutex : method_library =
   [ "mutex_init",

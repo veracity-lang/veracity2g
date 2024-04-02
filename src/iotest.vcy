@@ -4,10 +4,12 @@ int main(int argc, string[] argv) {
 	string fname2 = "out.txt";
 	in_channel i = open_read(fname);
 	in_channel j = open_read(fname);
+	string data1 = "deadbeef";
+	string data2 = "helloworld";
 	int y = 2;
 	commute _ {
-		{ i = open_read(fname1); }
-		{ j = open_read(fname2); }
+		{ i = open_read(fname1); write(i, data1); }
+		{ j = open_read(fname2); write(j, data2); }
 	}
 	return 0;
 }
