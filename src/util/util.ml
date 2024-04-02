@@ -173,3 +173,17 @@ let time_exec (f : unit -> 'a) : float * 'a =
   let res = f () in
   let t1 = Unix.gettimeofday () in
   t1 -. t0, res
+
+(* write the graph to a .dot file *)
+let output_graph fn nodes edges  =
+  let oc = open_out fn in
+  output_string oc (String.concat "\n" [
+    "digraph G {\n";
+    (* Nodes *)
+    List.fold_left (fun acc node -> acc ^ "\"" ^ node ^ "\";\n") "" nodes;
+    (* Edges *)
+    List.fold_left (fun acc (src, dst) -> acc ^ "\"" ^ src ^ "\" -> \"" ^ dst ^ "\";\n") "" edges;
+    "}\n";
+  ]);
+  print_endline ("Graph written to " ^ fn);
+  close_out oc
