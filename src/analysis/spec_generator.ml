@@ -499,7 +499,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let methods = List.map (compile_method_to_methodSpec genv) mdecls in
   
   let pre, post = generate_spec_pre_post_condition pre post in
-  let pre = ELop(And, [EBop(Eq, EVar (Var "realWorld_opened"), EVar (Var "(as emptyset (Set String))")); pre]) in (* TODO: This is to debug until we have some way of constraining real world *)
+  (* let pre = ELop(And, [EBop(Eq, EVar (Var "realWorld_opened"), EVar (Var "(as emptyset (Set String))")); pre]) in (* TODO: This is to debug until we have some way of constraining real world *) *)
 
   let preamble = None in 
 
