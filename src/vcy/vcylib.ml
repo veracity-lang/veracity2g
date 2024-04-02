@@ -428,7 +428,7 @@ let open_spec = Some (fun [@warning "-8"]
             EFunc ("insert", [f0; rw_o0])
         ]
       ; ret_exp = f1
-      ; asserts = []
+      ; asserts = [EUop(Not, EFunc("member", [f0; rw_o0]))] (* TODO: see below note *)
       ; terms = [pure_id fname, Smt.TString]
       ; preds = []
       ; updates_rw = true
@@ -504,7 +504,7 @@ let lib_io : method_library =
             EFunc ("setminus", [rw_o0; EFunc("singleton", [c0])])
         ]
       ; ret_exp = c1
-      ; asserts = []
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: Probs a better way to encode this than an assert? A precondition possibly? *)
       ; terms = [pure_id chan, Smt.TString]
       ; preds = []
       ; updates_rw = true
@@ -534,7 +534,7 @@ let lib_io : method_library =
             rw_o0
         ]
       ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
-      ; asserts = []
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
       ; terms = []
       ; preds = []
       ; updates_rw = true
@@ -575,7 +575,7 @@ let lib_io : method_library =
             rw_o0
         ]
       ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
-      ; asserts = []
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: see above note *)
       ; terms = [pure_id @@ smt_e line, Smt.TString]
       ; preds = []
       ; updates_rw = true

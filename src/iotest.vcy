@@ -8,8 +8,14 @@ int main(int argc, string[] argv) {
 	string data2 = "helloworld";
 	int y = 2;
 	commute _ {
-		{ i = open_read(fname1); write(i, data1); }
-		{ j = open_read(fname2); write(j, data2); }
+		{ i = open_read(fname1); 
+          data1 = read_line(i); 
+          /* Process data1 */
+          close(i); }
+		{ j = open_read(fname2); 
+		  data2 = read_line(j);
+		  /* Process data2 */
+		  close(j); }
 	}
 	return 0;
 }
