@@ -179,6 +179,10 @@ let output_graph fn nodes edges  =
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
     "digraph G {\n";
+    (* Styles *)
+    "  graph [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
+    "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ node ^ "\";\n") "" nodes;
     (* Edges *)
@@ -187,3 +191,26 @@ let output_graph fn nodes edges  =
   ]);
   print_endline ("Graph written to " ^ fn);
   close_out oc
+
+(*   
+    "f.vcy:1:1-5" [label="f.vcy:1:1-5\nx:=42;", fillcolor="#d3d3d3"]
+    "f.vcy:2:1-5" [label="f.vcy:2:1-5\nwhile(x>0)", shape="oval", fillcolor="#add8e6"]
+    "f.vcy:3:1-5" [label="f.vcy:3:1-5\nx:=x-1", fillcolor="#d3d3d3"]
+    "f.vcy:5:1-5" [label="f.vcy:5:1-5\nreturn x", fillcolor="#d3d3d3"]
+    
+    // Edges
+    "f.vcy:1:1-5" -> "f.vcy:2:1-5"
+    "f.vcy:2:1-5" -> "f.vcy:3:1-5"
+    "f.vcy:3:1-5" -> "f.vcy:2:1-5"
+    "f.vcy:2:1-5" -> "f.vcy:5:1-5"
+
+    // Control-Dep edges
+    "f.vcy:1:1-5" -> "f.vcy:2:1-5" [color="red", style="dashed"]
+    "f.vcy:2:1-5" -> "f.vcy:3:1-5" [color="red", style="dashed"]
+    "f.vcy:2:1-5" -> "f.vcy:5:1-5" [color="red", style="dashed"]
+
+    // Data-Dep edges
+    "f.vcy:1:1-5" -> "f.vcy:2:1-5" [color="blue", style="dotted"]
+    "f.vcy:2:1-5" -> "f.vcy:3:1-5" [color="blue", style="dotted"]
+    "f.vcy:2:1-5" -> "f.vcy:5:1-5" [color="blue", style="dotted"]
+    "f.vcy:3:1-5" -> "f.vcy:2:1-5" [color="blue", style="dotted"] *)
