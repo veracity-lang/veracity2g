@@ -954,6 +954,7 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
     let pdg = Exe_pdg.build_pdg body.elt !pdg in 
     List.iteri (fun i -> fun s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.Exe_pdg.l)) pdg.nodes;
     List.iteri (fun i -> fun e -> Printf.printf "edge %d (%s): %s - %s\n" i (Exe_pdg.print_dep e.Exe_pdg.dep) (Range.string_of_range e.Exe_pdg.src.l) (Range.string_of_range e.Exe_pdg.dst.l)) pdg.edges;
+    Exe_pdg.print_pdg pdg "/tmp/pdg.dot";
     (* let gc_list = interp_global_commute !env in 
     pdg := Exe_pdg.add_edges gc_list !pdg; *)
 

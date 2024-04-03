@@ -27,7 +27,7 @@ and c_of_exp = function
     | CInt(i) -> Int64.to_string i (* ^ "L" *)
     | CStr(s) -> sp "\"%s\"" s
     | CArr(ty, e) -> raise @@ NotImplemented "c_of_exp CArr"
-    | NewArr(ty, e) -> raise @@ NotImplemented "c_of_exp NewArr"
+    | NewArr(ty, e) -> "<<new array stmt>>" (*raise @@ NotImplemented "c_of_exp NewArr"*)
     | NewHashTable(var, kty, vty) -> raise @@ NotImplemented "c_of_exp NewHashTable"
     | Id(id) -> (!mangle id)
     | Index(arr, idx) -> sp "(%s[%s])" (c_of_expnode arr) (c_of_expnode idx)

@@ -1,5 +1,5 @@
 open Ast 
-
+open Ast_print
 
 type dependency =
 (* | ProgramOrder *)
@@ -38,6 +38,43 @@ let add_node (pdg : exe_pdg) (s : stmt node) : enode * exe_pdg =
   let n = {l = s.loc; n = s.elt} in 
   n, { pdg with nodes = pdg.nodes @ [n] }
 
+  let print_dep = function
+  | ControlDep -> "ControlDep"
+  | DataDep -> "DataDep"
+  | Commute b -> "Commute " ^ (Bool.to_string b)
+  | Disjoint -> "Disjoint"
+
+let string_of_pdg_node_stmt s =
+  let big_string = Ast_to_c.c_of_stmt s in 
+  if String.length big_string > 20 then String.sub big_string 0 19 else big_string
+
+
+let print_pdg pdg fn : unit = 
+  let oc = open_out fn in
+  output_string oc (String.concat "\n" [
+    "digraph G {\n";
+    (* Styles *)
+    "  graph [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
+    "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    (* Nodes *)
+    List.fold_left (fun acc node -> acc ^ "\"" ^ (Range.string_of_range_nofn node.l)
+    ^ "\" [label=\""^(string_of_pdg_node_stmt node.n)^"\"];\n") "" pdg.nodes;
+    (* Edges *)
+    List.fold_left (fun acc e -> acc ^ (match e.dep with
+       | DataDep -> ""
+       | Commute _  
+       | Disjoint 
+       | ControlDep ->
+          "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
+               ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
+               ^ "[style=dashed];\n" (*label=\""^(print_dep e.dep)^"\"];\n"*)
+    )) "" pdg.edges;
+    "}\n";
+  ]);
+  print_endline ("Graph written to " ^ fn);
+  close_out oc
+
 
 let rec apply_pairs f lst =
   match lst with
@@ -54,11 +91,6 @@ let add_edge (pdg : exe_pdg) (src : enode) (dst : enode) dep : exe_pdg =
   { pdg with edges = pdg.edges @ [{ src; dst; dep }] }
 
 
-let print_dep = function
-  | ControlDep -> "ControlDep"
-  | DataDep -> "DataDep"
-  | Commute b -> "Commute " ^ (Bool.to_string b)
-  | Disjoint -> "Disjoint"
 
 
 let rec find_block_vars block = 
