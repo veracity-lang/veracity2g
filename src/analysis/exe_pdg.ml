@@ -8,6 +8,12 @@ type dependency =
 | Commute of bool
 | Disjoint
 
+type enode_ast_elt = 
+  | EWhile of exp
+  | EIf of exp
+  | EIfElse of exp
+  | EStmt of stmt 
+  | EFor of stmt * stmt * exp
 
 (* type enode = stmt node  *)
 (* type enode = Range.t  *)
@@ -46,7 +52,7 @@ let add_node (pdg : exe_pdg) (s : stmt node) : enode * exe_pdg =
 
 let string_of_pdg_node_stmt s =
   let big_string = Ast_to_c.c_of_stmt s in 
-  if String.length big_string > 20 then String.sub big_string 0 19 else big_string
+  if String.length big_string > 40 then String.sub big_string 0 39 else big_string
 
 
 let print_pdg pdg fn : unit = 
