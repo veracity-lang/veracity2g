@@ -17,6 +17,7 @@ add-apt-repository ppa:avsm/ppa
 apt update
 apt install opam
 apt install cvc4
+apt install graphviz # optional, for PDG output
 
 opam init
 eval $(opam env)
