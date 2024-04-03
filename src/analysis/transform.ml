@@ -1,4 +1,4 @@
-open Ast
+(* open Ast
 open Ast_print
 open Format
 open Range
@@ -18,6 +18,8 @@ let create_label () : string =
 let mk_blocklabel l : blocklabel =
     (l, None)
  
+let get_label id : string = 
+    "Block" ^ string_of_int id 
 
 let rec string_of_stmt_aux (s: exe_stmt node) : string =
     begin match s.elt with 
@@ -37,64 +39,96 @@ and string_of_block (b:exe_block node) : string =
     AstML.string_of_list string_of_stmt_aux b.elt
 
 
-let rec block_to_exeB ?(stmt_list = ref []) (block: block node) pdg : exe_block node =
-    (* Printf.printf "block-> %s\n" (AstML.string_of_block block); *)
-    match block.elt with
-    | [] -> no_loc []
-    (* | h::tl -> node_up block (stmt_to_exeS h :: (block_to_exeB @@ no_loc tl).elt) *)
-    | stmt::tl -> 
-        (* Printf.printf "stmt-> %s\n" (AstML.string_of_stmt stmt); *)
-        let es = 
-        begin match stmt.elt with 
+let rec stmt_to_exeS s : exe_stmt = 
+    failwith "not implemented"
+
+
+(* let rec build_pdg (block: block) pdg : exe_pdg = 
+    List.fold_left (
+        fun pdg -> fun stmt -> 
+        match stmt with 
         | If (e, blk1, blk2) ->
             let head_label = create_label() in
-            Printf.printf "lbl => %s\n" head_label;
-            let l1 = create_label() in 
-            let l2 = create_label() in 
-            let s1 = ESSBlock(Some (mk_blocklabel @@ l1), block_to_exeB ~stmt_list:(ref []) blk1 pdg) in 
-            let s2 = ESSBlock(Some (mk_blocklabel @@ l2), block_to_exeB ~stmt_list:(ref []) blk2 pdg) in
-            pdg := add_node (add_node !pdg s2) s1;
-            let new_stmt = ESIf (e, l1, l2) in 
-            stmt_list := !stmt_list @ [node_up stmt new_stmt];
-            let temp_stmt_list = !stmt_list in 
-            stmt_list := [];
-            let s = ESSBlock (Some (mk_blocklabel head_label), no_loc temp_stmt_list) in 
-            pdg := add_node !pdg s;
-            no_loc s
-        | For (vdecll, exp, sl, bl) ->
+            let ctr_temp = !ctr in 
+            (* let add_edge (pdg : exe_pdg) (src : exe_stmt) (dst : exe_stmt) dep *)
+
+            let pdg = build_pdg blk2.elt (build_pdg blk1.elt pdg) in 
+            let l1 = get_label (ctr_temp + 1) in 
+            let l2 = if (blk2.elt != []) then get_label !ctr else "" in 
+            
+            let if_stmt = node_up stmt (ESIf (e, l1, l2)) in 
+            let s = ESSBlock (Some (mk_blocklabel head_label), no_loc [if_stmt]) in 
+            add_node pdg s 
+
+        | _ -> 
+            let s = node_up stmt (Stmt stmt) in 
+            let n = ESSBlock (Some (mk_blocklabel @@ create_label()), no_loc [s]) in 
+            add_node pdg n
+        (* let estmt = stmt_to_exeS s in 
+        add_node pdg estmt   *)
+    ) pdg block *)
+(* 
+let rec f i pdg =
+    | [] -> pdg
+    | h::tl -> if (i >= (List.length nodes_temp)) then add_edge pdg s n else pdg *)
+
+let rec build_pdg (block: block) pdg : exe_pdg =
+    match block with
+    | [] -> pdg
+    | stmt::tl ->
+        let updated_pdg = begin match stmt.elt with 
+        | If (e, blk1, blk2) ->
             let head_label = create_label() in
-            let l = create_label() in 
-            let n = ESSBlock(Some (mk_blocklabel @@ l), block_to_exeB ~stmt_list:(ref []) bl pdg) in 
-            pdg := add_node !pdg n;
-            let new_stmt = ESFor (vdecll, exp, sl, l) in 
-            stmt_list := !stmt_list @ [node_up stmt new_stmt];
-            let temp_stmt_list = !stmt_list in 
-            stmt_list := [];
-            let s = ESSBlock (Some(mk_blocklabel head_label), no_loc temp_stmt_list) in 
-            pdg := add_node !pdg s; 
-            no_loc s
+            let ctr_temp = !ctr in 
+            (* let add_edge (pdg : exe_pdg) (src : exe_stmt) (dst : exe_stmt) dep *)
+            let nodes_temp = pdg.nodes in 
+
+            let pdg = build_pdg blk2.elt (build_pdg blk1.elt pdg) in 
+            let l1 = get_label (ctr_temp + 1) in 
+            let l2 = if (blk2.elt != []) then get_label !ctr else "" in 
+            
+            let if_stmt = node_up stmt (ESIf (e, l1, l2)) in 
+            let s = ESSBlock (Some (mk_blocklabel head_label), no_loc [if_stmt]) in 
+
+
+            (* List.fold_left (fun i n ->  if (i >= (List.length nodes_temp)) then add_edge pdg s n else pdg) pdg pdg.nodes *)
+
+            add_node pdg s 
+             
         | While (e, bl) ->
             let head_label = create_label() in
-            let l = create_label() in 
-            let n = ESSBlock(Some (mk_blocklabel @@ l), block_to_exeB ~stmt_list:(ref []) bl pdg) in 
-            pdg := add_node !pdg n;
-            let new_stmt = ESWhile (e, l) in 
-            stmt_list := !stmt_list @ [node_up stmt new_stmt];
-            let temp_stmt_list = !stmt_list in 
-            stmt_list := [];
-            let s = ESSBlock (Some(mk_blocklabel head_label), no_loc temp_stmt_list) in 
-            pdg := add_node !pdg s; 
-            no_loc s 
+            let ctr_temp = !ctr in 
+
+            let pdg = build_pdg bl.elt pdg in 
+            let l = get_label (ctr_temp + 1) in
+            let while_stmt = node_up stmt (ESWhile (e, l)) in 
+            let n = ESSBlock (Some(mk_blocklabel head_label), no_loc [while_stmt]) in
+            
+            (* List.fold_left (
+                fun pdg -> fun s -> (add_edge pdg n (stmt_to_exeS s) ControlDep)
+            ) pdg bl.elt *)
+
+            add_node pdg n 
+
+        | For (vdecll, exp, sl, bl) ->
+            let head_label = create_label() in
+            let ctr_temp = !ctr in 
+
+            let pdg = build_pdg bl.elt pdg in 
+            let l = get_label (ctr_temp + 1) in
+            let for_stmt = node_up stmt @@ ESFor (vdecll, exp, sl, l) in 
+            let s = ESSBlock (Some(mk_blocklabel head_label), no_loc [for_stmt]) in
+            add_node pdg s 
+
         | SBlock (blocklabel, bl) -> 
-            let s = ESSBlock (blocklabel, block_to_exeB bl pdg) in 
-            pdg := add_node !pdg s;
-            no_loc s
+            let s = node_up stmt (Stmt stmt) in 
+            let n = ESSBlock (blocklabel, no_loc [s]) in 
+            add_node pdg n
+
         | _ -> 
-            (* Printf.printf "size ==> %d\n" (List.length !stmt_list); *)
-            let s = no_loc @@ Stmt stmt in 
-            stmt_list := !stmt_list @ [s] ;
-            s
+            let s = node_up stmt (Stmt stmt) in 
+            let n = ESSBlock (Some (mk_blocklabel @@ create_label()), no_loc [s]) in 
+            add_node pdg n
         end 
         in 
-        (* Printf.printf "===> %s\n" (string_of_stmt_aux es);  *)
-        node_up block (es :: (block_to_exeB ~stmt_list:stmt_list (no_loc tl) pdg).elt)
+        build_pdg tl updated_pdg *)

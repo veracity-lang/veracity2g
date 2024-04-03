@@ -531,6 +531,24 @@ and interp_return {g;l} (r : value) : env * value option =
   { g; l = List.tl l },
   Some r
 
+and interp_global_commute (env: env) : (group_commute * bool) list =
+  let {g; _} = env in
+  let rec interp_group_commute g : (group_commute * bool) list = 
+    begin match g with 
+    | [] -> []
+    | gc::tl -> 
+      let _, cc = gc in 
+      begin match cc with 
+      | PhiExp e ->
+        let v = interp_phi env e in
+        interp_group_commute tl @ [(gc,v)]
+      | PhiInf -> interp_group_commute tl 
+      end 
+    end
+  in 
+  (interp_group_commute g.group_commute)
+  
+
 and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   match stmt.elt with
   | Assn (enl, enr) ->
@@ -624,6 +642,27 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     end
   | Assume _ | Havoc _ ->
     env, None (* We simply ignore 'assume's and 'havoc's at runtime *)
+  | SBlock (bl, b) ->
+   interp_block env b
+  (* | SBlock (bl, b) ->
+    begin match bl with 
+    | None -> interp_block env b 
+    | Some l -> interp_block env b
+    end; 
+
+    let cnd =
+      match phi with
+      | PhiExp p -> interp_phi env p
+      | PhiInf ->
+        debug_print @@ lazy (Printf.sprintf 
+          "Inferred commute condition at %s is missing; defaulting to 'false'.\n"
+          (Range.string_of_range stmt.loc));
+        false
+    in let commute = cnd && not !force_sequential in
+    if commute
+      then interp_commute_async env blocks, None
+      else interp_commute_blocks env blocks, None *)
+
   (* | GCommute (variant, phi, pre, blocks, post) ->
     let cnd =
       match phi with
@@ -645,6 +684,10 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
       else interp_commute_blocks env blocks, None
     end *)
   
+(* and interp_exe_stmt (env: env) (stmt : Exe_pdg.exe_stmt node) : env * value option =
+  match stmt.elt with 
+  | Stmt s -> interp_stmt env s 
+  | _ -> failwith "not implemented" *)
 
 and interp_block (env : env) (block : block node) : env * value option =
   let stmts = ref block.elt in
@@ -728,6 +771,11 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
     | PhiExp e -> if !force_infer then infer () else e
     | PhiInf -> infer ()
     in let s = Commute (var, PhiExp phi', bl) in
+    node_app
+      (List.cons (node_up h s))
+      (infer_phis_of_block g defs t)
+  | SBlock (bl, b) ->
+    let s = SBlock (bl, infer_phis_of_block g defs b) in
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
@@ -900,6 +948,16 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | Gvdecl {elt = {name; ty; init}; loc = _} :: tl ->
     construct_env g ((name,(ty,init)) :: globals) tl
   | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = _} :: tl ->
+    
+    let pdg = ref (Exe_pdg.empty_exe_pdg()) in 
+    (* let exe_body = Transform.block_to_exeB body pdg in  *)
+    let pdg = Exe_pdg.build_pdg body.elt !pdg in 
+    List.iteri (fun i -> fun s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.Exe_pdg.l)) pdg.nodes;
+    List.iteri (fun i -> fun e -> Printf.printf "edge %d (%s): %s - %s\n" i (Exe_pdg.print_dep e.Exe_pdg.dep) (Range.string_of_range e.Exe_pdg.src.l) (Range.string_of_range e.Exe_pdg.dst.l)) pdg.edges;
+    (* let gc_list = interp_global_commute !env in 
+    pdg := Exe_pdg.add_edges gc_list !pdg; *)
+
+
     let m =
       { pure
       ; rty = mrtyp
@@ -910,6 +968,8 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | Gsdecl {elt = {sname;fields}; loc = _} :: tl ->
     let s = sname, List.map (fun {field_name;ftyp} -> field_name,ftyp) fields
     in construct_env {g with structs = s :: g.structs} globals tl
+  | Commutativity gc :: tl ->
+    construct_env {g with group_commute = gc} globals tl
 
 (* Convert all SCallRaw to SCall, and CallRaw to Call 
  * All that needs adjusting is methods.
@@ -1002,6 +1062,13 @@ let cook_calls (g : global_env) : global_env =
       Havoc id
     | Require e ->
       Require (cook_calls_of_exp e)
+    | SBlock (bl, b) ->
+      begin match bl with 
+      | None -> SBlock(None, cook_calls_of_block b) 
+      | Some l -> 
+        let (id, args) = l in 
+        SBlock(Some l, cook_calls_of_block b)
+      end
     | GCommute (v, c, pre, bl, post) ->
       let c =
         match c with
@@ -1040,6 +1107,7 @@ let initialize_env (prog : prog) (infer_phis : bool) =
     ; globals = []
     ; structs = []
     ; lib_methods = Vcylib.lib_methods
+    ; group_commute = []
     }
   in
   (* Initialize environment *)

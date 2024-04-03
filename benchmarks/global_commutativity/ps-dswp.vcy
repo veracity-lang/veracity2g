@@ -1,0 +1,38 @@
+commutativity {
+    
+}
+
+int main(int argc, string[] argv) {
+    int[] p = new int[10];
+    int[] visited = new int[10];
+    int sum = 0;
+    int id = 0;
+    int p_id = 0;
+    int p_value = 0;
+    int[] p_inner_list = new int[10];
+    int[] q_next = new int[10];
+    int[] p_next = new int[10];
+    bool g_flag = false;
+    int p_size = 0;
+    int q_size = 0;
+
+
+    while(p_size != 0){
+        id = p_id;
+        if(!visited[id]){
+            visited[id] = true;
+            q = p_inner_list;
+            while (q_size != 0 && !q_flag){
+                q = q_next;
+            }
+            if(q_size != 0){
+                sum = sum + p_value;
+            }
+        }
+        p = p_next;
+    }
+    
+    return 0;
+}
+
+
