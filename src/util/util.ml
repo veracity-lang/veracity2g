@@ -14,6 +14,10 @@ let flip (a,b) = b,a
 
 let compose f g x = f (g x)
 
+let rec repeat f n = if n <= 0 then () else (f (); repeat f (n - 1))
+
+let const c f = c
+
 let null = function
   | [] -> true
   | _ -> false

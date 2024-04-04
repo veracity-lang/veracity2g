@@ -503,7 +503,7 @@ let lib_io : method_library =
         ; var_of_string @@ smt_e rw_o1,
             EFunc ("setminus", [rw_o0; EFunc("singleton", [c0])])
         ]
-      ; ret_exp = c1
+      ; ret_exp = EConst (CBool true)
       ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: Probs a better way to encode this than an assert? A precondition possibly? *)
       ; terms = [pure_id chan, Smt.TString]
       ; preds = []
@@ -547,7 +547,24 @@ let lib_io : method_library =
         env, VBool (pos_in chan < len)
       | _ -> raise @@ TypeFailure ("has_line arguments", Range.norange)
       end
-    ; pc = None
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, _ = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, _ = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ]
+      ; ret_exp = EUop(Not, EForall([Smt.Var "realWorld_line", TInt], 
+          EITE(EBop(Gte, EVar (Var "realWorld_line"), EFunc("select", [rw_ln0; c0])),
+            EBop(Eq, EFunc("select", [EFunc("select", [rw_d0; c0]); EVar (Var "realWorld_line")]), EConst (CString "")),
+            EConst (CBool true))))
+      ; asserts = []
+      ; terms = [pure_id chan, Smt.TString]
+      ; preds = []
+      ; updates_rw = false (* We do use the vars but we don't update their bindings. *)
+      })
     }
   ; "write",
     { pure = false
@@ -574,9 +591,74 @@ let lib_io : method_library =
         ; var_of_string @@ smt_e rw_o1,
             rw_o0
         ]
-      ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
+      ; ret_exp = EConst (CBool true)
       ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: see above note *)
       ; terms = [pure_id @@ smt_e line, Smt.TString]
+      ; preds = []
+      ; updates_rw = true
+      })
+    }
+  ; "lseek",
+    { pure = false
+    ; func = begin function
+      | env, [VChanR (_,chan,_); VInt lnum] ->
+        (* There's not a real better way to seek based on lines other than just reading that many lines. *)
+        seek_in chan 0;
+        repeat (fun () -> const () (input_line chan); ()) (Int64.to_int lnum);
+        env, VVoid
+      | _ -> raise @@ TypeFailure ("lseek arguments", Range.norange)
+      end
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, [i]) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc("store", [rw_ln0; c0; pure_id @@ smt_e i])
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
+      ; terms = [pure_id chan, Smt.TString; pure_id @@ smt_e i, Smt.TInt]
+      ; preds = []
+      ; updates_rw = true
+      })
+    }
+  ; "cp",
+    { pure = false
+    ; func = begin function
+      | env, [VStr from_fname; VStr to_fname] ->
+        (* Not the most elegant or robust solution, but should work on Unix machines *)
+        const () @@ Sys.command ("cp \"" ^ from_fname ^ "\" \"" ^ to_fname ^ "\"");
+        env, VVoid
+      | _ -> raise @@ TypeFailure ("cp arguments", Range.norange)
+      end
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETStr from_fname, [to_fname]) ->
+      let f0, f1 = mangle_servois_id_pair from_fname mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e f1,
+            f0
+        ; var_of_string @@ smt_e rw_d1,
+            array_update rw_d0 to_fname (const @@ Smt.EFunc("select", [rw_d0; f0]))
+        ; var_of_string @@ smt_e rw_ln1,
+            rw_ln0
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = []
+      ; terms = [pure_id from_fname, Smt.TString; pure_id @@ smt_e to_fname, Smt.TString]
       ; preds = []
       ; updates_rw = true
       })
