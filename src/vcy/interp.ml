@@ -953,6 +953,9 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
     Exe_pdg.print_pdg_debug pdg;
     Exe_pdg.print_pdg pdg "/tmp/pdg.dot";
 
+    (* Eric's testing of Vcy-to-C. This will later be called with the re-constructed task bodies *)
+    Codegen_c.gen body.elt;
+
     (* Exe_pdg.analysis_pdg pdg; *)
 
     (* let gc_list = interp_global_commute !env in 

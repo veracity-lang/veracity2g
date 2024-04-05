@@ -86,3 +86,14 @@ let c_of_decl = function
 
 let c_of_prog prog =
     String.concat "\n\n" @@ List.map c_of_decl prog
+
+(* 
+test this as:
+  ./vcy.exe interp ../benchmarks/global_commutativity/ps-dswp.vcy    
+*)
+let gen b = 
+  let str = c_of_block b in 
+  let oc = open_out "/tmp/autogen_tasks.c" in
+  output_string oc str;
+  close_out oc;
+  print_endline "Codegen_c: wrote /tmp/autogen_tasks.c"
