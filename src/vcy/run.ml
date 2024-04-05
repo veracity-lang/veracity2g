@@ -256,6 +256,9 @@ module RunCompile : Runner = struct
   
   let debug = ref false
 
+  let output_file = ref ""
+  let output_dir = ref ""
+
   let anons = ref []
 
   let anon_fun (v : string) =
@@ -266,6 +269,7 @@ module RunCompile : Runner = struct
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
+    ; "-o",      Arg.Set_string output_file, "<file> Output generated C file."
     ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
     ] |>
     Arg.align
@@ -277,7 +281,7 @@ module RunCompile : Runner = struct
 
     (* 3. Code generation: from Tasks to C *)
     (*      (will use Codegen_c c_of_prog) *)
-    print_endline "emitted <something.c>, which can now be compiled"
+    print_endline ("emitted "^(!output_file)^", which can now be compiled")
   end
 
   let run () =

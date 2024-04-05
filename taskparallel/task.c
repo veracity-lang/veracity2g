@@ -8,6 +8,7 @@
 
 extern task_t* autogen_loadtask(int i);
 extern int autogen_taskcount();
+extern void autogen_initialize();
 
 int main() {
     pthread_t threads[NUM_THREADS];
@@ -22,6 +23,8 @@ int main() {
         }
     }
 
+    autogen_initialize();
+
     // Load the tasks from the autogen tasks
     int num_tasks = autogen_taskcount();
 
@@ -31,7 +34,7 @@ int main() {
 
 
     // Add tasks to the queue
-    for (int i = 1; i < num_tasks; i++) {
+    for (int i = 1; i <= num_tasks; i++) {
         task_t* t = autogen_loadtask(i);
         enqueue(&queue, t);
     }
