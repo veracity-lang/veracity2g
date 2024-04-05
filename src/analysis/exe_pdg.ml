@@ -108,13 +108,17 @@ let print_pdg pdg fn : unit =
     ^ "\" [label=\""^(string_of_pdg_node_stmt node.n)^"\"];\n") "" pdg.nodes;
     (* Edges *)
     List.fold_left (fun acc e -> acc ^ (match e.dep with
-       | DataDep _ -> ""
+       | DataDep idlist ->
+           let ids = String.concat "," idlist in
+          "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
+                ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
+                ^ "[style=solid, color=green, label=\""^ids^"\"];\n" 
        | Commute _  
        | Disjoint 
        | ControlDep ->
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-               ^ "[style=dashed];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+               ^ "[style=dashed, color=maroon];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
     )) "" pdg.edges;
     "}\n";
   ]);
