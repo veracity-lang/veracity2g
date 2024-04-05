@@ -5,7 +5,6 @@ open Range
 open Util
 
 type dependency =
-(* | ProgramOrder *)
 | ControlDep
 | DataDep of id list
 | Commute of bool
@@ -74,23 +73,8 @@ let c_of_stmt = function
   | EStmt s -> Ast_to_c.c_of_stmt s.elt
   
 let string_of_pdg_node_stmt s =
-  (* let big_string = 
-    begin match s with 
-    | Entry -> "Entry"
-    | EWhile e -> sp "EWhile (%s)" (AstML.string_of_exp e)
-    | EIf e -> sp "EIf (%s)" (AstML.string_of_exp e)
-    | EIfElse e  -> sp "EIfElse (%s)" (AstML.string_of_exp e)
-    | EFor (d,e,s) -> sp "EFor (%s, %s, %s)"
-                          (AstML.string_of_list AstML.string_of_vdecl_aux d) 
-                          (AstML.string_of_option AstML.string_of_exp e)
-                          (AstML.string_of_option AstML.string_of_stmt s)
-    | EStmt s -> AstML.string_of_stmt s 
-      end  
-  in  *)
-
   (* let big_string = Ast_to_c.c_of_stmt s in  *)
   (* if String.length big_string > 20 then String.sub big_string 0 19 else big_string *)
-
   c_of_stmt s
 
 
@@ -138,22 +122,27 @@ let find_node (s: stmt node) pdg : enode =
         fun {l=loc;n} -> String.equal (Range.string_of_range loc) (Range.string_of_range sl) 
     ) pdg.nodes
 
+let rvalue = 1
+let lvalue = 0
 
-let rec find_block_vars block = 
+let set_vars_side (vars : string list) side : (string * int) list = 
+  List.map (fun v -> (v, side)) vars
+
+let rec find_block_vars block : (string * int) list = 
   match block with 
   | [] -> []
   | stmt::tl -> (find_stmt_vars stmt) @ (find_block_vars tl)
 
-and find_stmt_vars (stmt: enode_ast_elt) = 
+and find_stmt_vars (stmt: enode_ast_elt) : (string * int) list = 
   match stmt with
-  | EWhile e | EIf e | EIfElse e  -> (find_exp_vars e)
+  | EWhile e | EIf e | EIfElse e  -> set_vars_side (find_exp_vars e) rvalue
   (* | EFor (vdecls, eoption, soption) ->  *)
   | EStmt s ->
     begin match s.elt with 
-    | Assn (e1,e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
+    | Assn (e1,e2) -> (set_vars_side (find_exp_vars e1) lvalue) @ (set_vars_side (find_exp_vars e2) rvalue)
     | Decl vdecl ->
-      let id, (_, e) = vdecl in id :: find_exp_vars e
-    | Ret (Some e) -> (find_exp_vars e)
+      let id, (_, e) = vdecl in (id, lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
+    | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
     | _ -> []
     end 
   | Entry -> []
@@ -170,7 +159,7 @@ and find_stmt_vars (stmt: enode_ast_elt) =
   | SBlock of blocklabel option * block node
   | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond *)
 
-and find_exp_vars exp =
+and find_exp_vars exp : string list =
   match exp.elt with 
   | CStr s | Id s -> [s]
   | CArr (_, expl) -> List.concat_map find_exp_vars expl
@@ -184,15 +173,24 @@ and find_exp_vars exp =
   | CStruct of id * exp node bindlist
   | Proj of exp node * id *)
 
-let has_data_dep src dst : bool * string list  =
+let src_to_dst = 1
+let dst_to_src = 0
+
+let has_data_dep src dst : bool * string list * int =
   let list1 = find_stmt_vars src.n in 
   let list2 = find_stmt_vars dst.n in 
-  let rec has_common_element list1 list2 vars = 
+  let rec has_common_element list1 list2 vars : bool * string list * int = 
     match list1 with
-    | [] -> false, vars 
-    | head :: tail ->
-      if List.mem head list2 then
-        true, head :: vars 
+    | [] -> false, vars, src_to_dst 
+    | (head, val1) :: tail ->
+      if List.mem_assoc head list2 then begin
+        let val2 = List.assoc head list2 in 
+        begin match val1, val2 with 
+        | 0, 1 -> true, head :: vars, src_to_dst
+        | 1, 0 -> true, head :: vars, dst_to_src
+        | _, _ -> false, vars, src_to_dst
+        end
+      end
       else
         has_common_element tail list2 vars
   in has_common_element list1 list2 []
@@ -206,8 +204,13 @@ let rec apply_pairs f lst =
 let add_dataDep_edges pdg = 
   let p = ref pdg in 
   apply_pairs (fun x -> fun y -> 
-    let dep, vars = has_data_dep x y in 
-    if dep then p := add_edge !p x y (DataDep vars)
+    let dep, vars, dir = has_data_dep x y in 
+    if dep then begin
+      if dir == 1 then 
+        p := add_edge !p x y (DataDep vars)
+      else 
+        p := add_edge !p y x (DataDep vars)
+    end
   ) pdg.nodes;
   !p
 
@@ -243,18 +246,14 @@ let build_pdg (block: block) entry_loc : exe_pdg =
       in 
       traverse_ast tl updated_pdg
   in 
-  let pdg = ref (traverse_ast block pdg) in
+  let pdg = (traverse_ast block pdg) in
   (* add data dependency edges for each pairs of nodes *)
-  apply_pairs (fun x -> fun y -> 
-    let dep, vars = has_data_dep x y in 
-    if dep then pdg := add_edge !pdg x y (DataDep vars)
-  ) !pdg.nodes;
+  let pdg = add_dataDep_edges pdg in 
   (* connect the entry node to the header nodes *)
-  pdg := begin match !pdg.entry_node with 
-  | Some en -> List.fold_left (fun pdg -> fun s -> let n = find_node s pdg in add_edge pdg en n ControlDep) !pdg block
-  | None -> !pdg
-  end;
-  !pdg
+  begin match pdg.entry_node with 
+  | Some en -> List.fold_left (fun pdg -> fun s -> let n = find_node s pdg in add_edge pdg en n ControlDep) pdg block
+  | None -> pdg
+  end
 
 
 
