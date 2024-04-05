@@ -947,14 +947,14 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | [] -> { g with lib_methods = lib_methods }, globals
   | Gvdecl {elt = {name; ty; init}; loc = _} :: tl ->
     construct_env g ((name,(ty,init)) :: globals) tl
-  | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = _} :: tl ->
+  | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l} :: tl ->
     
-    let pdg = ref (Exe_pdg.empty_exe_pdg()) in 
-    (* let exe_body = Transform.block_to_exeB body pdg in  *)
-    let pdg = Exe_pdg.build_pdg body.elt !pdg in 
-    List.iteri (fun i -> fun s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.Exe_pdg.l)) pdg.nodes;
-    List.iteri (fun i -> fun e -> Printf.printf "edge %d (%s): %s - %s\n" i (Exe_pdg.print_dep e.Exe_pdg.dep) (Range.string_of_range e.Exe_pdg.src.l) (Range.string_of_range e.Exe_pdg.dst.l)) pdg.edges;
+    let pdg = Exe_pdg.build_pdg body.elt l in 
+    Exe_pdg.print_pdg_debug pdg;
     Exe_pdg.print_pdg pdg "/tmp/pdg.dot";
+
+    (* Exe_pdg.analysis_pdg pdg; *)
+
     (* let gc_list = interp_global_commute !env in 
     pdg := Exe_pdg.add_edges gc_list !pdg; *)
 
