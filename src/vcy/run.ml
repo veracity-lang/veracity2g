@@ -250,6 +250,46 @@ module RunTranslate : Runner = struct
 
 end
 
+module RunCompile : Runner = struct
+  let usage_msg exe_name =
+    "Usage: " ^ exe_name ^ " compile [<flags>] <vcy program>"
+  
+  let debug = ref false
+
+  let anons = ref []
+
+  let anon_fun (v : string) =
+    anons := v :: !anons
+
+  let get_execution_time = ref false
+
+  let speclist =
+    [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
+    ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
+    ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
+    ] |>
+    Arg.align
+
+  let compile_prog p = begin 
+    (* 1. Construct the PDG *)
+    print_endline "run.ml RunCompile compile_prog: todo";
+    (* 2. SCC, thread partitioning, construct task objects, etc (Parisa TODO) *)
+
+    (* 3. Code generation: from Tasks to C *)
+    (*      (will use Codegen_c c_of_prog) *)
+    print_endline "emitted <something.c>, which can now be compiled"
+  end
+
+  let run () =
+
+    Arg.current := 1;
+    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
+    let anons = List.rev (!anons) in
+    match anons with
+    | prog :: _ -> compile_prog prog
+    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+
+end
 
 module RunInterface : Runner = struct
   let usage_msg exe_name =
@@ -577,6 +617,7 @@ type command =
   | CmdInfer (* Infer commute conditions *)
   | CmdVerify
   | CmdTranslate
+  | CmdCompile (* Compile to C program implementing global commutativity PDG-base SWP *)
 
 let command_map =
   [ "help",      CmdHelp
@@ -589,6 +630,7 @@ let command_map =
   ; "infer",     CmdInfer
   ; "verify",    CmdVerify
   ; "translate", CmdTranslate
+  ; "compile",   CmdCompile
   ]
 
 let runner_map : (command * (module Runner)) list =
@@ -600,6 +642,7 @@ let runner_map : (command * (module Runner)) list =
   ; CmdInfer,     (module RunInfer)
   ; CmdVerify,    (module RunVerify)
   ; CmdTranslate, (module RunTranslate)
+  ; CmdCompile,   (module RunCompile)
   ]
 
 let display_help_message exe_name = 
@@ -613,7 +656,8 @@ let display_help_message exe_name =
     (*"  phi         Generate commutativty condition between two methods\n" ^*)
     "  infer       Infer and emit all blank commutativity conditions\n" ^
     "  verify      Verify all provided commutativity conditions\n" ^
-    "  translate   Translate program to C\n "
+    "  translate   Translate program to C\n "^
+    "  compile     Compile (to C) via global commutativity and task parallelism\n "
   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details
 
 (* Check first argument for command *)
