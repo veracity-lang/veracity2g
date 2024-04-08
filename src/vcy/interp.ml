@@ -954,7 +954,8 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
     Exe_pdg.print_pdg pdg "/tmp/pdg.dot";
 
     (* Eric's testing of Vcy-to-C. This will later be called with the re-constructed task bodies *)
-    Codegen_c.gen body.elt;
+    (* Codegen_c.gen body.elt; *)
+    Codegen_c.gen_tasks (Task.example_var_decls ()) (Task.example_tasks ());
 
     (* Exe_pdg.analysis_pdg pdg; *)
 
