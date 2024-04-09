@@ -154,6 +154,7 @@ let gen_tasks gvar_decls tlist =
     | [] -> [""]
     | (t::rest) ->
       let tid = (string_of_int t.id) in
+      indent := 8;
       String.concat "\n" ([
         "\n// ##### TASK " ^ tid ^ " #############";
         "void task_" ^ tid ^ "(void *arg) {";
@@ -179,7 +180,7 @@ let gen_tasks gvar_decls tlist =
        ["        // End of Input collection";
        "";
        "        // ---- Begin task body";
-       (gen_blocknode t.body);
+       "        "^(gen_blocknode t.body);
        "        // ---- End task body";
        "";
        "        // Begin outputs of the task"] @
