@@ -29,31 +29,32 @@ let transform_stmt (s: stmt node) : enode_ast_elt =
   | For (v,e,s,_) -> EFor (v,e,s)
   | _ -> EStmt s
 
-type enode = {
+type pdg_node = {
   l: Range.t; 
-  n: enode_ast_elt 
+  n: enode_ast_elt;
+  src: stmt node option 
 }
 
-type edge = {
-  src : enode;
-  dst : enode;
+type pdg_edge = {
+  src : pdg_node;
+  dst : pdg_node;
   dep : dependency;
 }
 
 type exe_pdg = {
-  entry_node: enode option;
-  nodes : enode list;
-  edges : edge list;
+  entry_node: pdg_node option;
+  nodes : pdg_node list;
+  edges : pdg_edge list;
 }
 
 let empty_exe_pdg () : exe_pdg =
   { entry_node = None; nodes = []; edges = [] }
 
-let add_node (pdg : exe_pdg) (s : stmt node) : enode * exe_pdg =
-  let n = {l = s.loc; n = transform_stmt s} in 
+let add_node (pdg : exe_pdg) (s : stmt node) : pdg_node * exe_pdg =
+  let n = {l = s.loc; n = transform_stmt s; src = Some s} in 
   n, { pdg with nodes = pdg.nodes @ [n] }
 
-let add_edge (pdg : exe_pdg) (src : enode) (dst : enode) dep : exe_pdg = 
+let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg = 
   { pdg with edges = pdg.edges @ [{ src; dst; dep }] }
 
 
@@ -85,12 +86,12 @@ let print_pdg pdg fn : unit =
     (* Styles *)
     "  pdg [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
     "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
-    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    "  pdg_edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     (* let s = "\" [label=\""^(match pdg.entry_node with | Some en -> string_of_pdg_node_stmt en.n)^"\"];\n" in *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (Range.string_of_range_nofn node.l)
     ^ "\" [label=\""^(string_of_pdg_node_stmt node.n)^"\"];\n") "" pdg.nodes;
-    (* Edges *)
+    (* edges *)
     List.fold_left (fun acc e -> acc ^ (match e.dep with
        | DataDep idlist ->
            let ids = String.concat "," idlist in
@@ -113,10 +114,10 @@ let print_pdg pdg fn : unit =
 let print_pdg_debug pdg =
   match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l);
   List.iteri (fun i -> fun s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
-  List.iteri (fun i -> fun e -> Printf.printf "edge %d (%s): %s - %s\n" i (string_of_dep e.dep) (Range.string_of_range e.src.l) (Range.string_of_range e.dst.l)) pdg.edges
+  List.iteri (fun i -> fun e -> Printf.printf "pdg_edge %d (%s): %s - %s\n" i (string_of_dep e.dep) (Range.string_of_range e.src.l) (Range.string_of_range e.dst.l)) pdg.edges
 
 
-let find_node (s: stmt node) pdg : enode =
+let find_node (s: stmt node) pdg : pdg_node =
     let sl = s.loc in 
     List.find (
         fun {l=loc;n} -> String.equal (Range.string_of_range loc) (Range.string_of_range sl) 
@@ -216,7 +217,7 @@ let add_dataDep_edges pdg =
 
 let build_pdg (block: block) entry_loc : exe_pdg = 
   let pdg = empty_exe_pdg() in 
-  let pdg = { pdg with entry_node = Some {l= entry_loc; n= Entry} } in
+  let pdg = { pdg with entry_node = Some {l= entry_loc; n= Entry; src= None} } in
   let rec traverse_ast block pdg : exe_pdg =
     match block with
     | [] -> pdg
@@ -255,15 +256,15 @@ let build_pdg (block: block) entry_loc : exe_pdg =
   | None -> pdg
   end
 
-type visited = (enode * bool) list
+type visited = (pdg_node * bool) list
 
 let compare_nodes n1 n2 = 
   String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
 
-let find_neighbors pdg node : enode list = 
+let find_neighbors pdg node : pdg_node list = 
   List.fold_left (fun neighbors -> fun e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
 
-let rec dfs_util pdg (curr: enode) (visited: visited ref) : enode list =
+let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
   visited := List.remove_assoc curr !visited @ [(curr, true)]; 
   let neighbors = find_neighbors pdg curr in 
   List.fold_left (fun r-> fun n -> if not (List.assoc n !visited) then r @ (dfs_util pdg n visited) else r) [curr] neighbors
@@ -271,13 +272,13 @@ let rec dfs_util pdg (curr: enode) (visited: visited ref) : enode list =
 let transpose pdg : exe_pdg =
   {pdg with edges = List.map (fun {src=s; dst=d; dep=dp} -> {src=d; dst=s; dep=dp}) pdg.edges}
 
-let rec fill_order pdg (curr: enode) (visited: visited ref) stack =
+let rec fill_order pdg (curr: pdg_node) (visited: visited ref) stack =
   visited := List.remove_assoc curr !visited @ [(curr, true)]; 
   let neighbors = find_neighbors pdg curr in 
   List.iter (fun n -> if not (List.assoc n !visited) then fill_order pdg n visited stack) neighbors;
   Stack.push curr stack
 
-let find_sccs pdg : enode list list =
+let find_sccs pdg : pdg_node list list =
   let stack = Stack.create () in
   let nodes = match pdg.entry_node with | Some e -> e :: pdg.nodes | None -> pdg.nodes in
   let pdg = {pdg with nodes= nodes} in
@@ -294,8 +295,39 @@ let find_sccs pdg : enode list list =
   done;
   !sccs
 
-let print_sccs (sccs: enode list list) =
+let print_sccs (sccs: pdg_node list list) =
   List.iter (fun s -> List.iter (fun c -> Printf.printf "%s " (Range.string_of_range_nofn c.l)) s; print_newline ()) sccs
+
+type dag_node = pdg_node list 
+
+type dag_edge = {
+  dag_src : dag_node;
+  dag_dst : dag_node;
+  dep : dependency;
+}
+
+type dag_scc = {
+  entry_node: pdg_node option;
+  nodes : dag_node list;
+  edges : dag_edge list;
+}
+
+let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
+  let find_node_scc n scc =
+    List.mem n scc
+  in
+  let is_scc (n1: pdg_node) (n2: pdg_node) : bool =
+    List.exists (fun scc -> find_node_scc n1 scc && find_node_scc n2 scc) sccs 
+  in
+  let filtered_edges = List.filter (fun {src= s; dst= d; _} -> not (is_scc s d)) pdg.edges in 
+  let edges = List.map (
+    fun {src= s; dst= d; dep=dp} -> 
+    let ds = List.find (find_node_scc s) sccs in 
+    let dd = List.find (find_node_scc s) sccs in
+    {dag_src= ds ; dag_dst= dd ; dep=dp}
+  ) filtered_edges in 
+  {entry_node = pdg.entry_node; nodes = sccs; edges = edges}
+
 
 let ps_dswp (body: block node) loc = 
   let pdg = build_pdg body.elt loc in 
@@ -303,4 +335,6 @@ let ps_dswp (body: block node) loc =
   print_pdg pdg "/tmp/pdg.dot";
   let sccs = find_sccs pdg in
   Printf.printf "Strongly Connected Components:\n";
-  print_sccs sccs
+  print_sccs sccs;
+  let dag_scc = coalesce_sccs pdg sccs in () 
+  (* print_pdg dag_scc "/tmp/dag.dot" *)
