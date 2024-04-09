@@ -255,12 +255,6 @@ let build_pdg (block: block) entry_loc : exe_pdg =
   | None -> pdg
   end
 
-
-
-(* Strongly connected components using BFS *)
-
-(* Define types for directed pdg and DFS traversal *)
-(* type 'a pdg = ('a * 'a list) list *)
 type visited = (enode * bool) list
 
 let compare_nodes n1 n2 = 
@@ -268,73 +262,6 @@ let compare_nodes n1 n2 =
 
 let find_neighbors pdg node : enode list = 
   List.fold_left (fun neighbors -> fun e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
-(* 
-(* Depth-first search on a directed pdg *)
-let rec dfs (pdg: exe_pdg) (visited: visited) (v: enode) (stack: enode list) : enode list =
-  Printf.printf "DFS: %s - %b\n" (Range.string_of_range_nofn v.l) (List.assoc v visited);
-  if List.assoc v visited then
-    stack
-  else
-    let neighbors = find_neighbors pdg v in
-    List.iter (fun n -> Printf.printf "nnn: %s\n" (Range.string_of_range_nofn n.l)) neighbors;
-    let new_stack = v :: stack in
-    let new_visited = (v, true) :: visited in
-    List.fold_left (fun s -> fun v -> dfs pdg new_visited v s) new_stack neighbors
-
-(* Reverse the directed pdg *)
-let rec reverse_pdg pdg : exe_pdg =
-  {pdg with edges = List.map (fun {src=s; dst=d; dep=dp} -> {src=d; dst=s; dep=dp}) pdg.edges}
-  (* let add_edge_pdg (v, neighbors) acc =
-    let add_to_neighbor acc' n = 
-      let updated = 
-        match List.assoc_opt n acc' with
-        | Some l -> (n :: l)
-        | None -> [n]
-      in
-      (n, updated) :: acc'
-    in
-    List.fold_left add_to_neighbor acc neighbors
-  in
-  List.fold_left (fun n -> fun v -> add_edge_pdg v n) [] pdg *)
-
-(* Main function to find strongly connected components in a directed pdg *)
-let scc_pdg (pdg: exe_pdg) : enode list list =
-  let rec first_pass (nodes: enode list) (stack: enode list) (visited: visited) : enode list =
-    match nodes with
-    | [] -> stack
-    | v :: tl ->
-      if List.assoc v visited then
-        first_pass tl stack visited
-      else
-        let new_stack = dfs pdg visited v stack in
-        first_pass tl new_stack visited
-  in
-  let rec second_pass (pdg: exe_pdg) (stack: enode list) (visited: visited) : enode list list =
-    match stack with
-    | [] -> []
-    | v :: tl ->
-      if List.assoc v visited then
-        second_pass pdg tl visited
-      else
-        let scc_group = dfs pdg visited v [] in
-        scc_group :: second_pass pdg tl visited
-  in
-  let reversed_pdg = reverse_pdg pdg in
-  let nodes = match pdg.entry_node with | Some e -> e :: pdg.nodes | None -> pdg.nodes in 
-  let visited = List.map (fun v -> (v, false)) nodes in
-  let stack = first_pass nodes [] visited in
-  List.iter (fun n -> Printf.printf "n: %s\n" (Range.string_of_range_nofn n.l)) stack;
-  second_pass reversed_pdg stack visited
-
-let print_sccs pdg =
-  let sccs = scc_pdg pdg in
-  Printf.printf "size: %d\n" (List.length sccs);
-  List.iteri (fun i -> fun scc -> Printf.printf "%d: [ %s ]\n" i (String.concat "; " (List.map (fun s -> Range.string_of_range_nofn s.l) scc))) sccs 
-   *)
-
-
-
-(*** *)
 
 let rec dfs_util pdg (curr: enode) (visited: visited ref) : enode list =
   visited := List.remove_assoc curr !visited @ [(curr, true)]; 
