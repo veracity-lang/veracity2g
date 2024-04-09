@@ -949,9 +949,7 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
     construct_env g ((name,(ty,init)) :: globals) tl
   | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l} :: tl ->
     
-    let pdg = Exe_pdg.build_pdg body.elt l in 
-    Exe_pdg.print_pdg_debug pdg;
-    Exe_pdg.print_pdg pdg "/tmp/pdg.dot";
+    Exe_pdg.ps_dswp body l;
 
     (* Eric's testing of Vcy-to-C. This will later be called with the re-constructed task bodies *)
     Codegen_c.gen body.elt;

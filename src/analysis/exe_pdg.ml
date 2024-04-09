@@ -81,9 +81,9 @@ let string_of_pdg_node_stmt s =
 let print_pdg pdg fn : unit = 
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
-    "digraph G {\n";
+    "pdg G {\n";
     (* Styles *)
-    "  graph [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
+    "  pdg [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
     "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
@@ -106,7 +106,7 @@ let print_pdg pdg fn : unit =
     )) "" pdg.edges;
     "}\n";
   ]);
-  print_endline ("Graph written to " ^ fn);
+  print_endline ("pdg written to " ^ fn);
   close_out oc
 
 
@@ -259,47 +259,121 @@ let build_pdg (block: block) entry_loc : exe_pdg =
 
 (* Strongly connected components using BFS *)
 
+(* Define types for directed pdg and DFS traversal *)
+(* type 'a pdg = ('a * 'a list) list *)
+type visited = (enode * bool) list
 
-(* let bfs pdg start =
-  let n = List.length pdg.nodes in
-  let visited = Array.make n false in
-  let queue = Queue.create () in
-  Queue.add start queue;
-  visited.(start) <- true;
-  let rec traverse acc =
-    if Queue.is_empty queue then acc
-    else begin
-      let u = Queue.pop queue in
-      List.iter (fun v ->
-        if not visited.(v) then begin
-          Queue.add v queue;
-          visited.(v) <- true
-        end
-      ) pdg.(u);
-      traverse (u :: acc)
+let compare_nodes n1 n2 = 
+  String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
+
+let find_neighbors pdg node : enode list = 
+  List.fold_left (fun neighbors -> fun e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
+(* 
+(* Depth-first search on a directed pdg *)
+let rec dfs (pdg: exe_pdg) (visited: visited) (v: enode) (stack: enode list) : enode list =
+  Printf.printf "DFS: %s - %b\n" (Range.string_of_range_nofn v.l) (List.assoc v visited);
+  if List.assoc v visited then
+    stack
+  else
+    let neighbors = find_neighbors pdg v in
+    List.iter (fun n -> Printf.printf "nnn: %s\n" (Range.string_of_range_nofn n.l)) neighbors;
+    let new_stack = v :: stack in
+    let new_visited = (v, true) :: visited in
+    List.fold_left (fun s -> fun v -> dfs pdg new_visited v s) new_stack neighbors
+
+(* Reverse the directed pdg *)
+let rec reverse_pdg pdg : exe_pdg =
+  {pdg with edges = List.map (fun {src=s; dst=d; dep=dp} -> {src=d; dst=s; dep=dp}) pdg.edges}
+  (* let add_edge_pdg (v, neighbors) acc =
+    let add_to_neighbor acc' n = 
+      let updated = 
+        match List.assoc_opt n acc' with
+        | Some l -> (n :: l)
+        | None -> [n]
+      in
+      (n, updated) :: acc'
+    in
+    List.fold_left add_to_neighbor acc neighbors
+  in
+  List.fold_left (fun n -> fun v -> add_edge_pdg v n) [] pdg *)
+
+(* Main function to find strongly connected components in a directed pdg *)
+let scc_pdg (pdg: exe_pdg) : enode list list =
+  let rec first_pass (nodes: enode list) (stack: enode list) (visited: visited) : enode list =
+    match nodes with
+    | [] -> stack
+    | v :: tl ->
+      if List.assoc v visited then
+        first_pass tl stack visited
+      else
+        let new_stack = dfs pdg visited v stack in
+        first_pass tl new_stack visited
+  in
+  let rec second_pass (pdg: exe_pdg) (stack: enode list) (visited: visited) : enode list list =
+    match stack with
+    | [] -> []
+    | v :: tl ->
+      if List.assoc v visited then
+        second_pass pdg tl visited
+      else
+        let scc_group = dfs pdg visited v [] in
+        scc_group :: second_pass pdg tl visited
+  in
+  let reversed_pdg = reverse_pdg pdg in
+  let nodes = match pdg.entry_node with | Some e -> e :: pdg.nodes | None -> pdg.nodes in 
+  let visited = List.map (fun v -> (v, false)) nodes in
+  let stack = first_pass nodes [] visited in
+  List.iter (fun n -> Printf.printf "n: %s\n" (Range.string_of_range_nofn n.l)) stack;
+  second_pass reversed_pdg stack visited
+
+let print_sccs pdg =
+  let sccs = scc_pdg pdg in
+  Printf.printf "size: %d\n" (List.length sccs);
+  List.iteri (fun i -> fun scc -> Printf.printf "%d: [ %s ]\n" i (String.concat "; " (List.map (fun s -> Range.string_of_range_nofn s.l) scc))) sccs 
+   *)
+
+
+
+(*** *)
+
+let rec dfs_util pdg (curr: enode) (visited: visited ref) : enode list =
+  visited := List.remove_assoc curr !visited @ [(curr, true)]; 
+  let neighbors = find_neighbors pdg curr in 
+  List.fold_left (fun r-> fun n -> if not (List.assoc n !visited) then r @ (dfs_util pdg n visited) else r) [curr] neighbors
+
+let transpose pdg : exe_pdg =
+  {pdg with edges = List.map (fun {src=s; dst=d; dep=dp} -> {src=d; dst=s; dep=dp}) pdg.edges}
+
+let rec fill_order pdg (curr: enode) (visited: visited ref) stack =
+  visited := List.remove_assoc curr !visited @ [(curr, true)]; 
+  let neighbors = find_neighbors pdg curr in 
+  List.iter (fun n -> if not (List.assoc n !visited) then fill_order pdg n visited stack) neighbors;
+  Stack.push curr stack
+
+let find_sccs pdg : enode list list =
+  let stack = Stack.create () in
+  let nodes = match pdg.entry_node with | Some e -> e :: pdg.nodes | None -> pdg.nodes in
+  let pdg = {pdg with nodes= nodes} in
+  let visited = ref @@ List.map (fun v -> (v, false)) pdg.nodes in 
+  List.iter (fun n -> if not (List.assoc n !visited) then fill_order pdg n visited stack) pdg.nodes;
+  let reversed_pdg = transpose pdg in
+  let visited = ref @@ List.map (fun v -> (v, false)) pdg.nodes in 
+  let sccs = ref [] in 
+  while not (Stack.is_empty stack) do
+    let s = Stack.pop stack in
+    if not (List. assoc s !visited) then begin
+      sccs := !sccs @ [dfs_util reversed_pdg s visited];
     end
-  in
-  List.rev (traverse [])
-
-let scc_bfs pdg =
-  let n = List.length pdg.nodes in
-  let visited = Array.make n false in
-  let components = ref [] in
-  let rec bfs_from u =
-    let component = bfs pdg u in
-    components := component :: !components;
-    List.iter (fun v -> visited.(v) <- true) component
-  in
-  for u = 0 to n - 1 do
-    if not visited.(u) then bfs_from u
   done;
-  !components
+  !sccs
 
+let print_sccs (sccs: enode list list) =
+  List.iter (fun s -> List.iter (fun c -> Printf.printf "%s " (Range.string_of_range_nofn c.l)) s; print_newline ()) sccs
 
-let analysis_pdg pdg =
-  let components = scc_bfs pdg in
-  List.iter (fun component ->
-    Printf.printf "[ ";
-    List.iter (Printf.printf "%d ") component;
-    Printf.printf "]\n"
-  ) components *)
+let ps_dswp (body: block node) loc = 
+  let pdg = build_pdg body.elt loc in 
+  print_pdg_debug pdg;
+  print_pdg pdg "/tmp/pdg.dot";
+  let sccs = find_sccs pdg in
+  Printf.printf "Strongly Connected Components:\n";
+  print_sccs sccs
