@@ -80,9 +80,9 @@ void task1(void *arg) {
             t1_to_t2_p = p;
             sem_post(&t1_to_t2_sem);
         } else {
-            printf("task1: create unit of work for task 2: p=%ld\n", (long int)p);
-            t1_to_t2_p = p;
-            sem_post(&t1_to_t2_sem);
+            printf("task1: create unit of work for task 3: p=%ld\n", (long int)p);
+            t1_to_t3_p = p;
+            sem_post(&t1_to_t3_sem);
         }
         // Send message to next iteration of this task
         t1_to_t1_p = p->next;
