@@ -149,7 +149,8 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
 
         (t2, typ2) (* TODO: make sure if it's enough to return *)
 
-      | Call (MethodL (id, {pc=Some pc;_}), el) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
+      | Call (MethodL _, _) 
+      | Call (MethodM _, _) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
       | _ -> failwith "Unknown expression!"
   in
   let _ = get_exp_term e in
@@ -281,7 +282,7 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
     | Call (MethodL (id, {pc=Some pc;_}), el) -> 
       let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
 
-      let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var 254" in     
+      let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var" in
       let dst_id = remove_index (id_value) in
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
@@ -296,8 +297,12 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ; 
       predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
       terms_list := !terms_list @ t;
+      rtn, List.concat args_binds @ binds
+      
+    | Call (MethodM (id, {rty=rty; _}), el) ->
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
 
-       rtn, List.concat args_binds @ binds
+      EFunc(id, args_rtn), List.concat args_binds
     | Ternary(i, t, e) ->
         let f x = exp_to_smt_exp x side ~indexed vctrs in
         let i', i_binds = f i in
@@ -487,6 +492,15 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
+let generate_spec_preamble { methods; globals; structs; lib_methods} = Some begin
+  let fun_def_of_method (id, {rty = rty; args = args; _}) =
+    let string_of_ty = compose string_of_sty sty_of_ty in
+    sp "(declare-fun %s (%s) %s)" id (String.concat " " (List.map (compose string_of_ty snd) args)) (string_of_ty rty)
+  in
+  String.concat "\n" @@ List.map fun_def_of_method methods end
+
+  
+
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
   gstates := embedding_vars;
@@ -501,7 +515,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let pre, post = generate_spec_pre_post_condition pre post in
   (* let pre = ELop(And, [EBop(Eq, EVar (Var "realWorld_opened"), EVar (Var "(as emptyset (Set String))")); pre]) in (* TODO: This is to debug until we have some way of constraining real world *) *)
 
-  let preamble = None in 
+  let preamble = generate_spec_preamble genv in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
               precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
