@@ -79,32 +79,36 @@ let string_of_pdg_node_stmt s =
   (* if String.length big_string > 20 then String.sub big_string 0 19 else big_string *)
   c_of_stmt s
 
+let penwidth_of_pdgedge p = 
+  if p.loop_carried then "4.0" else "1.0"
 
 let print_pdg pdg fn : unit = 
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
-    "pdg G {\n";
+    "digraph G {\n";
     (* Styles *)
-    "  pdg [rankdir=\"TB\", fontsize=20, label=\"Black=CFG, Red=ControlDep, Blue=DataDep\", labelloc=t]";
+    "  graph [rankdir=\"TB\", fontname=\"Arial\", fontsize=24, label=\"Program Dependency Graph (PDG): red=control, green=data\", labelloc=t, labeljust=l]";
     "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
-    "  pdg_edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     (* let s = "\" [label=\""^(match pdg.entry_node with | Some en -> string_of_pdg_node_stmt en.n)^"\"];\n" in *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (Range.string_of_range_nofn node.l)
     ^ "\" [label=\""^(string_of_pdg_node_stmt node.n)^"\"];\n") "" pdg.nodes;
     (* edges *)
-    List.fold_left (fun acc e -> acc ^ (match e.dep with
+    List.fold_left (fun acc e -> 
+      let pw = penwidth_of_pdgedge e in
+      acc ^ (match e.dep with
        | DataDep idlist ->
            let ids = String.concat "," idlist in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^ids^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^ids^"\", penwidth=\""^pw^"\"];\n" 
        | Commute _  
        | Disjoint 
        | ControlDep ->
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-               ^ "[style=dashed, color=maroon];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+               ^ "[style=dashed, color=maroon, penwidth=\""^pw^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
     )) "" pdg.edges;
     "}\n";
   ]);
@@ -420,30 +424,35 @@ let dag_pdgnode_to_string (pdgnodes:pdg_node list) : string =
 let color_of_dagnode = function
   | Doall -> "white"
   | Sequential -> "gray"
+let penwidth_of_dagedge de =
+  if de.loop_carried then "4.0" else "1.0"
 
 let print_dag (d:dag_scc) fn node_to_string_fn : unit = 
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
     "digraph G {";
     (* Styles *)
+    "  graph [rankdir=\"TB\", fontname=\"Arial\", fontsize=24, label=\"DAG\", labelloc=t, labeljust=l]";
     "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
-    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\", penwidth=4.0]";
     (* Nodes *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (id_of_dag_node node)
     ^ "\" [color=\""^(color_of_dagnode node.label)^"\" label=\""^(node_to_string_fn node.n)^"\"];\n") "" d.nodes;
     (* edges *)
-    List.fold_left (fun acc e -> acc ^ (match e.dep with
+    List.fold_left (fun acc e -> 
+      let pw = penwidth_of_dagedge e in
+      acc ^ (match e.dep with
        | DataDep idlist ->
            let ids = String.concat "," idlist in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^ids^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^ids^"\", penwidth=\""^pw^"\"];\n" 
        | Commute _  
        | Disjoint 
        | ControlDep ->
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                ^ (id_of_dag_node e.dag_dst) ^ "\" "
-               ^ "[style=dashed, color=maroon];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+               ^ "[style=dashed, color=maroon, penwidth=\""^pw^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
     )) "" d.edges;
     "}\n";
   ]);

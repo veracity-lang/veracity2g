@@ -239,6 +239,7 @@ let print_tasks tlist fn : unit =
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
     "digraph G {";
+    "  graph [rankdir=\"TB\", fontname=\"Arial\", fontsize=24, label=\"Tasks\", labelloc=t, labeljust=l]";
     (* Styles *)
     "  node [shape=box, style=\"filled\", fontname=\"Courier\", margin=0.05]";
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
