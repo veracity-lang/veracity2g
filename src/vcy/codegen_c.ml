@@ -224,3 +224,34 @@ let gen_tasks gvar_decls tlist =
   output_string oc (gen_task_loader tlist);
   close_out oc;
   print_endline "Codegen_c: wrote /tmp/autogen_tasks.c"
+
+let edge_of_dep myid dp direction : string = 
+  let (src,dst) = if direction then (myid,dp.pred_task) else (dp.pred_task,myid) in
+  Printf.sprintf "\"%d\" -> \"%d\" [label=\"%s\"];\n"
+      src dst (String.concat "," (List.map (fun (t,i) -> i) dp.vars))
+
+let str_of_task_body b : string = 
+  let t = gen_blocknode b in
+  let t' = Str.global_replace (Str.regexp_string "\n") " " t in
+  Str.global_replace (Str.regexp_string "  ") " " t'
+
+let print_tasks tlist fn : unit = 
+  let oc = open_out fn in
+  output_string oc (String.concat "\n" [
+    "digraph G {";
+    (* Styles *)
+    "  node [shape=box, style=\"filled\", fontname=\"Courier\", margin=0.05]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    (* Nodes *)
+    List.fold_left (fun acc tsk -> acc ^ "\"" ^ (string_of_int tsk.id)
+    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(str_of_task_body tsk.body)^"\"];\n") "" tlist;
+    (* edges *)
+    List.fold_left (fun acc tsk -> acc ^ 
+        (List.fold_left (fun acc' din -> edge_of_dep tsk.id din false) "" tsk.deps_in)
+        ^
+        (List.fold_left (fun acc' dout -> edge_of_dep tsk.id dout true) "" tsk.deps_out)
+    ) "" tlist;
+    "}\n";
+  ]);
+  print_endline ("dag written to " ^ fn);
+  close_out oc

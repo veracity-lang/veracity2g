@@ -15,6 +15,9 @@ type task = {
   body: block node;
 }
 
+
+
+
 let rec calculate_semaphores tlist : (taskid * taskid) list =
   match tlist with 
   | [] -> []
@@ -72,15 +75,6 @@ let example_tasks () : task list =
       deps_out=[];
       body=no_loc [(no_loc (Ret(None)))]
     }
-    
-
-(* task2:
-  { id=2; deps_in:(task1,p); deps_out:[]
-    body="q=p->inner_list; .."}
-
-task3:
-  { id=3; deps_in:(task1,p); deps_out:[]
-    body="q=p->inner_list; .."} *)
   ]
 (* p= 0...maxp *)
 (*
