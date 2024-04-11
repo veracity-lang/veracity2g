@@ -460,7 +460,20 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
   close_out oc
 
 let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
-  let nodes = List.map (fun scc -> {n= scc; label= Sequential}) sccs in
+  let has_loop_carried scc =
+    let find_edge n1 n2 =
+    List.find_opt (fun e -> e.src == n1 && e.dst == n2) pdg.edges
+    in
+    let res = ref false in 
+    apply_pairs (
+      fun s1 s2 -> 
+      let e1 = find_edge s1 s2 in 
+      let e2 = find_edge s2 s1 in 
+      res := !res || (match e1 with Some e -> e.loop_carried) || (match e2 with Some e -> e.loop_carried) 
+    ) scc;
+    !res
+  in  
+  let nodes = List.map (fun scc -> if has_loop_carried scc then {n= scc; label= Sequential} else {n= scc; label= Doall}) sccs in
   let find_node_scc n scc =
     List.mem n scc
   in
@@ -470,7 +483,6 @@ let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
   let is_scc (n1: pdg_node) (n2: pdg_node) : bool =
     List.exists (fun scc -> find_node_scc n1 scc && find_node_scc n2 scc) sccs 
   in
-
   let filtered_edges = List.filter (fun {src= s; dst= d; _} -> not (is_scc s d)) pdg.edges in 
   let edges = List.map (
     fun {src= s; dst= d; dep=dp; loop_carried =l} -> 
@@ -488,9 +500,22 @@ let print_dag_debug dag_scc =
   match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range_nofn en.l);
   let string_of_node n = List.fold_left (fun acc s -> acc ^ (Range.string_of_range_nofn s.l) ^ " ") "" n in 
   List.iteri (fun i sl -> Printf.printf "node %d (%s): %s" i (string_of_dag_label sl.label) (string_of_node sl.n); print_newline()) dag_scc.nodes;
-  List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges
+  List.iteri (fun i e -> Printf.printf "dag_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges
 
+(* 
+type node = ... (* your definition of a node *)
+type block = node list
+type partition = block list
+type thread = int
+type assignment = (block * thread list) list
+type dag = ... (* your definition of a directed acyclic graph *)
 
+let topological_sort (dag: dag): node list = ... (* your DAG sorting function *)
+let is_doall_node (node: node): bool = ... (* determine if a node is a doall node *)
+let merge_doall_blocks (partition: partition): partition = ... (* your merging function *)
+let max_profile_weight_block (partition: partition): block = ... (* get block with max weight *)
+let merge_sequential_blocks (partition: partition): partition = ... (* your merging function for sequential blocks *)
+ *)
 
 (* let thread_partitioning (dag_scc: dag_scc) (threads: thread list): assignment =
   let initial_partition = List.map (fun node -> [node]) (topological_sort dag_scc) in
@@ -526,6 +551,7 @@ let ps_dswp (body: block node) loc =
   Printf.printf "Strongly Connected Components:\n";
   print_sccs sccs;
   let dag_scc = coalesce_sccs pdg sccs in
+  Printf.printf "DAG_SCCs:\n";
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
   ()
