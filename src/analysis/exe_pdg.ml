@@ -417,6 +417,10 @@ let dag_pdgnode_to_string (pdgnodes:pdg_node list) : string =
   List.fold_left (fun acc pnode -> acc ^ (Range.string_of_range_nofn pnode.l)
   ^ ":"^(string_of_pdg_node_stmt pnode.n) ^ ",") "" pdgnodes
 
+let color_of_dagnode = function
+  | Doall -> "white"
+  | Sequential -> "gray"
+
 let print_dag (d:dag_scc) fn node_to_string_fn : unit = 
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
@@ -426,7 +430,7 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (id_of_dag_node node)
-    ^ "\" [label=\""^(node_to_string_fn node.n)^"\"];\n") "" d.nodes;
+    ^ "\" [color=\""^(color_of_dagnode node.label)^"\" label=\""^(node_to_string_fn node.n)^"\"];\n") "" d.nodes;
     (* edges *)
     List.fold_left (fun acc e -> acc ^ (match e.dep with
        | DataDep idlist ->
