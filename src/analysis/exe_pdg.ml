@@ -411,7 +411,7 @@ type dag_scc = {
 }
 
 let id_of_dag_node (dn:dag_node) : string = 
-  List.fold_left (fun acc pdgnode -> acc ^ "_" ^ (Range.string_of_range_nofn pdgnode.l)) "" dn
+  List.fold_left (fun acc pdgnode -> acc ^ "_" ^ (Range.string_of_range_nofn pdgnode.l)) "" dn.n
 
 let dag_pdgnode_to_string (pdgnodes:pdg_node list) : string = 
   List.fold_left (fun acc pnode -> acc ^ (Range.string_of_range_nofn pnode.l)
@@ -426,7 +426,7 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (id_of_dag_node node)
-    ^ "\" [label=\""^(node_to_string_fn node)^"\"];\n") "" d.nodes;
+    ^ "\" [label=\""^(node_to_string_fn node.n)^"\"];\n") "" d.nodes;
     (* edges *)
     List.fold_left (fun acc e -> acc ^ (match e.dep with
        | DataDep idlist ->
