@@ -39,6 +39,7 @@ type pdg_edge = {
   src : pdg_node;
   dst : pdg_node;
   dep : dependency;
+  loop_carried : bool
 }
 
 type exe_pdg = {
@@ -55,7 +56,7 @@ let add_node (pdg : exe_pdg) (s : stmt node) : pdg_node * exe_pdg =
   n, { pdg with nodes = pdg.nodes @ [n] }
 
 let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg = 
-  { pdg with edges = pdg.edges @ [{ src; dst; dep }] }
+  { pdg with edges = pdg.edges @ [{ src; dst; dep; loop_carried = false }] }
 
 
 let string_of_dep = function
@@ -113,8 +114,8 @@ let print_pdg pdg fn : unit =
 
 let print_pdg_debug pdg =
   match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l);
-  List.iteri (fun i -> fun s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
-  List.iteri (fun i -> fun e -> Printf.printf "pdg_edge %d (%s): %s - %s\n" i (string_of_dep e.dep) (Range.string_of_range e.src.l) (Range.string_of_range e.dst.l)) pdg.edges
+  List.iteri (fun i s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
+  List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (Range.string_of_range_nofn e.src.l) (Range.string_of_range_nofn e.dst.l)) pdg.edges
 
 
 let find_node (s: stmt node) pdg : pdg_node =
@@ -204,7 +205,7 @@ let rec apply_pairs f lst =
 
 let add_dataDep_edges pdg = 
   let p = ref pdg in 
-  apply_pairs (fun x -> fun y -> 
+  apply_pairs (fun x y -> 
     let dep, vars, dir = has_data_dep x y in 
     if dep then begin
       if dir == 1 then 
@@ -214,6 +215,100 @@ let add_dataDep_edges pdg =
     end
   ) pdg.nodes;
   !p
+
+
+type visited = (pdg_node * bool) list
+
+let rec mark_visited n visited =
+  match visited with
+  | [] -> visited
+  | (node, _) :: rest ->
+    if node = n then
+      (node, true) :: rest
+    else
+      (node, false) :: mark_visited n rest
+
+let compare_nodes n1 n2 = 
+  String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
+
+(* Function to check if a control dependence is loop-carried *)
+(* let is_control_dependence_loop_carried (edge: pdg_edge) pdg =
+  let rec has_loop_backedge_to_loop_header (n1: pdg_node) (n2: pdg_node) (edge: pdg_edge) (visited: visited) =
+    let visited = mark_visited n1 visited in 
+    match edge.dep with 
+    | ControlDep -> 
+      if compare_nodes n1 n2 then true
+      else if List.assoc n2 visited then false
+      else has_loop_backedge_to_loop_header n2 visited
+    | _ -> false
+  in
+  let rec all_paths_contain_loop_backedge node1 node2 visited =
+    visited.(node1.id) <- true;
+    if node1.id = node2.id then true
+    else begin
+      match node1.control_dependence with
+      | None -> false
+      | Some pred ->
+        if visited.(pred.id) then false
+        else all_paths_contain_loop_backedge pred node2 visited
+    end
+  in
+  has_loop_backedge_to_loop_header edge.src edge.dst edge (List.map (fun v -> (v, false)) pdg.nodes) &&
+  all_paths_contain_loop_backedge n1 n2 (Array.make (Array.length nodes) false) *)
+
+
+(* Function to check if a dependence arc is loop-carried *)
+let is_loop_carried_dependence (pdg: exe_pdg) (edge: pdg_edge) =
+  let n1 = edge.src in
+  let n2 = edge.dst in
+  let is_loop_header node = 
+    match node.n with 
+    | EFor _ | EWhile _ -> true
+    | _ -> false
+  in
+  match edge.dep with
+  | DataDep register ->
+    (* Check if the definition of the register reaches the loop header *)
+    let rec definition_reaches_loop_header (node: pdg_node) (visited: visited ref) =
+      if List.assoc node !visited then false
+      else begin
+        visited := mark_visited node !visited;
+        if is_loop_header node then true 
+        else
+          match List.find_opt (fun e -> compare_nodes e.dst node) pdg.edges with
+          | None -> false
+          | Some e -> definition_reaches_loop_header e.src visited
+      end
+    in
+    let visited = ref @@ List.map (fun v -> (v, false)) (pdg.nodes) in
+    let definition_reaches_loop_header = definition_reaches_loop_header n1 visited in
+    (* Check if there is an upwards-exposed use of the register in n2 at the loop header *)
+    let upwards_exposed_use_in_loop_header =
+      match List.find_opt (fun e -> is_loop_header e.dst) pdg.edges with
+      | None -> false
+      | Some loop_header_edge ->
+        let rec has_upwards_exposed_use node =
+          let uses, _ = List.split (List.filter (fun (v, side) -> side == rvalue) (find_stmt_vars node.n)) in 
+          if List.exists (fun use -> List.mem use register) uses then true
+          else match List.find_opt (fun e -> compare_nodes e.src node) pdg.edges with
+            | None -> false
+            | Some e ->
+              if is_loop_header e.src then false (* Reached loop header *)
+              else has_upwards_exposed_use e.src
+        in
+        has_upwards_exposed_use n2
+    in
+    definition_reaches_loop_header && upwards_exposed_use_in_loop_header
+  | _ -> false (* Dependence is not through registers *)
+
+(* Function to find loop-carried dependencies in the exe_pdg graph *)
+let mark_loop_carried_dependencies pdg : exe_pdg =
+  let nodes = match pdg.entry_node with | Some e -> e :: pdg.nodes | None -> pdg.nodes in
+  let pdg_tmp = {pdg with nodes= nodes} in
+  let e = List.map (fun edge -> if is_loop_carried_dependence pdg_tmp edge then {edge with loop_carried= true} else edge) pdg_tmp.edges
+  in 
+  {pdg with edges = e}
+
 
 let build_pdg (block: block) entry_loc : exe_pdg = 
   let pdg = empty_exe_pdg() in 
@@ -227,14 +322,14 @@ let build_pdg (block: block) entry_loc : exe_pdg =
         let src, pdg = add_node pdg stmt in
         let pdg = traverse_ast blk2.elt (traverse_ast blk1.elt pdg) in 
 
-        List.fold_left (fun pdg -> fun s -> add_edge pdg src (find_node s pdg) ControlDep) pdg blk1.elt
+        List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg blk1.elt
           
       | While (_, bl) | For (_, _, _, bl) ->
         let src, pdg = add_node pdg stmt in
         let pdg = traverse_ast bl.elt pdg in 
 
         let pdg = add_edge pdg src src ControlDep in
-        List.fold_left (fun pdg -> fun s -> add_edge pdg src (find_node s pdg) ControlDep) pdg bl.elt
+        List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg bl.elt
 
       (* | SBlock (blocklabel, bl) -> 
           let n = stmt in 
@@ -251,26 +346,23 @@ let build_pdg (block: block) entry_loc : exe_pdg =
   (* add data dependency edges for each pairs of nodes *)
   let pdg = add_dataDep_edges pdg in 
   (* connect the entry node to the header nodes *)
-  begin match pdg.entry_node with 
-  | Some en -> List.fold_left (fun pdg -> fun s -> let n = find_node s pdg in add_edge pdg en n ControlDep) pdg block
+  let pdg = begin match pdg.entry_node with 
+  | Some en -> List.fold_left (fun pdg s -> let n = find_node s pdg in add_edge pdg en n ControlDep) pdg block
   | None -> pdg
   end
-
-type visited = (pdg_node * bool) list
-
-let compare_nodes n1 n2 = 
-  String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
+  in
+  mark_loop_carried_dependencies pdg
 
 let find_neighbors pdg node : pdg_node list = 
-  List.fold_left (fun neighbors -> fun e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
+  List.fold_left (fun neighbors e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
 
 let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
   visited := List.remove_assoc curr !visited @ [(curr, true)]; 
   let neighbors = find_neighbors pdg curr in 
-  List.fold_left (fun r-> fun n -> if not (List.assoc n !visited) then r @ (dfs_util pdg n visited) else r) [curr] neighbors
+  List.fold_left (fun r n -> if not (List.assoc n !visited) then r @ (dfs_util pdg n visited) else r) [curr] neighbors
 
 let transpose pdg : exe_pdg =
-  {pdg with edges = List.map (fun {src=s; dst=d; dep=dp} -> {src=d; dst=s; dep=dp}) pdg.edges}
+  {pdg with edges = List.map (fun {src=s; dst=d; dep=dp; loop_carried=l} -> {src=d; dst=s; dep=dp; loop_carried=l}) pdg.edges}
 
 let rec fill_order pdg (curr: pdg_node) (visited: visited ref) stack =
   visited := List.remove_assoc curr !visited @ [(curr, true)]; 
@@ -298,12 +390,18 @@ let find_sccs pdg : pdg_node list list =
 let print_sccs (sccs: pdg_node list list) =
   List.iter (fun s -> List.iter (fun c -> Printf.printf "%s " (Range.string_of_range_nofn c.l)) s; print_newline ()) sccs
 
-type dag_node = pdg_node list 
+type dag_node_label = Doall | Sequential
+
+type dag_node = {
+  n : pdg_node list;
+  label: dag_node_label
+}
 
 type dag_edge = {
   dag_src : dag_node;
   dag_dst : dag_node;
   dep : dependency;
+  loop_carried : bool
 }
 
 type dag_scc = {
@@ -313,20 +411,62 @@ type dag_scc = {
 }
 
 let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
+  let nodes = List.map (fun scc -> {n= scc; label= Sequential}) sccs in
   let find_node_scc n scc =
     List.mem n scc
+  in
+  let find_dag_node (sub_node : pdg_node) =
+    List.find (fun node -> List.exists (fun e -> compare_nodes e sub_node) node.n) nodes
   in
   let is_scc (n1: pdg_node) (n2: pdg_node) : bool =
     List.exists (fun scc -> find_node_scc n1 scc && find_node_scc n2 scc) sccs 
   in
+
   let filtered_edges = List.filter (fun {src= s; dst= d; _} -> not (is_scc s d)) pdg.edges in 
   let edges = List.map (
-    fun {src= s; dst= d; dep=dp} -> 
-    let ds = List.find (find_node_scc s) sccs in 
-    let dd = List.find (find_node_scc s) sccs in
-    {dag_src= ds ; dag_dst= dd ; dep=dp}
+    fun {src= s; dst= d; dep=dp; loop_carried =l} -> 
+    {dag_src= find_dag_node s; dag_dst= find_dag_node d; dep=dp; loop_carried=l}
   ) filtered_edges in 
-  {entry_node = pdg.entry_node; nodes = sccs; edges = edges}
+  {entry_node = pdg.entry_node; nodes; edges}
+
+
+let string_of_dag_label = function
+  | Doall -> "doall"
+  | Sequential -> "sequential"
+
+
+let print_dag_debug dag_scc =
+  match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range_nofn en.l);
+  let string_of_node n = List.fold_left (fun acc s -> acc ^ (Range.string_of_range_nofn s.l) ^ " ") "" n in 
+  List.iteri (fun i sl -> Printf.printf "node %d (%s): %s" i (string_of_dag_label sl.label) (string_of_node sl.n); print_newline()) dag_scc.nodes;
+  List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges
+
+
+
+(* let thread_partitioning (dag_scc: dag_scc) (threads: thread list): assignment =
+  let initial_partition = List.map (fun node -> [node]) (topological_sort dag_scc) in
+  let classify_block (block: block) = if List.exists is_doall_node block then `Doall else `Sequential in
+  let partition_with_labels = List.map (fun block -> (block, classify_block block)) initial_partition in
+  let partition = merge_doall_blocks (List.map fst partition_with_labels) in
+  let maxd_block = max_profile_weight_block partition in
+  let partition = List.map (fun block -> if block = maxd_block then `Doall else `Sequential) partition in
+  let seq_partition = merge_sequential_blocks (List.filter (fun (_, label) -> label = `Sequential) partition) in
+  let doall_partition = List.filter (fun (_, label) -> label = `Doall) partition in
+  let d = List.length threads - List.length seq_partition in
+  let doall_threads, sequential_threads = List.split_at d threads in
+
+  let rec assign_blocks blocks threads assignment =
+    match blocks, threads with
+    | block :: rest_blocks, th :: rest_threads ->
+      if snd block = `Sequential then
+        assign_blocks rest_blocks rest_threads ((fst block, [th]) :: assignment)
+      else
+        ((fst block, doall_threads) :: assignment)
+    | [], _ -> List.rev assignment
+    | _ -> failwith "Not enough threads for assignment"
+  in
+
+  assign_blocks partition_with_labels sequential_threads [] *)
 
 
 let ps_dswp (body: block node) loc = 
@@ -336,5 +476,6 @@ let ps_dswp (body: block node) loc =
   let sccs = find_sccs pdg in
   Printf.printf "Strongly Connected Components:\n";
   print_sccs sccs;
-  let dag_scc = coalesce_sccs pdg sccs in () 
+  let dag_scc = coalesce_sccs pdg sccs in 
   (* print_pdg dag_scc "/tmp/dag.dot" *)
+  print_dag_debug dag_scc
