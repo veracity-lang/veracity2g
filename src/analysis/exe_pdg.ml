@@ -410,6 +410,42 @@ type dag_scc = {
   edges : dag_edge list;
 }
 
+let id_of_dag_node (dn:dag_node) : string = 
+  List.fold_left (fun acc pdgnode -> acc ^ "_" ^ (Range.string_of_range_nofn pdgnode.l)) "" dn
+
+let dag_pdgnode_to_string (pdgnodes:pdg_node list) : string = 
+  List.fold_left (fun acc pnode -> acc ^ (Range.string_of_range_nofn pnode.l)
+  ^ ":"^(string_of_pdg_node_stmt pnode.n) ^ ",") "" pdgnodes
+
+let print_dag (d:dag_scc) fn node_to_string_fn : unit = 
+  let oc = open_out fn in
+  output_string oc (String.concat "\n" [
+    "digraph G {";
+    (* Styles *)
+    "  node [shape=box, style=\"rounded,filled\", fontname=\"Courier\", margin=0.05]";
+    "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
+    (* Nodes *)
+    List.fold_left (fun acc node -> acc ^ "\"" ^ (id_of_dag_node node)
+    ^ "\" [label=\""^(node_to_string_fn node)^"\"];\n") "" d.nodes;
+    (* edges *)
+    List.fold_left (fun acc e -> acc ^ (match e.dep with
+       | DataDep idlist ->
+           let ids = String.concat "," idlist in
+          "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
+                ^ (id_of_dag_node e.dag_dst) ^ "\" "
+                ^ "[style=solid, color=green, label=\""^ids^"\"];\n" 
+       | Commute _  
+       | Disjoint 
+       | ControlDep ->
+          "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
+               ^ (id_of_dag_node e.dag_dst) ^ "\" "
+               ^ "[style=dashed, color=maroon];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+    )) "" d.edges;
+    "}\n";
+  ]);
+  print_endline ("dag written to " ^ fn);
+  close_out oc
+
 let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
   let nodes = List.map (fun scc -> {n= scc; label= Sequential}) sccs in
   let find_node_scc n scc =
@@ -476,6 +512,8 @@ let ps_dswp (body: block node) loc =
   let sccs = find_sccs pdg in
   Printf.printf "Strongly Connected Components:\n";
   print_sccs sccs;
-  let dag_scc = coalesce_sccs pdg sccs in 
+  let dag_scc = coalesce_sccs pdg sccs in
+  print_dag_debug dag_scc;
+  print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
+  ()
   (* print_pdg dag_scc "/tmp/dag.dot" *)
-  print_dag_debug dag_scc
