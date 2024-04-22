@@ -631,59 +631,56 @@ let incr_uid (ctr: int ref) =
   ctr := !ctr + 1;
   !ctr
 
-(* 
-let reconstructAST dag_scc body = *)
 
+let rec reconstructAST dag_scc_node (block: block node) : block =
+  let stmt_exist stmt node = 
+    Printf.printf "==> %s\n" (string_of_dag_label node.label);
+    List.exists (fun s -> Printf.printf "=> %s\n\n" (Range.string_of_range s.l); String.equal (Range.string_of_range s.l) (Range.string_of_range stmt.loc)) node.n
+  in
+  let res = match block.elt with
+    | [] -> []
+    | stmt::tl ->
+      begin match stmt.elt with
+      (* | If (e, b1, b2) ->
+        begin match b2.elt with
+        | [] -> EIf e
+        | _ -> EIfElse e
+        end *)
+      | While (e,b) -> 
+        if stmt_exist stmt dag_scc_node
+        then begin 
+          let new_body = node_up b (reconstructAST dag_scc_node b) in 
+          (node_up stmt (While(e, new_body))) :: (reconstructAST dag_scc_node (node_up block tl)) 
+        end 
+        else (reconstructAST dag_scc_node b) @ (reconstructAST dag_scc_node (node_up block tl))
+      (* | For (v,e,s,_) -> EFor (v,e,s) *)
+      | s -> 
+        if stmt_exist stmt dag_scc_node 
+        then stmt :: (reconstructAST dag_scc_node (node_up block tl)) 
+        else (reconstructAST dag_scc_node (node_up block tl))
+      end
+  in 
+  res
 
-let thread_partitioning dag_scc pdg (threads: int list) =
+let rec generate_tasks dag_scc (block: block node) : task list =
+  match dag_scc.nodes with 
+  | [] -> []
+  | node::tl -> 
+    let taskID = incr_uid ctr in 
+    let body = reconstructAST node block in
+    let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body} in 
+    t :: (generate_tasks {dag_scc with nodes = tl} block)
+
+let thread_partitioning dag_scc pdg (threads: int list) body =
   Printf.printf "Merging DAG_scc:\n";
   let merged_dag = merge_doall_blocks dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
   let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
-  print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string
-
-  (* let tasks = 
-    List.fold_left (
-      fun acc n -> let t = {id = incr_uid ctr; deps_in = []; deps_out = []; body = no_loc [ (List.hd (List.hd n)).src.n]} in acc @ [t]
-    ) [] merged_dag.nodes
-  in 
-  List.iter (fun t -> Printf.printf "Task ID = %d\n" t.id) tasks *)
-
-
-(* 
-let topological_sort (dag: dag): node list = ... (* your DAG sorting function *)
-let is_doall_node (node: node): bool = ... (* determine if a node is a doall node *)
-let merge_doall_blocks (partition: partition): partition = ... (* your merging function *)
-let max_profile_weight_block (partition: partition): block = ... (* get block with max weight *)
-let merge_sequential_blocks (partition: partition): partition = ... (* your merging function for sequential blocks *)
- *)
-
-(* let thread_partitioning (dag_scc: dag_scc) (threads: thread list): assignment =
-  let initial_partition = List.map (fun node -> [node]) (topological_sort dag_scc) in
-  let classify_block (block: block) = if List.exists is_doall_node block then `Doall else `Sequential in
-  let partition_with_labels = List.map (fun block -> (block, classify_block block)) initial_partition in
-  let partition = merge_doall_blocks (List.map fst partition_with_labels) in
-  let maxd_block = max_profile_weight_block partition in
-  let partition = List.map (fun block -> if block = maxd_block then `Doall else `Sequential) partition in
-  let seq_partition = merge_sequential_blocks (List.filter (fun (_, label) -> label = `Sequential) partition) in
-  let doall_partition = List.filter (fun (_, label) -> label = `Doall) partition in
-  let d = List.length threads - List.length seq_partition in
-  let doall_threads, sequential_threads = List.split_at d threads in
-
-  let rec assign_blocks blocks threads assignment =
-    match blocks, threads with
-    | block :: rest_blocks, th :: rest_threads ->
-      if snd block = `Sequential then
-        assign_blocks rest_blocks rest_threads ((fst block, [th]) :: assignment)
-      else
-        ((fst block, doall_threads) :: assignment)
-    | [], _ -> List.rev assignment
-    | _ -> failwith "Not enough threads for assignment"
-  in
-
-  assign_blocks partition_with_labels sequential_threads [] *)
+  print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
+  let tasks = generate_tasks merged_dag body in 
+  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks
 
 
 let ps_dswp (body: block node) loc = 
@@ -697,4 +694,4 @@ let ps_dswp (body: block node) loc =
   Printf.printf "DAG_SCCs:\n";
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
-  thread_partitioning dag_scc pdg []
+  thread_partitioning dag_scc pdg [] body

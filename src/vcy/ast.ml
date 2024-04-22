@@ -141,6 +141,7 @@ and stmt =
 | Require of exp node
 | SBlock of blocklabel option * block node
 | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
+| SendDep of id list (* only for dependency of tasks *)
 
 and commute_pre_cond = exp node 
 
