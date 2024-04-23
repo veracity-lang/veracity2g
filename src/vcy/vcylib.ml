@@ -1,6 +1,7 @@
 open Ast
 open Ast_print
 open Util
+open Digest
 
 let sp = Printf.sprintf
 
@@ -52,6 +53,28 @@ let lib_string : method_library =
       | env, [VStr s] ->
         env, VInt (Int64.of_string s)
       | _ -> raise @@ TypeFailure ("int_of_string arguments", Range.norange)
+      end
+    ; pc = None
+    }
+  ; "md5_lower", 
+    { pure = true
+    ; func = begin function
+      | env, [VStr s] ->
+        env, VInt (s |> string |> to_hex |> 
+          fun s -> let l = String.length s in
+            Int64.of_string ("0x" ^ String.sub s (l - 16) 16))
+      | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
+      end
+    ; pc = None
+    }
+  ; "md5_upper", 
+    { pure = true
+    ; func = begin function
+      | env, [VStr s] ->
+        env, VInt (s |> string |> to_hex |> 
+          fun s -> let l = String.length s in
+            Int64.of_string ("0x" ^ String.sub s 0 (min (l - 16) 16)))
+      | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
       end
     ; pc = None
     }

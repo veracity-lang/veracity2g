@@ -2,14 +2,14 @@ int md5(string input) { return md5_lower(input); }
 string show_int(int i) { return string_of_int(i); }
 
 int main(int argc, string[] argv) {
-	string fname1 = "A.txt";
-	string fname2 = "Amd5";
-	string fname3 = "B.txt";
-	string fname4 = "Bmd5";
-	in_channel i = open_read(fname1);
-	out_channel j = open_write(fname2);
-	in_channel k = open_read(fname3);
-	out_channel l = open_write(fname4);
+	in_channel i = open_read(fname);
+	out_channel j = open_write(fname);
+	in_channel k = open_read(fname);
+	out_channel l = open_write(fname);
+	string fname1 = "temp1";
+	string fname2 = "temp2";
+	string fname3 = "temp3";
+	string fname4 = "temp4";
 	int inttemp = 0;
 	string stringtemp = "";
 	commute (fname1 != fname3 && fname1 != fname4 && fname2 != fname3 && fname2 != fname4) { 
