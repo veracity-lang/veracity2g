@@ -1,3 +1,10 @@
+(*
+  Code Generation via a C compiler:
+    Convert Veracity statements to C code
+
+  Most functions are parameterized first by the current task (Task.task)
+  
+*)
 open Ast
 open Ast_print
 open Util
@@ -5,10 +12,6 @@ open Task
 
 exception TaskCodeGenErr of string
 
-(*
-   Code Generation via a C compiler:
-    Convert Veracity statements to C code
-*)
 (* TODO: Make all of these local to gen_prog *)
 let indent = ref 0
 let mk_newline () = "\n" ^ String.make !indent ' '
@@ -49,7 +52,7 @@ and gen_exp = function
     | CStruct(id, e) -> raise @@ NotImplemented "gen_exp CStruct"
     | Proj(e, id) -> raise @@ NotImplemented "gen_exp Call.Proj"
 
-and gen_stmt = function
+and gen_stmt tsk = function
     | Assn(lhs, rhs) -> sp "%s = %s" (gen_expnode lhs) (gen_expnode rhs)
     | Decl(id, (ty, rhs)) -> env := (ty, id) :: !env; sp "%s %s = %s" (gen_ty ty) (!mangle id) (gen_expnode rhs)
     | Ret(eo) -> begin match eo with
@@ -61,39 +64,68 @@ and gen_stmt = function
         | MethodM(id, tmethod) -> raise @@ NotImplemented "gen_stmt SCall.MethodM"
         | MethodL(id, lmethod) -> raise @@ NotImplemented "gen_stmt SCall.MethodL"
         end
-    | If(guard, t, e) -> sp "if(%s) %s%selse %s" (gen_expnode guard) (gen_blocknode t) (mk_newline ()) (gen_blocknode e)
-    | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (gen_ty ty) (!mangle id) (gen_expnode rhs)) inits) (guard |> Option.map gen_expnode |> Option.value ~default:"") (update |> Option.map gen_stmtnode |> Option.value ~default:"") (gen_blocknode body)
-    | While(guard, body) -> sp "while(%s) %s" (gen_expnode guard) (gen_blocknode body)
+    | If(guard, t, e) -> sp "if(%s) %s%selse %s" (gen_expnode guard) (gen_blocknode tsk t) (mk_newline ()) (gen_blocknode tsk e)
+    | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (gen_ty ty) (!mangle id) (gen_expnode rhs)) inits) (guard |> Option.map gen_expnode |> Option.value ~default:"") (update |> Option.map (gen_stmtnode tsk) |> Option.value ~default:"") (gen_blocknode tsk body)
+    | While(guard, body) -> sp "while(%s) %s" (gen_expnode guard) (gen_blocknode tsk body)
     | Raise(e) -> raise @@ NotImplemented "gen_stmt Raise"
     | Commute(var, phi, bodies) -> raise @@ TaskCodeGenErr "gen_stmt should not have Commute stmts"
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
-and gen_stmtnode x = gen_stmt x.elt
-and gen_block b = let indent_pre = !indent in 
+(*
+    | SendDeps(other_tsk_ids) ->
+       String.concat "\n" (List.map (gen_senddep tsk) other_tsk_ids)
+*)
+
+and gen_senddep tsk other_id = 
+  (* Look up in my dependencies for other_id *)
+  let other_tsk = [] in 
+  failwith "gen_senddep todo"
+  (* sp "// Begin Send Deps to task\n %s // End Send Deops "
+  (List.map (fun dep_out -> 
+    (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %d\");\n" t.id dep_out.pred_task)
+    ^
+    (* collect all the vars *)
+    (String.concat "\n" (List.map (fun (dep_type, dep_id) ->
+      (Printf.sprintf "        %s %s = t%d_to_t%d_%s;\n" 
+        (gen_ty dep_type)
+        dep_id
+        dep_out.pred_task
+        t.id
+        dep_id
+      )
+    ) dep_out.vars))
+    ^
+    (* post semaphore*)
+    (Printf.sprintf "        sem_post(&t%d_to_t%d_sem);\n" t.id dep_out.pred_task)
+
+  ) tsk'.deps_out) *)
+
+and gen_stmtnode tsk x = gen_stmt tsk x.elt
+and gen_block tsk b = let indent_pre = !indent in 
     indent := indent_pre + 4;
-    let res = "{" ^ mk_newline () ^ String.concat (mk_newline ()) @@ List.map (fun x -> x ^ ";") @@ List.map gen_stmtnode b in
+    let res = "{" ^ mk_newline () ^ String.concat (mk_newline ()) @@ List.map (fun x -> x ^ ";") @@ List.map (gen_stmtnode tsk) b in
     indent := indent_pre;
     res ^ mk_newline () ^ "}"
-and gen_blocknode b = gen_block b.elt
+and gen_blocknode tsk b = gen_block tsk b.elt
 
 and mangle = ref Fun.id
 
 and env = ref [] (* TODO: When to refresh? etc? Better as state monad *)
     
-let gen_decl = function
+let gen_decl tsk = function
     | Gvdecl(dnode) -> let d = dnode.elt in sp "%s %s = %s;" (gen_ty d.ty) d.name (gen_expnode d.init)
-    | Gmdecl(dnode) -> let d = dnode.elt in sp "%s %s(%s) %s" (gen_ty d.mrtyp) d.mname (String.concat ", " @@ List.map (fun (ty, id) -> sp "%s %s" (gen_ty ty) id) d.args) (gen_blocknode d.body)
+    | Gmdecl(dnode) -> let d = dnode.elt in sp "%s %s(%s) %s" (gen_ty d.mrtyp) d.mname (String.concat ", " @@ List.map (fun (ty, id) -> sp "%s %s" (gen_ty ty) id) d.args) (gen_blocknode tsk d.body)
     | Gsdecl(d) -> raise @@ NotImplemented "gen_decl Gsdecl"
 
-let gen_prog prog =
-    String.concat "\n\n" @@ List.map gen_decl prog
+let gen_prog tsk prog =
+    String.concat "\n\n" @@ List.map (gen_decl tsk) prog
 
 (* 
 test this as:
   ./vcy.exe interp ../benchmarks/global_commutativity/ps-dswp.vcy    
 *)
-let gen b = 
-  let str = gen_block b in 
+let gen tsk b : unit = 
+  let str = gen_block tsk b in 
   let oc = open_out "/tmp/autogen_tasks.c" in
   output_string oc str;
   close_out oc;
@@ -119,10 +151,10 @@ let gen_init tlist =
   )
   ^"}\n"
 
-let gen_gvar_decls gv_decls : string =
+let gen_gvar_decls tsk gv_decls : string =
   "\n// ##### Declare global variables #####\n"
   ^(List.fold_left (fun acc gv_decl ->
-    acc ^ (gen_decl gv_decl) ^ "\n"
+    acc ^ (gen_decl tsk gv_decl) ^ "\n"
   ) "" gv_decls)
 
 let gen_handoff_vars t_id_tid1_tid2_list : string = 
@@ -180,30 +212,9 @@ let gen_tasks gvar_decls tlist =
        ["        // End of Input collection";
        "";
        "        // ---- Begin task body";
-       "        "^(gen_blocknode t.body);
+       "        "^(gen_blocknode t t.body);
        "        // ---- End task body";
        "";
-       "        // Begin outputs of the task"] @
-       (List.map (fun dep_out -> 
-         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %d\");\n" t.id dep_out.pred_task)
-         ^
-         (* collect all the vars *)
-         (String.concat "\n" (List.map (fun (dep_type, dep_id) ->
-           (Printf.sprintf "        %s %s = t%d_to_t%d_%s;\n" 
-             (gen_ty dep_type)
-             dep_id
-             dep_out.pred_task
-             t.id
-             dep_id
-           )
-         ) dep_out.vars))
-         ^
-         (* post semaphore*)
-         (Printf.sprintf "        sem_post(&t%d_to_t%d_sem);\n" t.id dep_out.pred_task)
-
-       ) t.deps_out)
-       @
-      ["        // End outputs of the task";
        "    } /* end task loop */";
        "}";
        ]
@@ -217,7 +228,7 @@ let gen_tasks gvar_decls tlist =
   output_string oc "#include \"task.h\"\n";
   output_string oc ("int autogen_taskcount() { return "^(string_of_int (List.length tlist))^"; }\n");
   output_string oc (gen_semaphores tlist);
-  output_string oc (gen_gvar_decls gvar_decls);
+  output_string oc (gen_gvar_decls (List.hd tlist) gvar_decls);
   output_string oc (gen_handoff_vars (Task.calculate_handoff_vars tlist));
   output_string oc (gen_init tlist);
   output_string oc (String.concat "\n\n" (help tlist));
@@ -230,8 +241,8 @@ let edge_of_dep myid dp direction : string =
   Printf.sprintf "\"%d\" -> \"%d\" [label=\"%s\"];\n"
       src dst (String.concat "," (List.map (fun (t,i) -> i) dp.vars))
 
-let str_of_task_body b : string = 
-  let t = gen_blocknode b in
+let str_of_task_body tsk : string = 
+  let t = gen_blocknode tsk tsk.body in
   let t' = Str.global_replace (Str.regexp_string "\n") " " t in
   Str.global_replace (Str.regexp_string "  ") " " t'
 
@@ -245,7 +256,7 @@ let print_tasks tlist fn : unit =
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     List.fold_left (fun acc tsk -> acc ^ "\"" ^ (string_of_int tsk.id)
-    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(str_of_task_body tsk.body)^"\"];\n") "" tlist;
+    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(str_of_task_body tsk)^"\"];\n") "" tlist;
     (* edges *)
     List.fold_left (fun acc tsk -> acc ^ 
         (List.fold_left (fun acc' din -> edge_of_dep tsk.id din false) "" tsk.deps_in)
