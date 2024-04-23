@@ -22,7 +22,7 @@ let rec gen_ty = function
     | TBool -> "bool" (* TODO: Not ansi C. can use int, or stdbool.h? *)
     | TStr -> "const char*"
     | TArr(ty) -> sp "%s*" (gen_ty ty)
-    | THashTable(kty, vty) -> raise @@ NotImplemented "gen_ty THashTable"
+    | THashTable(kty, vty) -> "<<new Thashtable stmt>>" (*raise @@ NotImplemented "gen_ty THashTable"*)
     | TChanR -> raise @@ NotImplemented "gen_ty TChanR"
     | TChanW -> raise @@ NotImplemented "gen_ty TChanW"
     | TStruct(id) -> raise @@ NotImplemented "gen_ty TStruct"
@@ -35,7 +35,7 @@ and gen_exp = function
     | CStr(s) -> sp "\"%s\"" s
     | CArr(ty, e) -> raise @@ NotImplemented "gen_exp CArr"
     | NewArr(ty, e) -> "<<new array stmt>>" (*raise @@ NotImplemented "gen_exp NewArr"*)
-    | NewHashTable(var, kty, vty) -> raise @@ NotImplemented "gen_exp NewHashTable"
+    | NewHashTable(var, kty, vty) -> "<<new hashtable stmt>>" (*raise @@ NotImplemented "gen_exp NewHashTable"*)
     | Id(id) -> (!mangle id)
     | Index(arr, idx) -> sp "(%s[%s])" (gen_expnode arr) (gen_expnode idx)
     | CallRaw(id, es) -> sp "(%s(%s))" id (String.concat ", " @@ List.map gen_expnode es)

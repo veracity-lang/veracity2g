@@ -15,7 +15,7 @@ let rec c_of_ty = function
     | TBool -> "bool" (* TODO: Not ansi C. can use int, or stdbool.h? *)
     | TStr -> "const char*"
     | TArr(ty) -> sp "%s*" (c_of_ty ty)
-    | THashTable(kty, vty) -> raise @@ NotImplemented "c_of_ty THashTable"
+    | THashTable(kty, vty) -> "<<THashtable stmt>>" (*raise @@ NotImplemented "c_of_ty THashTable"*)
     | TChanR -> raise @@ NotImplemented "c_of_ty TChanR"
     | TChanW -> raise @@ NotImplemented "c_of_ty TChanW"
     | TStruct(id) -> raise @@ NotImplemented "c_of_ty TStruct"
@@ -28,7 +28,7 @@ and c_of_exp = function
     | CStr(s) -> sp "\"%s\"" s
     | CArr(ty, e) -> raise @@ NotImplemented "c_of_exp CArr"
     | NewArr(ty, e) -> "<<new array stmt>>" (*raise @@ NotImplemented "c_of_exp NewArr"*)
-    | NewHashTable(var, kty, vty) -> raise @@ NotImplemented "c_of_exp NewHashTable"
+    | NewHashTable(var, kty, vty) -> "<<new hashtable stmt>>" (*raise @@ NotImplemented "c_of_exp NewHashTable"*)
     | Id(id) -> (!mangle id)
     | Index(arr, idx) -> sp "(%s[%s])" (c_of_expnode arr) (c_of_expnode idx)
     | CallRaw(id, es) -> sp "(%s(%s))" id (String.concat ", " @@ List.map c_of_expnode es)

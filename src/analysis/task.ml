@@ -8,11 +8,14 @@ type dependency = {
   vars: (ty * id) list 
 }
 
+type exe_label = Doall | Sequential
+
 type task = {
   id : taskid;
   deps_in : dependency list; (* a list of other tasks/vars that I depend on *)
   deps_out : dependency list; (* a list of other tasks/vars that I provide for *)
   body: block node;
+  label: exe_label;
 }
 
 
@@ -63,17 +66,20 @@ let example_tasks () : task list =
     { id=1; 
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[(mk_int_dep 1 "pnext");(mk_int_dep 2 "p");(mk_int_dep 3 "p")];
-      body=no_loc [(no_loc (Ret(None)))]
+      body=no_loc [(no_loc (Ret(None)))];
+      label=Doall
     };
     { id=2; 
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[];
-      body=no_loc [(no_loc (Ret(None)))]
+      body=no_loc [(no_loc (Ret(None)))];
+      label=Doall
     };
     { id=3; 
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[];
-      body=no_loc [(no_loc (Ret(None)))]
+      body=no_loc [(no_loc (Ret(None)))];
+      label=Doall
     }
   ]
 (* p= 0...maxp *)

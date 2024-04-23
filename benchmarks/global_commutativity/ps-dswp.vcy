@@ -3,33 +3,38 @@ commutativity {
 }
 
 int main(int argc, string[] argv) {
-    int[] p = new int[10];
+    hashtable[string,int[]] p = new hashtable_seq[string,int[]];
+    hashtable[string,int[]] q = new hashtable_seq[string,int[]];
     int[] visited = new int[10];
+    int[] zero = new int[1];
+    zero[0] = 0;
     int sum = 0;
     int id = 0;
-    int p_id = 0;
-    int p_value = 0;
-    int[] p_inner_list = new int[10];
-    int[] q_next = new int[10];
-    int[] p_next = new int[10];
-    bool g_flag = false;
-    int p_size = 0;
+    p["id"] = zero;
+    p["value"] = zero;
+    p["inner_list"] = new int[10];
+    q["next"] = new int[10];
+    p["next"] = new int[10];
+    q["flag"] = zero;
+    p["size"] = zero;
+    q["size"] = zero;
     int q_size = 0;
+    int q_flag = 0;
 
 
-    while(p_size != 0){
-        id = p_id;
+    while(p["size"][0] != 0){
+        id = p["id"];
         if(!visited[id]){
             visited[id] = true;
-            q = p_inner_list;
+            q = p["inner_list"];
             while (q_size != 0 && !q_flag){
-                q = q_next;
+                q = q["next"];
             }
-            if(q_size != 0){
-                sum = sum + p_value;
+            if(q["size"][0] != 0){
+                sum = sum + p["value"];
             }
         }
-        p = p_next;
+        p = p["next"];
     }
     
     return 0;
