@@ -203,7 +203,8 @@ let has_data_dep src dst : bool * (ty * string) list * int =
       end
       else
         has_common_element tail list2 vars
-  in has_common_element list1 list2 []
+  in let (flag,vars,side) = has_common_element list1 list2 [] in 
+  flag, List.map (fun (t, id) -> let v = List.find_opt (fun (Gvdecl d) -> String.equal d.elt.name id) !decl_vars in match v with | Some (Gvdecl d) -> (d.elt.ty, id) | _ -> (t,id)) vars, side
 
 
 let rec apply_pairs f lst =
@@ -297,7 +298,8 @@ let is_loop_carried_dependence (pdg: exe_pdg) (edge: pdg_edge) =
       | Some loop_header_edge ->
         let rec has_upwards_exposed_use node =
           let uses, _ = List.split (List.filter (fun (v, side) -> side == rvalue) (find_stmt_vars node.n)) in 
-          if List.exists (fun use -> List.mem use register) uses then true
+          (* if List.exists (fun use -> List.mem use register) uses then true *)
+          if List.exists (fun (_,use) -> List.exists (fun (_,r) -> String.equal use r) register) uses then true         
           else match List.find_opt (fun e -> compare_nodes e.src node) pdg.edges with
             | None -> false
             | Some e ->
