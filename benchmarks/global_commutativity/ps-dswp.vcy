@@ -10,14 +10,14 @@ int main(int argc, string[] argv) {
     zero[0] = 0;
     int sum = 0;
     int id = 0;
-    p["id"] = zero;
-    p["value"] = zero;
+    p["id"] = new int[1];
+    p["value"] = new int[1];
     p["inner_list"] = new int[10];
     q["next"] = new int[10];
     p["next"] = new int[10];
-    q["flag"] = zero;
-    p["size"] = zero;
-    q["size"] = zero;
+    q["flag"] = new int[1];
+    p["size"] = new int[1];
+    q["size"] = new int[1];
     int q_size = 0;
     int q_flag = 0;
 
@@ -27,7 +27,7 @@ int main(int argc, string[] argv) {
         if(!visited[id]){
             visited[id] = true;
             q = p["inner_list"];
-            while (q_size != 0 && !q_flag){
+            while (q["size"][0] != 0 && !q_flag){
                 q = q["next"];
             }
             if(q["size"][0] != 0){

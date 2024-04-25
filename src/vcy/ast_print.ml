@@ -536,6 +536,8 @@ module AstML = struct
         (string_of_exp pre)
         (string_of_list string_of_block bl)
         (string_of_exp post)
+    | SendDep ids ->
+      sp "SendDep (%s)" (string_of_list (fun i -> i) ids)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s

@@ -7,7 +7,7 @@ open Task
 
 type dependency =
 | ControlDep
-| DataDep of id list
+| DataDep of (ty * id) list
 | Commute of bool
 | Disjoint
 
@@ -62,7 +62,7 @@ let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg =
 
 let string_of_dep = function
   | ControlDep -> "ControlDep"
-  | DataDep vars -> sp "DataDep (%s)" (AstML.string_of_list (fun s -> s) vars) 
+  | DataDep vars -> sp "DataDep (%s)" (AstML.string_of_args vars) 
   | Commute b -> sp "Commute (%s)" (Bool.to_string b)
   | Disjoint -> "Disjoint"
 
@@ -99,11 +99,11 @@ let print_pdg pdg fn : unit =
     List.fold_left (fun acc e -> 
       let pw = penwidth_of_pdgedge e in
       acc ^ (match e.dep with
-       | DataDep idlist ->
-           let ids = String.concat "," idlist in
+       | DataDep vars ->
+           let vars = AstML.string_of_args vars in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^ids^"\", penwidth=\""^pw^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
        | Commute _  
        | Disjoint 
        | ControlDep ->
@@ -131,16 +131,17 @@ let find_node (s: stmt node) pdg : pdg_node =
 
 let rvalue = 1
 let lvalue = 0
+let decl_vars = ref []
 
-let set_vars_side (vars : string list) side : (string * int) list = 
+let set_vars_side (vars : (ty * string) list) side : ((ty * string) * int) list = 
   List.map (fun v -> (v, side)) vars
 
-let rec find_block_vars block : (string * int) list = 
+let rec find_block_vars block : ((ty * string) * int) list = 
   match block with 
   | [] -> []
   | stmt::tl -> (find_stmt_vars stmt) @ (find_block_vars tl)
 
-and find_stmt_vars (stmt: enode_ast_elt) : (string * int) list = 
+and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list = 
   match stmt with
   | EWhile e | EIf e | EIfElse e  -> set_vars_side (find_exp_vars e) rvalue
   (* | EFor (vdecls, eoption, soption) ->  *)
@@ -148,7 +149,9 @@ and find_stmt_vars (stmt: enode_ast_elt) : (string * int) list =
     begin match s.elt with 
     | Assn (e1,e2) -> (set_vars_side (find_exp_vars e1) lvalue) @ (set_vars_side (find_exp_vars e2) rvalue)
     | Decl vdecl ->
-      let id, (_, e) = vdecl in (id, lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
+      let id, (ty, e) = vdecl in 
+      decl_vars := Gvdecl (no_loc { name = id; ty = ty; init = e }) :: !decl_vars;
+      ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
     | _ -> []
     end 
@@ -166,9 +169,9 @@ and find_stmt_vars (stmt: enode_ast_elt) : (string * int) list =
   | SBlock of blocklabel option * block node
   | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond *)
 
-and find_exp_vars exp : string list =
+and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
-  | CStr s | Id s -> [s]
+  | CStr s | Id s -> [(TStr, s)]
   | CArr (_, expl) -> List.concat_map find_exp_vars expl
   | NewArr (_, e) | Uop (_, e) -> find_exp_vars e
   | Index (e1, e2) | Bop (_, e1, e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
@@ -183,10 +186,10 @@ and find_exp_vars exp : string list =
 let src_to_dst = 1
 let dst_to_src = 0
 
-let has_data_dep src dst : bool * string list * int =
+let has_data_dep src dst : bool * (ty * string) list * int =
   let list1 = find_stmt_vars src.n in 
   let list2 = find_stmt_vars dst.n in 
-  let rec has_common_element list1 list2 vars : bool * string list * int = 
+  let rec has_common_element list1 list2 vars : bool * (ty * string) list * int = 
     match list1 with
     | [] -> false, vars, src_to_dst 
     | (head, val1) :: tail ->
@@ -304,7 +307,24 @@ let is_loop_carried_dependence (pdg: exe_pdg) (edge: pdg_edge) =
         has_upwards_exposed_use n2
     in
     definition_reaches_loop_header && upwards_exposed_use_in_loop_header
-  | _ -> false (* Dependence is not through registers *)
+  (* | ControlDep ->
+    let rec is_loop_carried_control_dependence n1 n2 pdg visited =
+      if compare_nodes n1 n2 then
+        true 
+      else if List.mem n1 !visited then
+        false
+      else begin
+        visited := n1 :: !visited;
+        List.fold_left (fun acc node ->
+          if is_loop_carried_control_dependence node n2 pdg visited then
+            acc && true 
+          else
+            false
+        ) true (List.fold_left (fun acc e -> if compare_nodes e.src n1 then acc @ [e.dst] else acc ) [] pdg.edges)
+      end
+    in
+    is_loop_carried_control_dependence n1 n2 pdg (ref []) *)
+  | _ -> false 
 
 (* Function to find loop-carried dependencies in the exe_pdg graph *)
 let mark_loop_carried_dependencies pdg : exe_pdg =
@@ -443,11 +463,11 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
     List.fold_left (fun acc e -> 
       let pw = penwidth_of_dagedge e in
       acc ^ (match e.dep with
-       | DataDep idlist ->
-           let ids = String.concat "," idlist in
+       | DataDep vars ->
+           let vars = AstML.string_of_args vars in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^ids^"\", penwidth=\""^pw^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
        | Commute _  
        | Disjoint 
        | ControlDep ->
@@ -483,7 +503,7 @@ let remove_duplicate_edge (edges: dag_edge list) =
     | [] -> false
     | h::tl ->
         begin
-          if compare_dag_nodes h.dag_src n.dag_src && compare_dag_nodes h.dag_dst n.dag_dst && h.dep == n.dep then true
+          if compare_dag_nodes h.dag_src n.dag_src && compare_dag_nodes h.dag_dst n.dag_dst && String.equal (string_of_dep h.dep) (string_of_dep n.dep) then true
           else is_member n tl
         end
   in
@@ -572,9 +592,18 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
     not (List.exists (fun e -> e.loop_carried) dag_scc.edges) *)
     let a = not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block2) dag_scc.edges) reachable_from_block1) in
     let b = not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block1) dag_scc.edges) reachable_from_block2) in
-    let d = not (has_loop_carried block1.n pdg) in
-    let e = not (has_loop_carried block2.n pdg) in
-    a && b&& d && e && c
+    (* let d = not (has_loop_carried block1.n pdg) in
+    let e = not (has_loop_carried block2.n pdg) in *)
+    let d = not (List.exists (
+      fun e -> 
+      (all_in_list_a_in_b e.dag_src.n block1.n 
+      && all_in_list_a_in_b e.dag_dst.n block2.n
+      ||
+      all_in_list_a_in_b e.dag_src.n block2.n 
+      && all_in_list_a_in_b e.dag_dst.n block1.n)
+      && e.loop_carried
+      ) dag_scc.edges) in
+    a && b&& d && c && (block1.label == Doall && block2.label = Doall)
   in
   let rec merge_blocks block dag_scc visited =
     if List.mem block !visited then
@@ -632,6 +661,7 @@ let retain_max_profile_doall dag_scc =
     let updated_nodes = updated_max_profile_block :: updated_sequential_blocks @ List.filter (fun node -> node.label != Doall) dag_scc.nodes in
     { dag_scc with nodes = updated_nodes }
 
+(** TODO: revise this*)
 (* Function to merge sequential blocks greedily *)
 let merge_sequential_blocks dag_scc =
   (* let rec merge_blocks acc dag_scc =
@@ -705,56 +735,111 @@ let incr_uid (ctr: int ref) =
   ctr := !ctr + 1;
   !ctr
 
+let find_taskID_from_node dag_scc elem = 
+  let tmp = ref 0 in 
+  List.iteri (fun i n -> if (List.exists (fun s -> String.equal (List.hd elem) (Range.string_of_range_nofn s.l)) n.n) then tmp := i + 1 ) dag_scc.nodes;
+  [string_of_int !tmp]
 
-let rec reconstructAST dag_scc_node (block: block node) : block =
-  let stmt_exist stmt node = 
-    List.exists (fun s -> String.equal (Range.string_of_range s.l) (Range.string_of_range stmt.loc)) node.n
+let reconstructAST dag dag_scc_node (block: block node) : block =
+  let rec transform_block dag_scc_node (block: block node) : block * bool =
+    let stmt_exist stmt node = 
+      List.exists (fun s -> String.equal (Range.string_of_range s.l) (Range.string_of_range stmt.loc)) node.n
+    in
+    let res = match block.elt with
+      | [] -> [] , true
+      | stmt::tl ->
+        begin match stmt.elt with
+        | If (e, b1, b2) ->
+          let new_b1, f1 = (transform_block dag_scc_node b1) in 
+          let new_b2, f2 = (transform_block dag_scc_node b2) in 
+          if stmt_exist stmt dag_scc_node
+          then begin
+            let new_b1 = if not f1 then begin let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b1)) b1.elt) in new_b1 @ [no_loc @@ SendDep (find_taskID_from_node dag removed)] end else new_b1 in
+            let new_b2 = if not f2 then begin let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b2)) b2.elt) in new_b2 @ [no_loc @@ SendDep (find_taskID_from_node dag removed)] end else new_b2 in
+            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
+            (node_up stmt (If(e, node_up b1 new_b1, node_up b2 new_b2))) :: rest , true && f
+          end
+          else begin
+            let rest, f = (transform_block dag_scc_node (no_loc tl)) in
+            new_b1 @ new_b2 @ rest , false && f
+          end
+        | While (e,b) -> 
+          let new_body, f = (transform_block dag_scc_node b) in 
+          if stmt_exist stmt dag_scc_node
+          then begin
+            let new_body = if not f then begin let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_body)) b.elt) in new_body @ [no_loc @@ SendDep (find_taskID_from_node dag removed)] end else new_body in
+            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
+            (node_up stmt (While(e, node_up b new_body))) :: rest , true && f
+          end 
+          else begin 
+            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
+            new_body @ rest , false && f
+          end
+        (* | For (v,e,s,_) -> EFor (v,e,s) *)
+        | s -> 
+          if stmt_exist stmt dag_scc_node 
+          then begin
+            let rest, f = (transform_block dag_scc_node (no_loc tl)) in
+            stmt :: rest, true && f
+          end
+          else begin
+            let rest, f = (transform_block dag_scc_node (no_loc tl)) in
+            rest, false && f
+          end
+        end
+    in 
+    res
   in
-  let res = match block.elt with
-    | [] -> []
-    | stmt::tl ->
-      begin match stmt.elt with
-      | If (e, b1, b2) ->
-        let new_b1 = (reconstructAST dag_scc_node b1) in 
-        let new_b2 = (reconstructAST dag_scc_node b2) in 
-        if stmt_exist stmt dag_scc_node
-        then
-          (node_up stmt (If(e, node_up b1 new_b1, node_up b2 new_b2))) :: (reconstructAST dag_scc_node (node_up block tl))
-        else new_b1 @ new_b2 @ reconstructAST dag_scc_node (node_up block tl)
-      | While (e,b) -> 
-        let new_body = (reconstructAST dag_scc_node b) in 
-        if stmt_exist stmt dag_scc_node
-        then
-          (node_up stmt (While(e, node_up b new_body))) :: (reconstructAST dag_scc_node (node_up block tl)) 
-        else new_body @ reconstructAST dag_scc_node (node_up block tl)
-      (* | For (v,e,s,_) -> EFor (v,e,s) *)
-      | s -> 
-        if stmt_exist stmt dag_scc_node 
-        then stmt :: (reconstructAST dag_scc_node (node_up block tl)) 
-        else (reconstructAST dag_scc_node (node_up block tl))
-      end
-  in 
-  res
+  fst (transform_block dag_scc_node block)
 
-let rec generate_tasks dag_scc (block: block node) : task list =
-  match dag_scc.nodes with 
-  | [] -> []
-  | node::tl -> 
-    let taskID = incr_uid ctr in 
-    let body = reconstructAST node block in
-    let label = match node.label with | Doall -> Task.Doall | Sequential -> Task.Sequential in 
-    let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
-    t :: (generate_tasks {dag_scc with nodes = tl} block)
+let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) = 
+  let find_taskID node = 
+    let temp = ref 0 in 
+    List.iteri (fun i n -> if compare_dag_nodes n node then temp := i + 1) dag.nodes;
+    !temp
+  in 
+  let res = ref tasks in 
+  List.iter (
+    fun e -> 
+    match e.dep with
+    | DataDep vars -> 
+      let src_taskID = find_taskID e.dag_src in
+      let dst_taskID = find_taskID e.dag_dst in 
+      let src_task = List.assoc src_taskID tasks in 
+      let dst_task = List.assoc dst_taskID tasks in
+      res := 
+      (src_taskID, {src_task with deps_out = [{pred_task= 0; vars}]}) :: 
+      (dst_taskID, {dst_task with deps_in = [{pred_task= src_taskID; vars}]}) ::
+      List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
+    | _ ->()
+  ) dag.edges;
+  snd (List.split !res)
+
+let generate_tasks dag_scc (block: block node) : task list =
+  let rec generate_tasks_from_dag dag_scc (block: block node) : task list =
+    match dag_scc.nodes with 
+    | [] -> []
+    | node::tl -> 
+      let taskID = incr_uid ctr in 
+      let body = reconstructAST dag_scc node block in
+      let label = match node.label with | Doall -> Task.Doall | Sequential -> Task.Sequential in 
+      let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
+      t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
+  in 
+  let tasks = generate_tasks_from_dag dag_scc block in
+  fill_task_dependency dag_scc (List.map (fun t -> (t.id, t)) tasks)
 
 let thread_partitioning dag_scc pdg (threads: int list) body =
   Printf.printf "Merging DAG_scc:\n";
   let merged_dag = merge_doall_blocks dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
+  print_dag_debug dag_scc_with_max_profile;
   let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
+  print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
-  (* List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks; *)
+  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
   tasks
 
 
@@ -770,4 +855,5 @@ let ps_dswp (body: block node) loc =
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
   let tasks = thread_partitioning dag_scc pdg [] body in 
+  Codegen_c.gen_tasks (!decl_vars) tasks;
   Codegen_c.print_tasks tasks "/tmp/tasks.dot"

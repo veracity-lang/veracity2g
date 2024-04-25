@@ -71,10 +71,9 @@ and gen_stmt tsk = function
     | Commute(var, phi, bodies) -> raise @@ TaskCodeGenErr "gen_stmt should not have Commute stmts"
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
-(*
-    | SendDeps(other_tsk_ids) ->
+    | SendDep(other_tsk_ids) ->
        String.concat "\n" (List.map (gen_senddep tsk) other_tsk_ids)
-*)
+
 
 and gen_senddep tsk other_id = 
   (* Look up in my dependencies for other_id *)
