@@ -61,6 +61,7 @@ and c_of_stmt = function
     | Commute(var, phi, bodies) -> !handle_comm phi bodies
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (c_of_expnode e)
+    | SBlock(blocklabel,block) -> sp "%s" (c_of_blocknode block) (** TODO: check *)
 and c_of_stmtnode x = c_of_stmt x.elt
 and c_of_block b = let indent_pre = !indent in 
     indent := indent_pre + 4;

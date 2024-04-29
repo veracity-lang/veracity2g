@@ -8,7 +8,7 @@ open Task
 type dependency =
 | ControlDep
 | DataDep of (ty * id) list
-| Commute of bool
+| Commute of exp node
 | Disjoint
 
 type enode_ast_elt = 
@@ -63,7 +63,7 @@ let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg =
 let string_of_dep = function
   | ControlDep -> "ControlDep"
   | DataDep vars -> sp "DataDep (%s)" (AstML.string_of_args vars) 
-  | Commute b -> sp "Commute (%s)" (Bool.to_string b)
+  | Commute b -> sp "Commute (%s)" (AstML.string_of_exp b)
   | Disjoint -> "Disjoint"
 
 
@@ -104,7 +104,11 @@ let print_pdg pdg fn : unit =
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
-       | Commute _  
+       | Commute exp ->
+          let cond = AstML.string_of_exp exp in
+          "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
+                ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
+                ^ "[style=dotted, color=red, label=\""^cond^"\", penwidth=\""^pw^"\"];\n"
        | Disjoint 
        | ControlDep ->
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
@@ -226,6 +230,36 @@ let add_dataDep_edges pdg =
   !p
 
 
+let add_commuteDep_edges pdg (gc: group_commute list) : exe_pdg =
+  let find_commute_condition l1 l2 =
+    let res = ref None in 
+    List.iter (
+      fun (bl, cond) ->
+        let check_label label lb_list = 
+          List.exists (fun (l,_) -> String.equal (fst label) l) lb_list
+        in 
+        apply_pairs (
+          fun x y -> 
+            if (check_label l1 x && check_label l2 y ||
+            check_label l1 y && check_label l2 x) then res := Some cond 
+          ) bl
+      ) gc;
+    res
+  in
+  let p = ref pdg in 
+  apply_pairs (fun (x : pdg_node) (y : pdg_node) -> 
+    begin match x.src, y.src with 
+    | Some {elt=(SBlock (Some l1, _))}, Some {elt=(SBlock (Some l2, _))} -> 
+      begin match !(find_commute_condition l1 l2) with 
+      | Some (PhiExp cond) -> p := add_edge !p x y (Commute cond)
+      | _ -> failwith "undefined commute condition"
+      end
+    | _, _ -> ()
+    end
+  ) pdg.nodes;
+  !p
+
+
 type visited = (pdg_node * bool) list
 
 let rec mark_visited n visited =
@@ -337,7 +371,7 @@ let mark_loop_carried_dependencies pdg : exe_pdg =
   {pdg with edges = e}
 
 
-let build_pdg (block: block) entry_loc : exe_pdg = 
+let build_pdg (block: block) entry_loc (gc: group_commute list) : exe_pdg = 
   let pdg = empty_exe_pdg() in 
   let pdg = { pdg with entry_node = Some {l= entry_loc; n= Entry; src= None} } in
   let rec traverse_ast block pdg : exe_pdg =
@@ -359,12 +393,11 @@ let build_pdg (block: block) entry_loc : exe_pdg =
         List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg bl.elt
 
       (* | SBlock (blocklabel, bl) -> 
-          let n = stmt in 
-          snd (add_node pdg n) *)
-
-      | _ -> 
         let n = stmt in 
-        snd (add_node pdg n)
+        snd (add_node pdg n) *)
+
+      | _ ->  
+        snd (add_node pdg stmt)
       end 
       in 
       traverse_ast tl updated_pdg
@@ -372,6 +405,8 @@ let build_pdg (block: block) entry_loc : exe_pdg =
   let pdg = (traverse_ast block pdg) in
   (* add data dependency edges for each pairs of nodes *)
   let pdg = add_dataDep_edges pdg in 
+  (* add commute dependency edges *)
+  let pdg = add_commuteDep_edges pdg gc in
   (* connect the entry node to the header nodes *)
   let pdg = begin match pdg.entry_node with 
   | Some en -> List.fold_left (fun pdg s -> let n = find_node s pdg in add_edge pdg en n ControlDep) pdg block
@@ -470,7 +505,11 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
-       | Commute _  
+       | Commute exp ->
+          let cond = AstML.string_of_exp exp in
+          "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
+                ^ (id_of_dag_node e.dag_dst) ^ "\" "
+                ^ "[style=dotted, color=red, label=\""^cond^"\", penwidth=\""^pw^"\"];\n"  
        | Disjoint 
        | ControlDep ->
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
@@ -845,8 +884,8 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   tasks
 
 
-let ps_dswp (body: block node) loc = 
-  let pdg = build_pdg body.elt loc in 
+let ps_dswp (body: block node) loc (gc: group_commute list) = 
+  let pdg = build_pdg body.elt loc gc in 
   print_pdg_debug pdg;
   print_pdg pdg "/tmp/pdg.dot";
   let sccs = find_sccs pdg in
