@@ -83,24 +83,26 @@ and gen_senddep tsk other_id =
       tsk.id other_id;
     print_endline (str_of_task tsk);
     let thedep = List.find (fun d -> d.pred_task == (int_of_string other_id)) tsk.deps_out in 
-       String.concat "\n" ([
+       String.concat "\n" (["";
          ("        // Begin Send Deps to task " ^ other_id);
-         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %s\");\n" tsk.id other_id);
+         ("        //   Vars to send: "^(str_of_vars_list thedep.vars));
+         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %s\");" tsk.id other_id);
         ]
         @
         (List.map (fun (dep_type, dep_id) ->
-          (Printf.sprintf "        %s %s = t%s_to_t%d_%s;\n" 
+          (Printf.sprintf "        %s %s = t%d_to_t%s_%s;" 
             (gen_ty dep_type)
             dep_id
-            other_id
             tsk.id
+            other_id
             dep_id
           )
         ) thedep.vars)
         @
         [
-          (Printf.sprintf "        sem_post(&t%d_to_t%s_sem);\n" tsk.id other_id);
-          ("        // End Send Deps to task " ^ other_id)
+          (Printf.sprintf "        sem_post(&t%d_to_t%s_sem);" tsk.id other_id);
+          ("        // End Send Deps to task " ^ other_id);
+          ""
         ])
   with 
     Not_found -> failwith "gen_senddep: didn't find the other task"
