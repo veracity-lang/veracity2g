@@ -1,0 +1,32 @@
+int main(int argc, string[] argv) {
+    int[] pIds = new int[100];
+    bool[] visited = new bool[100];
+    int pSize = 100;
+    /* Each row is a fixed p, variable q */
+    int[] pValue = new int[100];
+    bool[][] pqFlag = new bool[][100];
+    int sum =0;
+    /* initialize pqFlag */
+    for (int i = 0; i < 100; i = i + 1;) {
+        pqFlag[i] = new bool[100];
+        if (pIds[i] < 0) { pIds[i] = i; }
+    }
+    int p = 0;
+    while(p < pSize){
+        int id = pIds[p];
+        if(!visited[id % 100]){
+            visited[id % 100] = true;
+
+            int row = p; /* "row" should be the dep */
+            int q = 0;
+            while (q < 99 && !pqFlag[row][q%100]){
+                q = q+1; 
+            }
+            if(q < 100){
+                sum = sum + pValue[row];
+            }
+        }
+        p = p + 1; 
+    }
+    return sum;
+}
