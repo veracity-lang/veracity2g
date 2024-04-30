@@ -351,7 +351,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 
           bind binds @@ compile_block_to_smt tl vctrs
 
-        | Commute (_, _, blks) -> 
+        | Commute (_, _, blks, _, _) -> 
           (* List.map (fun {elt=bl; _} -> compile_block_to_smt bl ) blks *)
           let comm_blk = List.map (fun {elt=bl; _} -> bl ) blks in
           compile_block_to_smt (List.concat comm_blk) vctrs; 

@@ -249,15 +249,12 @@ stmt:
   | FOR LPAREN vdecls=separated_list(COMMA, vdecl) SEMI e=option(exp) SEMI s=option(stmt) RPAREN b=block
       {loc $startpos $endpos @@ For(vdecls, e, s, b)}
   | variant=commute_variant phi=commute_condition
-    LBRACE blocks=nonempty_list(block) RBRACE
-    { loc $startpos $endpos @@ Commute(variant,phi,blocks) }
+    LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) RBRACE
+    { loc $startpos $endpos @@ Commute(variant,phi,blocks,pre,post) }
   | RAISE e=exp SEMI { loc $startpos $endpos @@ Raise e }
   | ASSERT e=exp SEMI { loc $startpos $endpos @@ Assert e }
   | ASSUME e=exp SEMI { loc $startpos $endpos @@ Assume e }
   | HAVOC i=IDENT SEMI { loc $startpos $endpos @@ Havoc i }
-  | variant=commute_variant phi=commute_condition
-    LBRACE PRE COLON pre=exp blocks=nonempty_list(block) POST COLON post=exp RBRACE
-    { loc $startpos $endpos @@ GCommute(variant,phi,pre,blocks,post) }
 
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }

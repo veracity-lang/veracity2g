@@ -251,7 +251,7 @@ module AstPP = struct
         end; pp_close_box fmt ();
         pps ") "; print_block_aux fmt body
 
-      | Commute(variant, phi, bodies) ->
+      | Commute(variant, phi, bodies, pre, post) ->
           pps "commute_";
           begin match variant with
             | CommuteVarSeq -> pps "seq"
@@ -502,7 +502,9 @@ module AstML = struct
                           (string_of_option string_of_exp e)
                           (string_of_option string_of_stmt s) (string_of_block b)
     | While (e,b) -> sp "While (%s, %s)" (string_of_exp e) (string_of_block b)
-    | Commute (var,phi,bl) -> 
+    | Commute (var,phi,bl,pre,post) -> 
+      begin match pre, post with 
+      | None, None -> 
       sp "Commute (%s, %s, %s)"
         begin match var with
         | CommuteVarSeq -> "CommuteVarSeq"
@@ -513,16 +515,8 @@ module AstML = struct
         | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
         end
         (string_of_list string_of_block bl)
-    | Raise e ->
-      sp "Raise (%s)" (string_of_exp e)
-    | Assert e ->
-      sp "Assert (%s)" (string_of_exp e)
-    | Assume e ->
-      sp "Assume (%s)" (string_of_exp e)
-    | Havoc id ->
-      sp "Havoc %s" (string_of_id id)
-    | GCommute (var,phi,pre,bl,post) -> 
-      sp "GCommute (%s, %s, %s, %s, %s)"
+      | Some pr, None ->
+      sp "Commute (%s, %s, %s, %s)"
         begin match var with
         | CommuteVarSeq -> "CommuteVarSeq"
         | CommuteVarPar -> "CommuteVarPar"
@@ -531,9 +525,43 @@ module AstML = struct
         | PhiInf   -> "PhiInf" 
         | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
         end
-        (string_of_exp pre)
+        (string_of_exp pr)
         (string_of_list string_of_block bl)
-        (string_of_exp post)
+      | None, Some po ->
+      sp "Commute (%s, %s, %s, %s)"
+        begin match var with
+        | CommuteVarSeq -> "CommuteVarSeq"
+        | CommuteVarPar -> "CommuteVarPar"
+        end
+        begin match phi with 
+        | PhiInf   -> "PhiInf" 
+        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
+        end
+        (string_of_list string_of_block bl)
+        (string_of_exp po)
+      | Some pr, Some po ->
+      sp "Commute (%s, %s, %s, %s, %s)"
+        begin match var with
+        | CommuteVarSeq -> "CommuteVarSeq"
+        | CommuteVarPar -> "CommuteVarPar"
+        end
+        begin match phi with 
+        | PhiInf   -> "PhiInf" 
+        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
+        end
+        (string_of_exp pr)
+        (string_of_list string_of_block bl)
+        (string_of_exp po)
+      end
+      
+    | Raise e ->
+      sp "Raise (%s)" (string_of_exp e)
+    | Assert e ->
+      sp "Assert (%s)" (string_of_exp e)
+    | Assume e ->
+      sp "Assume (%s)" (string_of_exp e)
+    | Havoc id ->
+      sp "Havoc %s" (string_of_id id)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s

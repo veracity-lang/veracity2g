@@ -588,7 +588,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     pop_block_from_callstack env, v
   | While (cnd, body) ->
     interp_stmt_while env stmt.loc cnd body
-  | Commute (variant, phi, blocks) ->
+  | Commute (variant, phi, blocks, _, _) ->
     let cnd =
       match phi with
       | PhiExp p -> interp_phi env p
@@ -711,10 +711,10 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
-  | Commute (var,phi,bl) ->
+  | Commute (var,phi,bl, pre, post) ->
     let bl = List.map (infer_phis_of_block g defs) bl in
     let phi' =
-      let infer () = let phi' = infer_phi g var bl defs None None in
+      let infer () = let phi' = infer_phi g var bl defs pre post in
         if !emit_inferred_phis then
           begin if !emit_quiet
           then Printf.printf "%s\n"
@@ -727,30 +727,10 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
       in match phi with
     | PhiExp e -> if !force_infer then infer () else e
     | PhiInf -> infer ()
-    in let s = Commute (var, PhiExp phi', bl) in
+    in let s = Commute (var, PhiExp phi', bl, pre, post) in
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
-  | GCommute (var,phi,pre,bl,post) ->
-  let bl = List.map (infer_phis_of_block g defs) bl in
-  let phi' =
-    let infer () = let phi' = infer_phi g var bl defs (Some pre) (Some post) in
-      if !emit_inferred_phis then
-        begin if !emit_quiet
-        then Printf.printf "%s\n"
-          (AstPP.string_of_exp phi')
-        else Printf.printf "Inferred condition at %s: %s\n"
-          (Range.string_of_range h.loc) 
-          (AstPP.string_of_exp phi')
-        end;
-      phi'
-    in match phi with
-  | PhiExp e -> if !force_infer then infer () else e
-  | PhiInf -> infer ()
-  in let s = Commute (var, PhiExp phi', bl) in
-  node_app
-    (List.cons (node_up h s))
-    (infer_phis_of_block g defs t)
 
 let infer_phis_of_prog (g : global_env) : global_env =
   let globals : ty bindlist =
@@ -796,14 +776,14 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
-  | Commute (var,phi,bl) ->
+  | Commute (var,phi,bl,pre,post) ->
     let bl = List.map (verify_phis_of_block g defs) bl in
     begin match phi with
       | PhiExp e ->
         if !print_cond then 
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g var bl defs None None with
+        begin match Analyze.verify_of_block e g var bl defs pre post with
         | Some b, compl -> 
           let compl_str = 
             match compl with 
@@ -832,47 +812,7 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
           else print_string "failure\n"
         end
       | PhiInf -> () end;
-    let s = Commute (var, phi, bl) in
-    node_app
-      (List.cons (node_up h s))
-      (verify_phis_of_block g defs t)
-  | GCommute (var,phi,pre,bl,post) ->
-    let bl = List.map (verify_phis_of_block g defs) bl in
-    begin match phi with
-      | PhiExp e ->
-        if !print_cond then 
-          Printf.printf "%s\n" (AstPP.string_of_exp e);
-
-        begin match Analyze.verify_of_block e g var bl defs (Some pre) (Some post) with
-        | Some b, compl -> 
-          let compl_str = 
-            match compl with 
-            | Some true  -> "true" 
-            | Some false -> "false" 
-            | None       -> "unknown"
-          in
-          if not b then begin 
-            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n" 
-              (Range.string_of_range h.loc) 
-              (AstPP.string_of_exp e)
-            else print_string "incorrect\n"
-          end else begin 
-            if not !emit_quiet then
-              Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
-                (Range.string_of_range h.loc) 
-                (AstPP.string_of_exp e)
-                compl_str
-            else Printf.printf "correct\n%s\n" compl_str
-          end
-        | None, _ -> 
-          if not !emit_quiet then
-            Printf.printf "Condition at %s unable to verify: %s\n" 
-              (Range.string_of_range h.loc) 
-              (AstPP.string_of_exp e)
-          else print_string "failure\n"
-        end
-      | PhiInf -> () end;
-    let s = Commute (var, phi, bl) in
+    let s = Commute (var, phi, bl, pre, post) in
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
@@ -987,13 +927,20 @@ let cook_calls (g : global_env) : global_env =
       While (cook_calls_of_exp e, cook_calls_of_block b)
     | Raise e ->
       Raise (cook_calls_of_exp e)
-    | Commute (v, c, bl) ->
+    | Commute (v, c, bl, pre, post) ->
       let c =
         match c with
         | PhiExp e -> PhiExp (cook_calls_of_exp e)
         | PhiInf -> PhiInf
       in
-      Commute (v, c, List.map cook_calls_of_block bl)
+      let pre_exp, post_exp = begin match pre, post with 
+      | None, None -> pre, post
+      | Some pr, None -> Some (cook_calls_of_exp pr), post
+      | None, Some po -> pre, Some (cook_calls_of_exp po)
+      | Some pr, Some po -> Some (cook_calls_of_exp pr), Some (cook_calls_of_exp po)
+      end
+      in
+      Commute (v, c, List.map cook_calls_of_block bl, pre_exp, post_exp)
     | Assert e ->
       Assert (cook_calls_of_exp e)
     | Assume e ->
@@ -1002,13 +949,6 @@ let cook_calls (g : global_env) : global_env =
       Havoc id
     | Require e ->
       Require (cook_calls_of_exp e)
-    | GCommute (v, c, pre, bl, post) ->
-      let c =
-        match c with
-        | PhiExp e -> PhiExp (cook_calls_of_exp e)
-        | PhiInf -> PhiInf
-      in
-      GCommute (v, c, cook_calls_of_exp pre, List.map cook_calls_of_block bl, cook_calls_of_exp post)
     in
     node_up s s'
 
