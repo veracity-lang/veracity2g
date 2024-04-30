@@ -849,7 +849,7 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) =
       let src_task = List.assoc src_taskID tasks in 
       let dst_task = List.assoc dst_taskID tasks in
       res := 
-      (src_taskID, {src_task with deps_out = [{pred_task= 0; vars}]}) :: 
+      (src_taskID, {src_task with deps_out = [{pred_task= dst_taskID; vars}]}) :: 
       (dst_taskID, {dst_task with deps_in = [{pred_task= src_taskID; vars}]}) ::
       List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
     | _ ->()
@@ -880,7 +880,8 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
-  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
+  (* List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks; *)
+   List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks;
   tasks
 
 
