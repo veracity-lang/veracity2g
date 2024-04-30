@@ -77,34 +77,33 @@ and gen_stmt tsk = function
 
 
 and gen_senddep tsk other_id = 
-  Printf.printf "gen_senddep: I am task %d. looking for other task %s in my deps: \n " 
-     tsk.id other_id;
-  (* Look up in my dependencies for other_id *)
-  print_endline (str_of_task tsk);
   try 
-    let var_list = List.find (fun d -> d.pred_task == (int_of_string other_id)) tsk.deps_out in 
-    failwith "gen_senddep todo, but found the other."
+    (* Look up in my dependencies for other_id *)
+    Printf.printf "gen_senddep: I am task %d. looking for other task %s in my deps: \n " 
+      tsk.id other_id;
+    print_endline (str_of_task tsk);
+    let thedep = List.find (fun d -> d.pred_task == (int_of_string other_id)) tsk.deps_out in 
+       String.concat "\n" ([
+         ("        // Begin Send Deps to task " ^ other_id);
+         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %s\");\n" tsk.id other_id);
+        ]
+        @
+        (List.map (fun (dep_type, dep_id) ->
+          (Printf.sprintf "        %s %s = t%s_to_t%d_%s;\n" 
+            (gen_ty dep_type)
+            dep_id
+            other_id
+            tsk.id
+            dep_id
+          )
+        ) thedep.vars)
+        @
+        [
+          (Printf.sprintf "        sem_post(&t%d_to_t%s_sem);\n" tsk.id other_id);
+          ("        // End Send Deps to task " ^ other_id)
+        ])
   with 
     Not_found -> failwith "gen_senddep: didn't find the other task"
-  (* sp "// Begin Send Deps to task\n %s // End Send Deops "
-  (List.map (fun dep_out -> 
-    (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %d\");\n" t.id dep_out.pred_task)
-    ^
-    (* collect all the vars *)
-    (String.concat "\n" (List.map (fun (dep_type, dep_id) ->
-      (Printf.sprintf "        %s %s = t%d_to_t%d_%s;\n" 
-        (gen_ty dep_type)
-        dep_id
-        dep_out.pred_task
-        t.id
-        dep_id
-      )
-    ) dep_out.vars))
-    ^
-    (* post semaphore*)
-    (Printf.sprintf "        sem_post(&t%d_to_t%d_sem);\n" t.id dep_out.pred_task)
-
-  ) tsk'.deps_out) *)
 
 and gen_stmtnode tsk x = gen_stmt tsk x.elt
 and gen_block tsk b = let indent_pre = !indent in 
