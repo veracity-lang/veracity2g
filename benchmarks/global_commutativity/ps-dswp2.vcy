@@ -7,9 +7,11 @@ int main(int argc, string[] argv) {
     bool[][] pqFlag = new bool[][100];
     int sum =0;
     /* initialize pqFlag */
-    for (int i = 0; i < 100; i = i + 1;) {
+    int i = 0;
+    while(i < 100) {
         pqFlag[i] = new bool[100];
         if (pIds[i] < 0) { pIds[i] = i; }
+        i = i + 1;
     }
     int p = 0;
     while(p < pSize){
