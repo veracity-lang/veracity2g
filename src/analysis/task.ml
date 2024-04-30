@@ -1,5 +1,5 @@
 open Ast
-
+open Ast_print
 type taskid = int 
 
 (* t_i can depend on a list of variables written by some predecessor t_j *)
@@ -18,8 +18,22 @@ type task = {
   label: exe_label;
 }
 
+let str_of_vars_list (vlist : (ty * id) list) : string  = 
+  (String.concat ";" (List.map (fun (t,i) -> 
+       Printf.sprintf "%s %s" (AstML.string_of_ty t) i
+  ) vlist))
 
+let str_of_task_deps deplist = 
+  "{"
+  ^(String.concat "|" (List.map (fun dep ->
+    Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
+  ) deplist))
+  ^"}"
 
+let str_of_task tsk = 
+    Printf.sprintf "{Task %d:\n  deps_in:%s\n  deps_out:%s\n  label:%s}"
+      tsk.id (str_of_task_deps tsk.deps_in) (str_of_task_deps tsk.deps_out)
+      (match tsk.label with | Doall -> "DOALL" | Sequential -> "Seq")
 
 let rec calculate_semaphores tlist : (taskid * taskid) list =
   match tlist with 

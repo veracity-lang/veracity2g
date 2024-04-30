@@ -77,9 +77,15 @@ and gen_stmt tsk = function
 
 
 and gen_senddep tsk other_id = 
+  Printf.printf "gen_senddep: I am task %d. looking for other task %s in my deps: \n " 
+     tsk.id other_id;
   (* Look up in my dependencies for other_id *)
-  let other_tsk = [] in 
-  failwith "gen_senddep todo"
+  print_endline (str_of_task tsk);
+  try 
+    let var_list = List.find (fun d -> d.pred_task == (int_of_string other_id)) tsk.deps_out in 
+    failwith "gen_senddep todo, but found the other."
+  with 
+    Not_found -> failwith "gen_senddep: didn't find the other task"
   (* sp "// Begin Send Deps to task\n %s // End Send Deops "
   (List.map (fun dep_out -> 
     (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %d\");\n" t.id dep_out.pred_task)
