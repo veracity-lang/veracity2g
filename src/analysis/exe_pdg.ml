@@ -154,7 +154,9 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | Assn (e1,e2) -> (set_vars_side (find_exp_vars e1) lvalue) @ (set_vars_side (find_exp_vars e2) rvalue)
     | Decl vdecl ->
       let id, (ty, e) = vdecl in 
-      decl_vars := Gvdecl (no_loc { name = id; ty = ty; init = e }) :: !decl_vars;
+      let decl = Gvdecl (no_loc { name = id; ty = ty; init = e }) in 
+      if not (List.mem decl !decl_vars) then 
+        decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
     | _ -> []
@@ -880,7 +882,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
-  (* List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks; *)
+  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
    List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks;
   tasks
 
