@@ -192,25 +192,7 @@ let output_graph fn nodes edges  =
   print_endline ("Graph written to " ^ fn);
   close_out oc
 
-(*   
-    "f.vcy:1:1-5" [label="f.vcy:1:1-5\nx:=42;", fillcolor="#d3d3d3"]
-    "f.vcy:2:1-5" [label="f.vcy:2:1-5\nwhile(x>0)", shape="oval", fillcolor="#add8e6"]
-    "f.vcy:3:1-5" [label="f.vcy:3:1-5\nx:=x-1", fillcolor="#d3d3d3"]
-    "f.vcy:5:1-5" [label="f.vcy:5:1-5\nreturn x", fillcolor="#d3d3d3"]
-    
-    // Edges
-    "f.vcy:1:1-5" -> "f.vcy:2:1-5"
-    "f.vcy:2:1-5" -> "f.vcy:3:1-5"
-    "f.vcy:3:1-5" -> "f.vcy:2:1-5"
-    "f.vcy:2:1-5" -> "f.vcy:5:1-5"
-
-    // Control-Dep edges
-    "f.vcy:1:1-5" -> "f.vcy:2:1-5" [color="red", style="dashed"]
-    "f.vcy:2:1-5" -> "f.vcy:3:1-5" [color="red", style="dashed"]
-    "f.vcy:2:1-5" -> "f.vcy:5:1-5" [color="red", style="dashed"]
-
-    // Data-Dep edges
-    "f.vcy:1:1-5" -> "f.vcy:2:1-5" [color="blue", style="dotted"]
-    "f.vcy:2:1-5" -> "f.vcy:3:1-5" [color="blue", style="dotted"]
-    "f.vcy:2:1-5" -> "f.vcy:5:1-5" [color="blue", style="dotted"]
-    "f.vcy:3:1-5" -> "f.vcy:2:1-5" [color="blue", style="dotted"] *)
+let dot_escape s =
+  let s' = Str.global_replace (Str.regexp_string "\n") "\\n" s in
+  let s'' = Str.global_replace (Str.regexp_string "  ") " " s' in
+     Str.global_replace (Str.regexp_string "\"") "\\\"" s''

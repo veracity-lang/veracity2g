@@ -94,7 +94,7 @@ let print_pdg pdg fn : unit =
     (* Nodes *)
     (* let s = "\" [label=\""^(match pdg.entry_node with | Some en -> string_of_pdg_node_stmt en.n)^"\"];\n" in *)
     List.fold_left (fun acc node -> acc ^ "\"" ^ (Range.string_of_range_nofn node.l)
-    ^ "\" [label=\""^(string_of_pdg_node_stmt node.n)^"\"];\n") "" pdg.nodes;
+    ^ "\" [label=\""^(Util.dot_escape (string_of_pdg_node_stmt node.n))^"\"];\n") "" pdg.nodes;
     (* edges *)
     List.fold_left (fun acc e -> 
       let pw = penwidth_of_pdgedge e in
@@ -103,17 +103,17 @@ let print_pdg pdg fn : unit =
            let vars = AstML.string_of_args vars in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
        | Commute exp ->
           let cond = AstML.string_of_exp exp in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-                ^ "[style=dotted, color=red, label=\""^cond^"\", penwidth=\""^pw^"\"];\n"
+                ^ "[style=dotted, color=red, label=\""^(dot_escape cond)^"\", penwidth=\""^pw^"\"];\n"
        | Disjoint 
        | ControlDep ->
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
-               ^ "[style=dashed, color=maroon, penwidth=\""^pw^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+               ^ "[style=dashed, color=maroon, penwidth=\""^(dot_escape pw)^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
     )) "" pdg.edges;
     "}\n";
   ]);
@@ -506,17 +506,17 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
            let vars = AstML.string_of_args vars in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
-                ^ "[style=solid, color=green, label=\""^vars^"\", penwidth=\""^pw^"\"];\n" 
+                ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
        | Commute exp ->
           let cond = AstML.string_of_exp exp in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
-                ^ "[style=dotted, color=red, label=\""^cond^"\", penwidth=\""^pw^"\"];\n"  
+                ^ "[style=dotted, color=red, label=\""^(dot_escape cond)^"\", penwidth=\""^pw^"\"];\n"  
        | Disjoint 
        | ControlDep ->
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                ^ (id_of_dag_node e.dag_dst) ^ "\" "
-               ^ "[style=dashed, color=maroon, penwidth=\""^pw^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
+               ^ "[style=dashed, color=maroon, penwidth=\""^(dot_escape pw)^"\"];\n" (*label=\""^(string_of_dep e.dep)^"\"];\n"*)
     )) "" d.edges;
     "}\n";
   ]);
@@ -899,5 +899,6 @@ let ps_dswp (body: block node) loc (gc: group_commute list) =
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
   let tasks = thread_partitioning dag_scc pdg [] body in 
+  Printf.printf "gen_tasks called with %d globals\n" (List.length !decl_vars);
   Codegen_c.gen_tasks (!decl_vars) tasks;
   Codegen_c.print_tasks tasks "/tmp/tasks.dot"

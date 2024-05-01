@@ -37,7 +37,7 @@ and gen_exp = function
     | CInt(i) -> Int64.to_string i (* ^ "L" *)
     | CStr(s) -> sp "\"%s\"" s
     | CArr(ty, e) -> raise @@ NotImplemented "gen_exp CArr"
-    | NewArr(ty, e) -> "<<new array stmt>>" (*raise @@ NotImplemented "gen_exp NewArr"*)
+    | NewArr(ty, e) -> "malloc(sizeof("^(gen_ty ty)^") * "^(gen_expnode e)^")" 
     | NewHashTable(var, kty, vty) -> "<<new hashtable stmt>>" (*raise @@ NotImplemented "gen_exp NewHashTable"*)
     | Id(id) -> (!mangle id)
     | Index(arr, idx) -> sp "(%s[%s])" (gen_expnode arr) (gen_expnode idx)
@@ -202,7 +202,7 @@ let gen_tasks gvar_decls tlist =
         (List.map (fun dep_in -> 
           (Printf.sprintf "        printf(\"task_%d: waiting for input from task %d\");\n" t.id dep_in.pred_task)
           ^
-          (Printf.sprintf "        sem_wait(&t%d_to_t%d_sem);\n" t.id dep_in.pred_task)
+          (Printf.sprintf "        sem_wait(&t%d_to_t%d_sem);\n" dep_in.pred_task t.id)
           ^
           (* collect all the vars *)
           (String.concat "\n" (List.map (fun (dep_type, dep_id) ->
@@ -248,10 +248,14 @@ let edge_of_dep myid dp direction : string =
   Printf.sprintf "\"%d\" -> \"%d\" [label=\"%s\"];\n"
       src dst (String.concat "," (List.map (fun (t,i) -> i) dp.vars))
 
-let str_of_task_body tsk : string = 
+let dot_of_task_body tsk : string = 
   let t = gen_blocknode tsk tsk.body in
-  let t' = Str.global_replace (Str.regexp_string "\n") " " t in
-  Str.global_replace (Str.regexp_string "  ") " " t'
+  let t' = Str.global_replace (Str.regexp_string "\n") "\\n" t in
+  let t'' = Str.global_replace (Str.regexp_string "  ") " " t' in
+  let es = Str.global_replace (Str.regexp_string "\"") "\\\"" t'' in
+  if String.length es > 300 then 
+    (String.sub es 0 300)^"...TRUNC ("^(string_of_int (String.length es))^" chars)"
+  else es 
 
 let print_tasks tlist fn : unit = 
   let oc = open_out fn in
@@ -263,7 +267,7 @@ let print_tasks tlist fn : unit =
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
     List.fold_left (fun acc tsk -> acc ^ "\"" ^ (string_of_int tsk.id)
-    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(str_of_task_body tsk)^"\"];\n") "" tlist;
+    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(dot_of_task_body tsk)^"\"];\n") "" tlist;
     (* edges *)
     List.fold_left (fun acc tsk -> acc ^ 
         (List.fold_left (fun acc' din -> edge_of_dep tsk.id din false) "" tsk.deps_in)
