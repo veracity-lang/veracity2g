@@ -915,7 +915,13 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   tasks
 
 
-let ps_dswp (body: block node) loc (g: global_env) = 
+let ps_dswp (body: block node) loc (g: global_env) globals = 
+  List.iter (
+    fun (id, (ty,e)) -> 
+    let decl = Gvdecl (no_loc { name = id; ty = ty; init = e}) in 
+    decl_vars := !decl_vars @ [decl]
+  ) globals;
+  
   let pdg = build_pdg body.elt loc g.group_commute in 
   print_pdg_debug pdg;
   print_pdg pdg "/tmp/pdg.dot";
