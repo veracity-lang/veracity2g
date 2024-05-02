@@ -22,7 +22,7 @@ let mk_newline () = "\n" ^ String.make !indent ' '
 let rec gen_ty = function
     | TVoid -> "void"
     | TInt -> "int"
-    | TBool -> "bool" (* TODO: Not ansi C. can use int, or stdbool.h? *)
+    | TBool -> "int" (* TODO: Not ansi C. can use int, or stdbool.h? *)
     | TStr -> "const char*"
     | TArr(ty) -> sp "%s*" (gen_ty ty)
     | THashTable(kty, vty) -> "<<new Thashtable stmt>>" (*raise @@ NotImplemented "gen_ty THashTable"*)
@@ -31,9 +31,10 @@ let rec gen_ty = function
     | TStruct(id) -> raise @@ NotImplemented "gen_ty TStruct"
 
 let rec gen_expnode x = gen_exp x.elt
+and gen_of_bool = function true -> "1" | _ -> "0"
 and gen_exp = function
     | CNull(ty) -> "0"
-    | CBool(b) -> string_of_bool b
+    | CBool(b) -> gen_of_bool b
     | CInt(i) -> Int64.to_string i (* ^ "L" *)
     | CStr(s) -> sp "\"%s\"" s
     | CArr(ty, e) -> raise @@ NotImplemented "gen_exp CArr"
