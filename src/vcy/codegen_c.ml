@@ -245,8 +245,9 @@ let gen_tasks gvar_decls tlist =
 
 let edge_of_dep myid dp direction : string = 
   let (src,dst) = if direction then (myid,dp.pred_task) else (dp.pred_task,myid) in
-  Printf.sprintf "\"%d\" -> \"%d\" [label=\"%s\"];\n"
-      src dst (String.concat "," (List.map (fun (t,i) -> i) dp.vars))
+  let note = if direction then "out:" else "in:" in
+  Printf.sprintf "\"%d\" -> \"%d\" [label=\"T%d %s %s\"];\n"
+      src dst myid note (String.concat "," (List.map (fun (t,i) -> i) dp.vars))
 
 let dot_of_task_body tsk : string = 
   let t = gen_blocknode tsk tsk.body in
