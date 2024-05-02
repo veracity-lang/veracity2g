@@ -178,6 +178,8 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
 and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
   | CStr s | Id s -> [(TStr, s)]
+  (* let (Gvdecl v) = List.find (fun (Gvdecl d) -> String.equal d.elt.name s) !decl_vars in 
+   [(v.elt.ty, s)] *)
   | CArr (_, expl) -> List.concat_map find_exp_vars expl
   | NewArr (_, e) | Uop (_, e) -> find_exp_vars e
   | Index (e1, e2) | Bop (_, e1, e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
@@ -202,7 +204,7 @@ let has_data_dep src dst : bool * (ty * string) list * int =
       if List.mem_assoc head list2 then begin
         let val2 = List.assoc head list2 in 
         begin match val1, val2 with 
-        | 0, 1 -> true, head :: vars, src_to_dst
+        | 0, 1  -> true, head :: vars, src_to_dst
         | 1, 0 -> true, head :: vars, dst_to_src
         | _, _ -> false, vars, src_to_dst
         end
@@ -306,45 +308,71 @@ let compare_nodes n1 n2 =
 let is_loop_carried_dependence (pdg: exe_pdg) (edge: pdg_edge) =
   let n1 = edge.src in
   let n2 = edge.dst in
-  let is_loop_header node = 
-    match node.n with 
+let find_outermost_loop_header pdg mem_node : pdg_node option =
+  let is_loop_header (node: pdg_node) =
+    match node.n with
     | EFor _ | EWhile _ -> true
     | _ -> false
   in
+  let header = ref None in 
+  let rec traverse_backwards (node: pdg_node) visited =
+    if List.mem node visited then None
+    else begin
+      if (is_loop_header node) then 
+        header := Some node;
+      let predecessors = List.filter_map (fun e ->
+        if compare_nodes e.dst node && e.dep == ControlDep then Some e.src else None) pdg.edges in
+      begin match 
+      List.fold_left (fun acc pred ->
+        match acc with
+        | Some _ -> acc
+        | None -> traverse_backwards pred (node :: visited)) None predecessors
+      with 
+      | None -> !header 
+      | h -> h
+      end
+    end
+  in
+  traverse_backwards mem_node []
+
+  in
   match edge.dep with
   | DataDep register ->
-    (* Check if the definition of the register reaches the loop header *)
-    let rec definition_reaches_loop_header (node: pdg_node) (visited: visited ref) =
+    (* Check if the definition of the register reaches the outermost loop header *)
+    let rec definition_reaches_outer_loop_header (node: pdg_node) (visited: visited ref) =
       if List.assoc node !visited then false
       else begin
         visited := mark_visited node !visited;
-        if is_loop_header node then true 
-        else
-          match List.find_opt (fun e -> compare_nodes e.dst node) pdg.edges with
-          | None -> false
-          | Some e -> definition_reaches_loop_header e.src visited
+        let outer_loop_header = find_outermost_loop_header pdg node in
+        match outer_loop_header with
+        | None -> false
+        | Some outer_loop_header ->
+          if compare_nodes outer_loop_header node then true 
+          else match List.find_opt (fun e -> compare_nodes e.dst node) pdg.edges with
+               | None -> false
+               | Some e -> definition_reaches_outer_loop_header e.src visited
       end
     in
-    let visited = ref @@ List.map (fun v -> (v, false)) (pdg.nodes) in
-    let definition_reaches_loop_header = definition_reaches_loop_header n1 visited in
-    (* Check if there is an upwards-exposed use of the register in n2 at the loop header *)
-    let upwards_exposed_use_in_loop_header =
-      match List.find_opt (fun e -> is_loop_header e.dst) pdg.edges with
+    let visited = ref @@ List.map (fun v -> (v, false)) pdg.nodes in
+    let definition_reaches_outer_loop_header = definition_reaches_outer_loop_header n1 visited in
+    (* Check if there is an upwards-exposed use of the register in n2 at the outermost loop header *)
+    let upwards_exposed_use_in_outer_loop_header =
+      let outer_loop_header = find_outermost_loop_header pdg n1 in
+      match outer_loop_header with
       | None -> false
-      | Some loop_header_edge ->
+      | Some outer_loop_header ->
         let rec has_upwards_exposed_use node =
           let uses, _ = List.split (List.filter (fun (v, side) -> side == rvalue) (find_stmt_vars node.n)) in 
-          (* if List.exists (fun use -> List.mem use register) uses then true *)
-          if List.exists (fun (_,use) -> List.exists (fun (_,r) -> String.equal use r) register) uses then true         
+          if List.exists (fun (_, use) -> List.exists (fun (_, r) -> String.equal use r) register) uses then true
           else match List.find_opt (fun e -> compare_nodes e.src node) pdg.edges with
             | None -> false
             | Some e ->
-              if is_loop_header e.src then false (* Reached loop header *)
+              if compare_nodes outer_loop_header e.src then false (* Reached outermost loop header *)
               else has_upwards_exposed_use e.src
         in
         has_upwards_exposed_use n2
     in
-    definition_reaches_loop_header && upwards_exposed_use_in_loop_header
+    definition_reaches_outer_loop_header && upwards_exposed_use_in_outer_loop_header
   (* | ControlDep ->
     let rec is_loop_carried_control_dependence n1 n2 pdg visited =
       if compare_nodes n1 n2 then
@@ -882,13 +910,13 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
-  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
+  (* List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks; *)
    List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks;
   tasks
 
 
-let ps_dswp (body: block node) loc (gc: group_commute list) = 
-  let pdg = build_pdg body.elt loc gc in 
+let ps_dswp (body: block node) loc (g: global_env) = 
+  let pdg = build_pdg body.elt loc g.group_commute in 
   print_pdg_debug pdg;
   print_pdg pdg "/tmp/pdg.dot";
   let sccs = find_sccs pdg in

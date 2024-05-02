@@ -1,4 +1,3 @@
-int main(int argc, string[] argv) {
     int[] pIds = new int[100];
     bool[] visited = new bool[100];
     int pSize = 100;
@@ -8,19 +7,26 @@ int main(int argc, string[] argv) {
     int sum =0;
     /* initialize pqFlag */
     int i = 0;
+    int p = 0;
+    int id = 0;
+    int row = 0;
+    int q = 0;
+
+int main(int argc, string[] argv) {
+
     while(i < 100) {
         pqFlag[i] = new bool[100];
         if (pIds[i] < 0) { pIds[i] = i; }
         i = i + 1;
     }
-    int p = 0;
+
     while(p < pSize){
-        int id = pIds[p];
+        id = pIds[p];
         if(!visited[id % 100]){
             visited[id % 100] = true;
 
-            int row = p; /* "row" should be the dep */
-            int q = 0;
+            row = p; /* "row" should be the dep */
+            q = 0;
             while (q < 99 && !pqFlag[row][q%100]){
                 q = q+1; 
             }
