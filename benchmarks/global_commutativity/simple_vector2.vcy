@@ -1,5 +1,5 @@
 commutativity {
-    {f1(c)}, {f2(c)}: true
+    {f1(c)}, {f2(c)}: (true)
 }
 
 int main(int argc, string[] argv) {
@@ -8,7 +8,7 @@ int main(int argc, string[] argv) {
     int[] x = new int[size];
     int[] y = new int[size];
     int[] z = new int[size];
-    int sum = 0
+    int sum = 0;
     for(int i = 0; i < size; i = i+1;) {
         x[i] = havoc();
     }
@@ -20,7 +20,7 @@ int main(int argc, string[] argv) {
     }
     
     for(int i = 0; i < size; i = i+1;) {
-        sum += y[i];
+        sum = sum + y[i];
     }
 
     f2:{ 
