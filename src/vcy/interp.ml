@@ -950,7 +950,7 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l} :: tl ->
     
     (* let gc_list = interp_global_commute g in  *)
-    Exe_pdg.ps_dswp body l g globals;
+    Exe_pdg.ps_dswp body l args g globals;
 
     (* Eric's testing of Vcy-to-C. This will later be called with the re-constructed task bodies *)
     (* Codegen_c.gen body.elt; *)

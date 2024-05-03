@@ -136,6 +136,7 @@ let find_node (s: stmt node) pdg : pdg_node =
 let rvalue = 1
 let lvalue = 0
 let decl_vars = ref []
+let m_vars = ref []
 
 let set_vars_side (vars : (ty * string) list) side : ((ty * string) * int) list = 
   List.map (fun v -> (v, side)) vars
@@ -177,9 +178,12 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
 
 and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
-  | CStr s | Id s -> [(TStr, s)]
-  (* let (Gvdecl v) = List.find (fun (Gvdecl d) -> String.equal d.elt.name s) !decl_vars in 
-   [(v.elt.ty, s)] *)
+  | CStr s | Id s -> 
+  begin match List.find_opt (fun (Gvdecl d) -> String.equal d.elt.name s) !decl_vars with 
+  | None -> [List.find (fun (ty, id) -> String.equal id s) !m_vars]
+  | Some (Gvdecl v) -> [(v.elt.ty, s)]
+  | _ -> failwith "undefined variable"
+  end
   | CArr (_, expl) -> List.concat_map find_exp_vars expl
   | NewArr (_, e) | Uop (_, e) -> find_exp_vars e
   | Index (e1, e2) | Bop (_, e1, e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
@@ -876,11 +880,11 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) =
     | DataDep vars -> 
       let src_taskID = find_taskID e.dag_src in
       let dst_taskID = find_taskID e.dag_dst in 
-      let src_task = List.assoc src_taskID tasks in 
-      let dst_task = List.assoc dst_taskID tasks in
-      res := 
-      (src_taskID, {src_task with deps_out = [{pred_task= dst_taskID; vars}]}) :: 
-      (dst_taskID, {dst_task with deps_in = [{pred_task= src_taskID; vars}]}) ::
+      let src_task = List.assoc src_taskID !res in 
+      let dst_task = List.assoc dst_taskID !res in
+      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars} :: src_task.deps_out}) in
+      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars} :: dst_task.deps_in}) in 
+      res := new_src_task :: new_dst_task ::
       List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
     | _ ->()
   ) dag.edges;
@@ -915,14 +919,15 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   tasks
 
 
-let ps_dswp (body: block node) loc (g: global_env) globals = 
+let ps_dswp (body: block node) m_loc m_args (g: global_env) globals = 
   List.iter (
     fun (id, (ty,e)) -> 
     let decl = Gvdecl (no_loc { name = id; ty = ty; init = e}) in 
     decl_vars := !decl_vars @ [decl]
   ) globals;
-  
-  let pdg = build_pdg body.elt loc g.group_commute in 
+  m_vars := m_args;
+
+  let pdg = build_pdg body.elt m_loc g.group_commute in 
   print_pdg_debug pdg;
   print_pdg pdg "/tmp/pdg.dot";
   let sccs = find_sccs pdg in
