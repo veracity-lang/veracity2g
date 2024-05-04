@@ -272,9 +272,9 @@ let print_tasks tlist fn : unit =
     ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(dot_of_task_body tsk)^"\"];\n") "" tlist;
     (* edges *)
     List.fold_left (fun acc tsk -> acc ^ 
-        (List.fold_left (fun acc' din -> edge_of_dep tsk.id din false) "" tsk.deps_in)
+        (List.fold_left (fun acc' din -> acc'^(edge_of_dep tsk.id din false)) "" tsk.deps_in)
         ^
-        (List.fold_left (fun acc' dout -> edge_of_dep tsk.id dout true) "" tsk.deps_out)
+        (List.fold_left (fun acc' dout -> acc'^(edge_of_dep tsk.id dout true)) "" tsk.deps_out)
     ) "" tlist;
     "}\n";
   ]);
