@@ -677,6 +677,8 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
       all_in_list_a_in_b e.dag_src.n block2.n 
       && all_in_list_a_in_b e.dag_dst.n block1.n)
       && e.loop_carried
+      ||
+      match e.dep with | Commute _ -> true | _ -> false
       ) dag_scc.edges) in
     a && b&& d && c && (block1.label == Doall && block2.label = Doall)
   in
@@ -722,6 +724,9 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
 
 (* Function to retain the doall block with the maximum profile weight *)
 let retain_max_profile_doall dag_scc =
+  let is_labeled (node:dag_node) = 
+    List.for_all (fun (p:pdg_node) -> match p.n with | EStmt ({elt = SBlock _; _}) -> true | _ -> false ) node.n
+  in
   let doall_blocks = List.filter (fun node -> node.label = Doall) dag_scc.nodes in
   match doall_blocks with
   | [] -> dag_scc
@@ -732,7 +737,7 @@ let retain_max_profile_doall dag_scc =
     ) (List.hd doall_blocks) (List.tl doall_blocks) in
     let remaining_doall_blocks = List.filter (fun node -> node != max_profile_weight_block) doall_blocks in
     let updated_max_profile_block = { max_profile_weight_block with label = Doall } in
-    let updated_sequential_blocks = List.map (fun node -> { node with label = Sequential }) remaining_doall_blocks in
+    let updated_sequential_blocks = List.map (fun node -> if is_labeled node then node else { node with label = Sequential }) remaining_doall_blocks in
     let updated_nodes = updated_max_profile_block :: updated_sequential_blocks @ List.filter (fun node -> node.label != Doall) dag_scc.nodes in
     { dag_scc with nodes = updated_nodes }
 
