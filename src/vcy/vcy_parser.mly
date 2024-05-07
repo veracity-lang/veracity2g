@@ -271,8 +271,8 @@ stmt:
     { loc $startpos $endpos @@ GCommute(variant,phi,pre,blocks,post) }
 
 block_label:
-  | i=label { (i, None) }
-  | i=label LPAREN il=separated_list(COMMA,label) RPAREN { (i, Some il) }
+  | i=IDENT { (i, None) }
+  | i=IDENT LPAREN il=separated_list(COMMA,exp) RPAREN { (i, Some il) }
   
 label:
   | i=IDENT {i}

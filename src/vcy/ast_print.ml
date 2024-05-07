@@ -547,7 +547,7 @@ module AstML = struct
 
   and string_of_blocklabel (bl: blocklabel) : string = 
     let (id, explist) = bl in
-    sp "(%s,%s)" (string_of_id id) (string_of_option (string_of_list string_of_id) explist)
+    sp "(%s,%s)" (string_of_id id) (string_of_option (string_of_list string_of_exp) explist)
 
   let string_of_args : (ty * id) list -> string =
     string_of_list (fun (t,i) ->

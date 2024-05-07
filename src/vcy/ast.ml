@@ -154,8 +154,8 @@ and tyval = ty * (value ref)
 and blockstk = tyval bindlist list
 and callstk = blockstk list
 
-and blocklabel = id * (id list) option
-(* and blocklabel = id * (exp node list) option *)
+(* and blocklabel = id * (id list) option *)
+and blocklabel = id * (exp node list) option
 
 and group_commute = ((blocklabel list) list) * commute_condition
 
