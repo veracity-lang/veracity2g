@@ -140,7 +140,7 @@ decl:
   | COMMUTATIVITY LBRACE gc = separated_list(SEMI,group_commute) RBRACE { Commutativity(gc) }
 
 group_commute:
-  | bls = separated_list(COMMA, commute_frag) COLON phi=commute_condition { (bls,phi) }
+  | bls = separated_list(COMMA, commute_frag) COLON phi=commute_condition {loc $startpos $endpos @@ (bls,phi) }
 
 commute_frag:
   /*| f = block_label {f}*/

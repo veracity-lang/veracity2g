@@ -130,7 +130,7 @@ let print_pdg_debug pdg =
 let find_node (s: stmt node) pdg : pdg_node =
     let sl = s.loc in 
     List.find (
-        fun {l=loc;n} -> String.equal (Range.string_of_range loc) (Range.string_of_range sl) 
+        fun {l=loc;_} -> String.equal (Range.string_of_range loc) (Range.string_of_range sl) 
     ) pdg.nodes
 
 let rvalue = 1
@@ -160,6 +160,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
         decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
+    (* | SBlock (bl,body) -> find_block_vars body *)
     | _ -> []
     end 
   | Entry -> []
@@ -173,7 +174,6 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
   | Assume of exp node
   | Havoc of id
   | Require of exp node
-  | SBlock of blocklabel option * block node
   | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond *)
 
 and find_exp_vars exp : (ty * string) list =
@@ -219,11 +219,6 @@ let has_data_dep src dst : bool * (ty * string) list * int =
   flag, List.map (fun (t, id) -> let v = List.find_opt (fun (Gvdecl d) -> String.equal d.elt.name id) !decl_vars in match v with | Some (Gvdecl d) -> (d.elt.ty, id) | _ -> (t,id)) vars, side
 
 
-let rec apply_pairs f lst =
-  match lst with
-  | [] -> ()
-  | x::xs -> List.iter (fun y -> f x y) xs; apply_pairs f xs
-
 let add_dataDep_edges pdg = 
   let p = ref pdg in 
   apply_pairs (fun x y -> 
@@ -238,11 +233,11 @@ let add_dataDep_edges pdg =
   !p
 
 
-let add_commuteDep_edges pdg (gc: group_commute list) : exe_pdg =
+let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
   let find_commute_condition l1 l2 =
     let res = ref None in 
     List.iter (
-      fun (bl, cond) ->
+      fun {elt=(bl, cond); _} ->
         let check_label label lb_list = 
           List.exists (fun (l,_) -> String.equal (fst label) l) lb_list
         in 
@@ -259,6 +254,7 @@ let add_commuteDep_edges pdg (gc: group_commute list) : exe_pdg =
     begin match x.src, y.src with 
     | Some {elt=(SBlock (Some l1, _))}, Some {elt=(SBlock (Some l2, _))} -> 
       begin match !(find_commute_condition l1 l2) with 
+      | None -> ()
       | Some (PhiExp cond) -> p := add_edge !p x y (Commute cond)
       | _ -> failwith "undefined commute condition"
       end
@@ -405,7 +401,7 @@ let mark_loop_carried_dependencies pdg : exe_pdg =
   {pdg with edges = e}
 
 
-let build_pdg (block: block) entry_loc (gc: group_commute list) : exe_pdg = 
+let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg = 
   let pdg = empty_exe_pdg() in 
   let pdg = { pdg with entry_node = Some {l= entry_loc; n= Entry; src= None} } in
   let rec traverse_ast block pdg : exe_pdg =

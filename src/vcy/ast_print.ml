@@ -578,8 +578,8 @@ module AstML = struct
   let string_of_sdecl (s:sdecl node) : string =
     string_of_node string_of_sdecl_aux s
 
-  let string_of_group_commute (gc: group_commute) : string =
-    let (bls, phi) = gc in 
+  let string_of_group_commute (gc: group_commute node) : string =
+    let (bls, phi) = gc.elt in 
     sp "(%s, %s)" (string_of_list (string_of_list string_of_blocklabel) bls) 
     begin match phi with 
       | PhiInf   -> "PhiInf" 

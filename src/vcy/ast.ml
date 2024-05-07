@@ -168,7 +168,7 @@ and global_env =
   ; globals : tyval bindlist
   ; structs : tstruct bindlist
   ; lib_methods : lib_method bindlist 
-  ; group_commute : group_commute list (* Commutativity relation  *)
+  ; group_commute : group_commute node list (* Global Commutativity relations *)
   }
 and env =
   { g : global_env  (* Global environment *)
@@ -301,7 +301,7 @@ type field = { field_name : id; ftyp : ty }
 type sdecl = { sname : id; fields : field list }
 
 type decl =
-| Commutativity of group_commute list
+| Commutativity of group_commute node list
 | Gvdecl of gdecl node (* Global variable *)
 | Gmdecl of mdecl node (* Method *)
 | Gsdecl of sdecl node (* Struct *)

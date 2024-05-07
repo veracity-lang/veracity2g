@@ -531,13 +531,13 @@ and interp_return {g;l} (r : value) : env * value option =
   { g; l = List.tl l },
   Some r
 
-and interp_global_commute (env: env) : (group_commute * bool) list =
+and interp_global_commute (env: env) : (group_commute node * bool) list =
   let {g; _} = env in
-  let rec interp_group_commute g : (group_commute * bool) list = 
+  let rec interp_group_commute g : (group_commute node * bool) list = 
     begin match g with 
     | [] -> []
     | gc::tl -> 
-      let _, cc = gc in 
+      let _, cc = gc.elt in 
       begin match cc with 
       | PhiExp e ->
         let v = interp_phi env e in
@@ -721,7 +721,44 @@ let infer_phi (g : global_env) (var : commute_variant) (bl : block node list) (g
   let e = Analyze.phi_of_blocks g var bl globals pre post in
   no_loc e
 
+let labeled_blocks = ref []
+let global_defs = ref []
+
+let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
+  let rec interp_group_commute (gc: group_commute node list) : group_commute node list = 
+    begin match gc with 
+    | [] -> [] 
+    | gc::tl -> 
+      let labels, phi = gc.elt in 
+      let blks = ref [] in
+      List.iter (fun ls -> List.iter (fun (id, args) -> let {elt=SBlock(Some(i,_),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in blks := !blks @ [bl]) ls) labels;
+      let phi' =
+        let infer () =
+        (* apply_pairs (fun b1 b2 -> infer_phi g CommuteVarPar (b1@b2) defs None None) !blks  *)
+        let phi' = infer_phi g CommuteVarPar !blks defs None None in
+          if !emit_inferred_phis then
+            begin if !emit_quiet
+            then Printf.printf "%s\n"
+              (AstPP.string_of_exp phi')
+            else Printf.printf "Inferred condition at %s: %s\n"
+              (Range.string_of_range gc.loc) 
+              (AstPP.string_of_exp phi')
+            end;
+          phi'
+        in match phi with
+      | PhiExp e -> if !force_infer then infer () else e
+      | PhiInf -> infer ()
+
+      in let c = {gc with elt = (labels, PhiExp phi')} in
+      (List.cons c)
+      (interp_group_commute tl)
+    end
+  in 
+  interp_group_commute g.group_commute
+
+
 let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block node) : block node =
+  global_defs := remove_duplicate (defs @ !global_defs);
   if body.elt = [] then node_up body [] else
   let h,t = List.hd body.elt, node_app List.tl body in
   match h.elt with
@@ -776,6 +813,10 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
       (infer_phis_of_block g defs t)
   | SBlock (bl, b) ->
     let s = SBlock (bl, infer_phis_of_block g defs b) in
+    begin match bl with
+    | Some _ -> labeled_blocks := !labeled_blocks @ [node_up h s]
+    | None -> ()
+    end;
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
@@ -808,10 +849,62 @@ let infer_phis_of_prog (g : global_env) : global_env =
     { m with
       body = infer_phis_of_block g (m.args @ globals) m.body
     }
-  in { g with methods = List.map map_method g.methods }
+  in
+  let m = List.map map_method g.methods in
+  let gc = infer_phis_of_global_commutativity g !global_defs in
+  { g with methods = m; group_commute = gc }
+
+
+let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : unit = 
+  let rec interp_group_commute (gc: group_commute node list) : unit = 
+    begin match gc with 
+    | [] -> () 
+    | gc::tl -> 
+      let labels, phi = gc.elt in 
+      let blks = ref [] in
+      List.iter (fun ls -> List.iter (fun (id, args) -> let {elt=SBlock(Some(i,_),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in blks := !blks @ [bl]) ls) labels;
+      begin match phi with
+      | PhiExp e ->
+        if !print_cond then 
+          Printf.printf "%s\n" (AstPP.string_of_exp e);
+
+        begin match Analyze.verify_of_block e g CommuteVarPar !blks defs None None with
+        | Some b, compl -> 
+          let compl_str = 
+            match compl with 
+            | Some true  -> "true" 
+            | Some false -> "false" 
+            | None       -> "unknown"
+          in
+          if not b then begin 
+            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n" 
+              (Range.string_of_range gc.loc) 
+              (AstPP.string_of_exp e)
+            else print_string "incorrect\n"
+          end else begin 
+            if not !emit_quiet then
+              Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
+                (Range.string_of_range gc.loc) 
+                (AstPP.string_of_exp e)
+                compl_str
+            else Printf.printf "correct\n%s\n" compl_str
+          end
+        | None, _ -> 
+          if not !emit_quiet then
+            Printf.printf "Condition at %s unable to verify: %s\n" 
+              (Range.string_of_range gc.loc) 
+              (AstPP.string_of_exp e)
+          else print_string "failure\n"
+        end
+      | PhiInf -> () end;
+      (interp_group_commute tl)
+    end
+  in 
+  interp_group_commute g.group_commute
 
 
 let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block node) : block node =
+  global_defs := remove_duplicate (defs @ !global_defs);
   if body.elt = [] then node_up body [] else
   let h,t = List.hd body.elt, node_app List.tl body in
   match h.elt with
@@ -841,6 +934,15 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
       (verify_phis_of_block g defs t)
   | While (e,b) ->
     let s = While (e, verify_phis_of_block g defs b) in
+    node_app
+      (List.cons (node_up h s))
+      (verify_phis_of_block g defs t)
+  | SBlock (bl, b) ->
+    let s = SBlock (bl, verify_phis_of_block g defs b) in
+    begin match bl with
+    | Some _ -> labeled_blocks := !labeled_blocks @ [node_up h s]
+    | None -> ()
+    end;
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
@@ -933,7 +1035,10 @@ let verify_phis_of_prog (g : global_env) : global_env =
     { m with
       body = verify_phis_of_block g (m.args @ globals) m.body
     }
-  in { g with methods = List.map map_method g.methods }
+  in
+  let m = List.map map_method g.methods in
+  verify_phis_of_global_commutativity g !global_defs;
+  { g with methods = m }
 (* TODO: The above is mostly copy pasted from infer. Could just be a _ -> () pass of the AST instead of typed as a transformation. *)
 
 (*** ENVIRONMENT CONSTRUCTION ***)
@@ -948,9 +1053,8 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
   | Gvdecl {elt = {name; ty; init}; loc = _} :: tl ->
     construct_env g ((name,(ty,init)) :: globals) tl
   | Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l} :: tl ->
-    
     (* let gc_list = interp_global_commute g in  *)
-    Exe_pdg.ps_dswp body l args g globals;
+    (* Exe_pdg.ps_dswp body l args g globals; *)
 
     (* Eric's testing of Vcy-to-C. This will later be called with the re-constructed task bodies *)
     (* Codegen_c.gen body.elt; *)
@@ -1065,7 +1169,7 @@ let cook_calls (g : global_env) : global_env =
       begin match bl with 
       | None -> SBlock(None, cook_calls_of_block b) 
       | Some l -> 
-        let (id, args) = l in 
+        let (id, _) = l in 
         SBlock(Some l, cook_calls_of_block b)
       end
     | GCommute (v, c, pre, bl, post) ->
@@ -1122,7 +1226,11 @@ let initialize_env (prog : prog) (infer_phis : bool) =
       then Printf.eprintf "%f\n" dt; 
       g
     else g
-  in {g;l=[]}
+  in
+  (* let gc_list = interp_global_commute g in  *)
+  List.iter (fun m -> match m with | (Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l}) -> Exe_pdg.ps_dswp body l args g globals | _ -> ()) prog;
+
+  {g;l=[]}
 
 
 let prepare_prog (prog : prog) (argv : string array) =
