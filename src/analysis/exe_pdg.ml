@@ -144,7 +144,7 @@ let set_vars_side (vars : (ty * string) list) side : ((ty * string) * int) list 
 let rec find_block_vars block : ((ty * string) * int) list = 
   match block with 
   | [] -> []
-  | stmt::tl -> (find_stmt_vars stmt) @ (find_block_vars tl)
+  | stmt::tl -> (find_stmt_vars (EStmt stmt)) @ (find_block_vars tl)
 
 and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list = 
   match stmt with
@@ -160,7 +160,9 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
         decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
-    (* | SBlock (bl,body) -> find_block_vars body *)
+    | SBlock (bl,body) -> find_block_vars body.elt
+    | While (e, body) -> find_block_vars body.elt
+    | If (e,b1,b2) -> (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | _ -> []
     end 
   | Entry -> []
