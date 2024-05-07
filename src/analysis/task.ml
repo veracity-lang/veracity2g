@@ -5,7 +5,8 @@ type taskid = int
 (* t_i can depend on a list of variables written by some predecessor t_j *)
 type dependency = {
   pred_task: taskid;
-  vars: (ty * id) list 
+  vars: (ty * id) list;
+  commute_cond : exp node option
 }
 
 type exe_label = Doall | Sequential
@@ -25,8 +26,11 @@ let str_of_vars_list (vlist : (ty * id) list) : string  =
 
 let str_of_task_deps deplist = 
   "{"
-  ^(String.concat "|" (List.map (fun dep ->
-    Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
+  ^(String.concat " | " (List.map (fun dep ->
+    match dep.commute_cond with 
+    | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
+    | Some c -> 
+     Printf.sprintf "from %d: %s / commute_cond: %s" dep.pred_task (str_of_vars_list dep.vars) (AstML.string_of_exp c)
   ) deplist))
   ^"}"
 
@@ -68,7 +72,7 @@ task3:
     body="q=p->inner_list; .."}
 *)
 
-let mk_int_dep pred_id var_id = {pred_task=pred_id; vars=[(TInt,var_id)]}
+let mk_int_dep pred_id var_id = {pred_task=pred_id; vars=[(TInt,var_id)]; commute_cond = None}
 
 let example_var_decls () =
   [

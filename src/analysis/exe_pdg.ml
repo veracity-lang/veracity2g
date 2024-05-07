@@ -879,14 +879,21 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) =
   let res = ref tasks in 
   List.iter (
     fun e -> 
+    let src_taskID = find_taskID e.dag_src in
+    let dst_taskID = find_taskID e.dag_dst in 
     match e.dep with
     | DataDep vars -> 
-      let src_taskID = find_taskID e.dag_src in
-      let dst_taskID = find_taskID e.dag_dst in 
       let src_task = List.assoc src_taskID !res in 
       let dst_task = List.assoc dst_taskID !res in
-      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars} :: src_task.deps_out}) in
-      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars} :: dst_task.deps_in}) in 
+      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = None} :: src_task.deps_out}) in
+      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = None} :: dst_task.deps_in}) in 
+      res := new_src_task :: new_dst_task ::
+      List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
+    | Commute c ->
+      let src_task = List.assoc src_taskID !res in 
+      let dst_task = List.assoc dst_taskID !res in
+      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = Some c} :: src_task.deps_out}) in
+      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = Some c} :: dst_task.deps_in}) in 
       res := new_src_task :: new_dst_task ::
       List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
     | _ ->()
@@ -911,7 +918,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   Printf.printf "Merging DAG_scc:\n";
   let merged_dag = merge_doall_blocks dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
-  print_dag_debug dag_scc_with_max_profile;
+  (* print_dag_debug dag_scc_with_max_profile; *)
   let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
