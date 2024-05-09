@@ -5,6 +5,9 @@ open Range
 open Util
 open Task
 
+let generated_tasks = ref []
+let generated_decl_vars = ref []
+
 type dependency =
 | ControlDep
 | DataDep of (ty * id) list
@@ -929,6 +932,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   tasks
 
 
+
 let ps_dswp (body: block node) m_loc m_args (g: global_env) globals = 
   List.iter (
     fun (id, (ty,e)) -> 
@@ -950,4 +954,6 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   let tasks = thread_partitioning dag_scc pdg [] body in 
   Printf.printf "gen_tasks called with %d globals\n" (List.length !decl_vars);
   Codegen_c.gen_tasks (!decl_vars) tasks;
-  Codegen_c.print_tasks tasks "/tmp/tasks.dot"
+  Codegen_c.print_tasks tasks "/tmp/tasks.dot";
+  generated_tasks := tasks;
+  generated_decl_vars := !decl_vars;

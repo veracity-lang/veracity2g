@@ -4,7 +4,7 @@ open Ast_print
 open Util
 open Vcylib
 open Analyze
-
+open Task
 
 (*** INTERP MANAGEMENT ***)
 
@@ -17,6 +17,8 @@ let print_cond = ref false
 
 let force_sequential = ref false
 let force_infer = ref false
+
+let dswp_mode = ref false
 
 let debug_print (s : string lazy_t) =
   ()
@@ -515,6 +517,9 @@ and interp_commute_async (env : env) (blocks : block node list) : env =
       end
     end;
   env
+
+and interp_psdswp (env:env) (tasklist : task list) : env =
+  failwith "interp_psdswp" 
 
 (* Reject commute condition if it might modify state *)
 and interp_phi (env : env) (phi : exp node) : bool =
@@ -1228,7 +1233,10 @@ let initialize_env (prog : prog) (infer_phis : bool) =
     else g
   in
   (* let gc_list = interp_global_commute g in  *)
-  List.iter (fun m -> match m with | (Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l}) -> Exe_pdg.ps_dswp body l args g globals | _ -> ()) prog;
+  if !dswp_mode then 
+     List.iter (fun m -> match m with | (Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l}) -> Exe_pdg.ps_dswp body l args g globals | _ -> ()) prog;
+
+  (* EK TODO - complain if more than 1 method declaraiton in SWP mode *)
 
   {g;l=[]}
 
@@ -1248,13 +1256,19 @@ let prepare_prog (prog : prog) (argv : string array) =
   let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
   env, e
 
+let interp_tasks decls tasks : unit =
+  failwith "interp_tasks"
+
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
  * begin interpretation. *)
 let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
-  match interp_exp env e with
+  if !dswp_mode then begin
+    interp_tasks !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks;
+    Int64.of_int 666
+  end else match interp_exp env e with
   | _, VInt ret -> ret
   | _, _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)
 
@@ -1263,6 +1277,7 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
 let interp_prog_time (prog : prog) (argv : string array) : float =
   let env, e = prepare_prog prog argv in
   Vcylib.suppress_print := true;
+  if !dswp_mode then failwith "interp_prog_time todo dswp mode";
   let dt, _ = time_exec @@ fun () -> interp_exp env e in
   dt
   (*let t0 = Unix.gettimeofday () in

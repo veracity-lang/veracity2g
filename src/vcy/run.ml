@@ -134,6 +134,7 @@ module RunInterp : Runner = struct
 
   let prover_name = ref ""
   let timeout = ref None
+  let dswp_mode = ref false
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -144,6 +145,7 @@ module RunInterp : Runner = struct
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
+    ; "--dswp", Arg.Set dswp_mode, "Enable PS-DSWP Interpretation"
     ] |>
     Arg.align
 
@@ -168,13 +170,17 @@ module RunInterp : Runner = struct
         Interp.force_sequential := true;
       end;
 
+      if !dswp_mode then begin
+        Interp.dswp_mode := true;
+      end;
+
       let prog = Driver.parse_oat_file prog_name in
       Random.self_init ();
 
       begin if !get_execution_time then
         let time = Interp.interp_prog_time prog argv in
         Printf.printf "%f\n" time
-      else
+      else 
         let ret = Interp.interp_prog prog argv in
         Printf.printf "Return: %Ld\n" ret
       end;
@@ -509,6 +515,9 @@ module RunInfer : Runner = struct
       Printexc.record_backtrace true;
       Interp.debug_display := true;
     end;
+
+    (* This will enable inference of global commutativity specs *)
+    (* Interp.dswp_mode := true; *)
 
     Interp.time_servois := !time_servois;
     Interp.emit_inferred_phis := true; (*not @@ !Interp.time_servois;*)
