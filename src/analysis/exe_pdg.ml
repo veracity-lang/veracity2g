@@ -213,7 +213,7 @@ let has_data_dep src dst : bool * (ty * string) list * int =
       if List.mem_assoc head list2 then begin
         let val2 = List.assoc head list2 in 
         begin match val1, val2 with 
-        | 0, 1  -> true, head :: vars, src_to_dst
+        | 0, 1 | 1, 1  -> true, head :: vars, src_to_dst
         | 1, 0 -> true, head :: vars, dst_to_src
         | _, _ -> false, vars, src_to_dst
         end
