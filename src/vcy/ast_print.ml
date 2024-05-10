@@ -536,8 +536,8 @@ module AstML = struct
         (string_of_exp pre)
         (string_of_list string_of_block bl)
         (string_of_exp post)
-    | SendDep ids ->
-      sp "SendDep (%s)" (string_of_list (fun i -> i) ids)
+    | SendDep (id, vars) ->
+      sp "SendDep (%d: %s)" id (string_of_args vars)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s
@@ -549,7 +549,7 @@ module AstML = struct
     let (id, explist) = bl in
     sp "(%s,%s)" (string_of_id id) (string_of_option (string_of_list string_of_exp) explist)
 
-  let string_of_args : (ty * id) list -> string =
+  and string_of_args : (ty * id) list -> string =
     string_of_list (fun (t,i) ->
       sp "(%s,%s)" (string_of_ty t) (string_of_id i))
 

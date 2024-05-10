@@ -73,25 +73,26 @@ and gen_stmt tsk = function
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
     | SBlock(blocklabel,block) -> sp "%s" (gen_blocknode tsk block) (** TODO: check *)
-    | SendDep(other_tsk_ids) ->
-       String.concat "\n" (List.map (gen_senddep tsk) other_tsk_ids)
+    | SendDep(tsk_id, vars) ->
+      gen_senddep tsk tsk_id (* TODO: add vars *)
+      
 
 
 and gen_senddep tsk other_id = 
   try 
     (* Look up in my dependencies for other_id *)
-    Printf.printf "gen_senddep: I am task %d. looking for other task %s in my deps: \n " 
+    Printf.printf "gen_senddep: I am task %d. looking for other task %d in my deps: \n " 
       tsk.id other_id;
     print_endline (str_of_task tsk);
-    let thedep = List.find (fun d -> d.pred_task == (int_of_string other_id)) tsk.deps_out in 
+    let thedep = List.find (fun d -> d.pred_task == other_id) tsk.deps_out in 
        String.concat "\n" (["";
-         ("        // Begin Send Deps to task " ^ other_id);
+         ("        // Begin Send Deps to task " ^ (string_of_int other_id));
          ("        //   Vars to send: "^(str_of_vars_list thedep.vars));
-         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %s\");" tsk.id other_id);
+         (Printf.sprintf "        printf(\"task_%d: sendout outputs to task %d\");" tsk.id other_id);
         ]
         @
         (List.map (fun (dep_type, dep_id) ->
-          (Printf.sprintf "        %s %s = t%d_to_t%s_%s;" 
+          (Printf.sprintf "        %s %s = t%d_to_t%d_%s;" 
             (gen_ty dep_type)
             dep_id
             tsk.id
@@ -101,8 +102,8 @@ and gen_senddep tsk other_id =
         ) thedep.vars)
         @
         [
-          (Printf.sprintf "        sem_post(&t%d_to_t%s_sem);" tsk.id other_id);
-          ("        // End Send Deps to task " ^ other_id);
+          (Printf.sprintf "        sem_post(&t%d_to_t%d_sem);" tsk.id other_id);
+          ("        // End Send Deps to task " ^ (string_of_int other_id));
           ""
         ])
   with 
