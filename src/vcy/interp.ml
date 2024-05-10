@@ -663,17 +663,19 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     env, None (* We simply ignore 'assume's and 'havoc's at runtime *)
   | SBlock (bl, b) ->
    interp_block env b
-  | SendDep(task_id, vars_id_list) -> 
+  | SendDep(task_id, var_id_list) -> 
        (* capture the values of dependent variables from the environment *)
        let job_vals = List.fold_left (fun acc (varty,varid) ->
           let values = local_env env @ env.g.globals in
           begin match List.assoc_opt varid values with
-          | Some (_,v) -> (varty,varid,!v)
-          | None -> raise @@ IdNotFound (id, loc)
+          | Some (_,v) -> (varty,varid,!v) :: acc
+          | None -> raise @@ IdNotFound (varid, Range.norange)
           end          
-       ) [] vars_list in
-       let env' = senddep_extend_env env vars_list in
-       Parallel.new_job { tid:task_id; env:env' } (*; vals:job_vals } *)
+       ) [] var_id_list in
+       let env' = senddep_extend_env env job_vals in
+       Parallel.new_job task_id env';
+       (* now just return the unmodified environment *)
+       env, None
  
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -1282,8 +1284,12 @@ let prepare_prog (prog : prog) (argv : string array) =
   let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
   env, e
 
-let interp_tasks decls tasks : unit =
-  failwith "interp_tasks"
+let interp_tasks env0 decls tasks : unit =
+  Parallel.set_task_def tasks;
+  (* create a first job *)
+  Parallel.new_job 1 env0;
+  (* start the scheduler *)
+  Parallel.scheduler ()
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
@@ -1292,7 +1298,7 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
   if !dswp_mode then begin
-    interp_tasks !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks;
+    interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks;
     Int64.of_int 666
   end else match interp_exp env e with
   | _, VInt ret -> ret
