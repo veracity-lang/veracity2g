@@ -100,31 +100,3 @@ let example_tasks () : task list =
       label=Doall
     }
   ]
-(* p= 0...maxp *)
-(*
-let test_var_decls = [
-  { name = "p";    ty=TInt ; init=no_loc (Const 0) };
-  { name = "pmax"; ty=TInt ; init=no_loc (Const 155) };
-  { name = "id";   ty=TInt ; init=no_loc (Const 0) };
-  { name = "ids";  ty=TArr TInt ; init=no_loc (NewArr(TInt, no_loc (Const 0))) };
-]
-let test_tasks = [
-  { id=1; deps_in:(task1,p); deps_out:[(task1,p->next);(task2,p);(task3,p)]
-    body= no_loc {[
-      (* p = ...; id = ids[p]; if(!visited[id])visited[id]=1; *)
-      Assn(no_loc , no_loc);
-      If(no_loc , no_loc, no_loc )
-    ]}
-
-      elt: 
-      loc: 
-    }
-    "id=p->id;if(!visited[id])visited[id]=true;"}
-  ;
-  { id=2; deps_in:(task1,p); deps_out:[]
-    body="q=p->inner_list; .."}
-  ;
-  { id=3; deps_in:(task1,p); deps_out:[]
-    body="q=p->inner_list; .."}
-]
-*)

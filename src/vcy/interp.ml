@@ -553,6 +553,20 @@ and interp_global_commute (env: env) : (group_commute node * bool) list =
   in 
   (interp_group_commute g.group_commute)
   
+and senddep_extend_env env (vals: (ty * id * value) list) : env =
+  match vals with 
+  | [] -> env 
+  | (t,i,v)::rest ->
+      (* This is like Decl statements *)
+      (* Add ID to environment - most recent call in callstack, innermost block *)
+      let stk = List.hd env.l in
+      let blk = List.hd stk in
+      let blk = (i, (t, ref v)) :: blk in
+      let stk = blk :: List.tl stk in
+      let env' = {g=env.g; l=(stk :: List.tl env.l)} in
+      senddep_extend_env env' rest
+
+
 
 and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   match stmt.elt with
@@ -649,7 +663,19 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     env, None (* We simply ignore 'assume's and 'havoc's at runtime *)
   | SBlock (bl, b) ->
    interp_block env b
-  (* | SBlock (bl, b) ->
+  | SendDep(task_id, vars_id_list) -> 
+       (* capture the values of dependent variables from the environment *)
+       let job_vals = List.fold_left (fun acc (varty,varid) ->
+          let values = local_env env @ env.g.globals in
+          begin match List.assoc_opt varid values with
+          | Some (_,v) -> (varty,varid,!v)
+          | None -> raise @@ IdNotFound (id, loc)
+          end          
+       ) [] vars_list in
+       let env' = senddep_extend_env env vars_list in
+       Parallel.new_job { tid:task_id; env:env' } (*; vals:job_vals } *)
+ 
+       (* | SBlock (bl, b) ->
     begin match bl with 
     | None -> interp_block env b 
     | Some l -> interp_block env b

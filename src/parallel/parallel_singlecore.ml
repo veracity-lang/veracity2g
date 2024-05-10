@@ -5,3 +5,6 @@ let create (f : unit -> unit) : t =
 
 let join : t -> unit =
   Thread.join
+
+let scheduler () = 
+   failwith "todo - scheduler for parallel_singlecore"
