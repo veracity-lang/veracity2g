@@ -2,13 +2,13 @@
   Code Generation via a C compiler:
     Convert Veracity statements to C code
 
-  Most functions are parameterized first by the current task (Task.task)
+  Most functions are parameterized first by the current task (Dswp_task.task)
   
 *)
 open Ast
 open Ast_print
 open Util
-open Task
+open Dswp_task
 
 exception TaskCodeGenErr of string
 
@@ -238,7 +238,7 @@ let gen_tasks gvar_decls tlist =
   output_string oc ("int autogen_taskcount() { return "^(string_of_int (List.length tlist))^"; }\n");
   output_string oc (gen_semaphores tlist);
   output_string oc (gen_gvar_decls (List.hd tlist) gvar_decls);
-  output_string oc (gen_handoff_vars (Task.calculate_handoff_vars tlist));
+  output_string oc (gen_handoff_vars (Dswp_task.calculate_handoff_vars tlist));
   output_string oc (gen_init tlist);
   output_string oc (String.concat "\n\n" (help tlist));
   output_string oc (gen_task_loader tlist);

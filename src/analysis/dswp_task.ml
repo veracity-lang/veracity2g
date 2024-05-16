@@ -1,18 +1,18 @@
 open Ast
 open Ast_print
-type taskid = int 
+type dswp_taskid = int 
 
 (* t_i can depend on a list of variables written by some predecessor t_j *)
 type dependency = {
-  pred_task: taskid;
+  pred_task: dswp_taskid;
   vars: (ty * id) list;
   commute_cond : exp node option
 }
 
 type exe_label = Doall | Sequential
 
-type task = {
-  id : taskid;
+type dswp_task = {
+  id : dswp_taskid;
   deps_in : dependency list; (* a list of other tasks/vars that I depend on *)
   deps_out : dependency list; (* a list of other tasks/vars that I provide for *)
   body: block node;
@@ -39,7 +39,7 @@ let str_of_task tsk =
       tsk.id (str_of_task_deps tsk.deps_in) (str_of_task_deps tsk.deps_out)
       (match tsk.label with | Doall -> "DOALL" | Sequential -> "Seq")
 
-let rec calculate_semaphores tlist : (taskid * taskid) list =
+let rec calculate_semaphores tlist : (dswp_taskid * dswp_taskid) list =
   match tlist with 
   | [] -> []
   | (tk::rest) ->
@@ -47,7 +47,7 @@ let rec calculate_semaphores tlist : (taskid * taskid) list =
       @ (calculate_semaphores rest)
 
 (* things like t1_to_t2_x *)
-let rec calculate_handoff_vars tlist : (ty * id * taskid * taskid) list =
+let rec calculate_handoff_vars tlist : (ty * id * dswp_taskid * dswp_taskid) list =
   match tlist with 
   | [] -> []
   | (tk::rest) ->
@@ -79,7 +79,7 @@ let example_var_decls () =
     Gvdecl(no_loc { name="p"; ty=TInt; init=(no_loc (CInt 0L))})
   ]
 
-let example_tasks () : task list = 
+let example_tasks () : dswp_task list = 
   [
     { id=1; 
       deps_in=[(mk_int_dep 1 "p")]; 

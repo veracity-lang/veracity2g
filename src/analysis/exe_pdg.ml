@@ -3,7 +3,7 @@ open Ast_print
 open Format
 open Range
 open Util
-open Task
+open Dswp_task
 
 let generated_tasks = ref []
 let generated_decl_vars = ref []
@@ -876,7 +876,7 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   in
   fst (transform_block dag_scc_node block)
 
-let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) = 
+let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) = 
   let find_taskID node = 
     let temp = ref 0 in 
     List.iteri (fun i n -> if compare_dag_nodes n node then temp := i + 1) dag.nodes;
@@ -907,7 +907,7 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) =
 
   let out_tasks = (snd (List.split !res)) in 
 
-  let update_sendDep_of_task (task: task) : task = 
+  let update_sendDep_of_task (task: dswp_task) : dswp_task = 
     let rec update_body (body: block) : block = 
       match body with
       | [] -> body
@@ -929,14 +929,14 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * task) list) =
   in
   List.map (fun t -> update_sendDep_of_task t) out_tasks
 
-let generate_tasks dag_scc (block: block node) : task list =
-  let rec generate_tasks_from_dag dag_scc (block: block node) : task list =
+let generate_tasks dag_scc (block: block node) : dswp_task list =
+  let rec generate_tasks_from_dag dag_scc (block: block node) : dswp_task list =
     match dag_scc.nodes with 
     | [] -> []
     | node::tl -> 
       let taskID = incr_uid ctr in 
       let body = reconstructAST dag_scc node block taskID in
-      let label = match node.label with | Doall -> Task.Doall | Sequential -> Task.Sequential in 
+      let label = match node.label with | Doall -> Dswp_task.Doall | Sequential -> Dswp_task.Sequential in 
       let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
