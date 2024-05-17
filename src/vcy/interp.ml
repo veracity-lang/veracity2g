@@ -20,6 +20,8 @@ let force_infer = ref false
 
 let dswp_mode = ref false
 
+let pool_size = 4
+
 let debug_print (s : string lazy_t) =
   ()
   (*if !debug_display then print_string (Lazy.force s); flush stdout*)
@@ -1342,7 +1344,7 @@ let scheduler poolsize task_list : unit =
         (* what about accuulated senddeps that need to become new jobs? *)
 
 
-  Domainslib.Task.run pool fun () ->
+  Domainslib.Task.run pool (fun () ->
     let rec loop promises =
       match Queue.take_opt job_queue with
       | Some j ->
@@ -1358,14 +1360,14 @@ let scheduler poolsize task_list : unit =
           promises
     in
     let promises' = loop [] in
-    List.map (Domainslib.Task.await pool) promises'
+    List.map (Domainslib.Task.await pool) promises') |> ignore
 
 let interp_tasks env0 decls tasks : unit =
   set_task_def tasks;
   (* create a first job *)
   new_job 1 env0;
   (* start the scheduler *)
-  scheduler ()
+  scheduler pool_size !task_defs
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
