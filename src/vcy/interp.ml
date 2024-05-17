@@ -1342,7 +1342,7 @@ let scheduler poolsize task_list : unit =
         (* what about accuulated senddeps that need to become new jobs? *)
 
 
-    let pr = Domainslib.Task.run pool (fun () ->
+  Domainslib.Task.run pool fun () ->
     let rec loop promises =
       match Queue.take_opt job_queue with
       | Some j ->
@@ -1354,13 +1354,11 @@ let scheduler poolsize task_list : unit =
             loop (pr'::promises)
           end
       | None -> 
-          ignore(Printf.printf "scheduler: reached an empty queue. need to now wait to join!")
+          Printf.printf "scheduler: reached an empty queue. need to now wait to join!";
+          promises
     in
     let promises' = loop [] in
-    Domainslib.Task.await pool promises'
-  )
-  in
-  Domainslib.Task.await pool pr
+    List.map (Domainslib.Task.await pool) promises'
 
 let interp_tasks env0 decls tasks : unit =
   set_task_def tasks;
