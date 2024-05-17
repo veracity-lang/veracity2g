@@ -22,6 +22,18 @@ let null = function
   | [] -> true
   | _ -> false
 
+let debug_sandwich id f =
+  Printf.printf "%s" (id ^ ": Before call.\n");
+  let x = f () in
+  Printf.printf "%s" (id ^ ": After call.\n");
+  x
+  
+let debug_sandwich_fn1 id f x =
+  Printf.printf "%s" (id ^ ": Before call.\n");
+  let y = f x in
+  Printf.printf "%s" (id ^ ": After call.\n");
+  y
+  
 let rec square_list_unordered = function
   | [] -> []
   | h::t ->

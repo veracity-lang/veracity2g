@@ -23,8 +23,7 @@ let dswp_mode = ref false
 let pool_size = 4
 
 let debug_print (s : string lazy_t) =
-  ()
-  (*if !debug_display then print_string (Lazy.force s); flush stdout*)
+  if !debug_display then print_string (Lazy.force s); flush stdout
 
 
 (*** ENVIRONMENT MANAGEMENT ***)
@@ -54,11 +53,13 @@ let current_env env =
 
 let push_block_to_callstk {g;l} =
   debug_print @@ lazy (ColorPrint.color_string Light_red Default "Pushing block.\n");
-  { g; l = ([] :: List.hd l) :: List.tl l }
+  let env' = { g; l = if null l then [[[]]] else (([] :: List.hd l) :: List.tl l) } in
+  debug_print @@ lazy (ColorPrint.color_string Light_red Default "Block pushed.\n");
+  env'
 
 let pop_block_from_callstack {g;l} =
   debug_print @@ lazy (ColorPrint.color_string Light_green Default "Popping block.\n");
-  { g; l = (List.tl @@ List.hd l) :: List.tl l }
+  { g; l = if null l then [] else ((List.tl @@ List.hd l) :: List.tl l) }
 
 type bind_type =
   | BindM (* Method or function *)
@@ -1356,11 +1357,12 @@ let scheduler poolsize task_list : unit =
             loop (pr'::promises)
           end
       | None -> 
-          Printf.printf "scheduler: reached an empty queue. need to now wait to join!";
+          Printf.printf "scheduler: reached an empty queue. need to now wait to join!\n";
           promises
     in
     let promises' = loop [] in
-    List.map (Domainslib.Task.await pool) promises') |> ignore
+    List.map (Domainslib.Task.await pool) promises') |> ignore;
+  Domainslib.Task.teardown_pool pool (* Clean up the pool we allocated *)
 
 let interp_tasks env0 decls tasks : unit =
   set_task_def tasks;
