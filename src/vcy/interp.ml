@@ -682,7 +682,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     env, None (* We simply ignore 'assume's and 'havoc's at runtime *)
   | SBlock (bl, b) ->
    interp_block env b
-  | SendDep(task_id, var_id_list) -> 
+   | SendDep(task_id, var_id_list) -> 
        (* capture the values of dependent variables from the environment *)
        let job_vals = List.fold_left (fun acc (varty,varid) ->
           let values = local_env env @ env.g.globals in
@@ -695,7 +695,8 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
        (* Parallel. TODO: make modular? *) new_job {tid = task_id; env = env'};
        (* now just return the unmodified environment *)
        env, None
- 
+   | SendEOP(task_id) -> failwith "interp sendEOP todo - send a EOP job"
+
        (* | SBlock (bl, b) ->
     begin match bl with 
     | None -> interp_block env b 

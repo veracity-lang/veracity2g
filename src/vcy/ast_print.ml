@@ -538,6 +538,8 @@ module AstML = struct
         (string_of_exp post)
     | SendDep (id, vars) ->
       sp "SendDep (%d: %s)" id (string_of_args vars)
+    | SendEOP (id) ->
+      sp "SendEOP (%d)" id
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s
