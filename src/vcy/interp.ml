@@ -25,6 +25,10 @@ let pool_size = 4
 let debug_print (s : string lazy_t) =
   if !debug_display then print_string (Lazy.force s); flush stdout
 
+let flatten_value_option v = match v with
+  | Some v -> v
+  | None -> VVoid
+  
 (* A Job is an unit of work, consisting of:
    - task ID that should perform the job
    - input data for that job is provided in the
@@ -67,13 +71,13 @@ let current_env env =
   local_env env @ env.g.globals
 
 let push_block_to_callstk {g;l} =
-  debug_print @@ lazy (ColorPrint.color_string Light_red Default "Pushing block.\n");
+  (* debug_print @@ lazy (ColorPrint.color_string Light_red Default "Pushing block.\n"); *)
   let env' = { g; l = if null l then [[[]]] else (([] :: List.hd l) :: List.tl l) } in
-  debug_print @@ lazy (ColorPrint.color_string Light_red Default "Block pushed.\n");
+  (* debug_print @@ lazy (ColorPrint.color_string Light_red Default "Block pushed.\n"); *)
   env'
 
 let pop_block_from_callstack {g;l} =
-  debug_print @@ lazy (ColorPrint.color_string Light_green Default "Popping block.\n");
+  (* debug_print @@ lazy (ColorPrint.color_string Light_green Default "Popping block.\n"); *)
   { g; l = if null l then [] else ((List.tl @@ List.hd l) :: List.tl l) }
 
 type bind_type =
@@ -260,10 +264,7 @@ and interp_exp_call {g;l} (loc : Range.t) (args : value list) (params : (id * ty
           (List.map ref args))
     in let env =
       {g; l = [new_block] :: l}
-    in begin match interp_block env body with
-    | env, Some v -> env, v
-    | env, None   -> env, VVoid
-    end
+    in second flatten_value_option (interp_block env body)
 
 and interp_array_of_values (env : env) (loc : Range.t) (ty : ty) (vs : value list) : env * value =
   if List.for_all (fun v -> ty_match env v ty) vs
@@ -691,7 +692,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
           end          
        ) [] var_id_list in
        let env' = senddep_extend_env env job_vals in
-       (* Parallel. TODO: make modular? *) new_job task_id env';
+       (* Parallel. TODO: make modular? *) new_job {tid = task_id; env = env'};
        (* now just return the unmodified environment *)
        env, None
  
@@ -767,13 +768,16 @@ and interp_block (env : env) (block : block node) : env * value option =
 
 (* PS-DSWP Execution Mode *)
 
-
+(* A queue of all things that must be joined before we exit. *)
 and job_queue = Queue.create ()
-and run_job jb : unit = 
+and run_job jb = 
     let (env',v) = interp_block jb.env (load_task_def jb.tid).body in
-    ()
+    v
 (* Interpreter calls this function at each SendDep to create a new job *)
-and new_job t e = debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" t)); Domainslib.Task.run !pool (fun () -> run_job {tid=t; env=e}) (* Queue.add {tid=t; env=e} job_queue *)
+and new_job j = 
+  debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
+  let promise = Domainslib.Task.async !pool (fun () -> run_job j) in
+  Queue.add (j, promise) job_queue
 
 and task_defs = ref []
 and pool = ref (Domainslib.Task.setup_pool ~num_domains:pool_size ())
@@ -782,7 +786,16 @@ and load_task_def (taskid:int) : dswp_task =
   try List.find (fun t -> t.id == taskid) !task_defs
   with Not_found -> failwith "could not find task id"
 
-and scheduler poolsize task_list : unit =
+and join_all pool = 
+  let ret_value = ref None in
+  while not (Queue.is_empty job_queue) do
+    begin match Domainslib.Task.await pool (Queue.take job_queue |> snd) with
+      | Some v -> if Option.is_none !ret_value then ret_value := (Some v)
+      | _ -> () end
+  done;
+  !ret_value
+
+and scheduler initial_job : value option =
   (* Create a domain pool with four worker domains *)
   (* create a function to quickly return a task by id *)
   (* let tid2task = List.fold_left (fun acc tsk -> 
@@ -801,8 +814,7 @@ and scheduler poolsize task_list : unit =
 
         (* what about accuulated senddeps that need to become new jobs? *)
 
-
-  Domainslib.Task.run !pool (fun () ->
+  (* (fun () ->
     let rec loop promises =
       match Queue.take_opt job_queue with
       | Some j ->
@@ -818,7 +830,11 @@ and scheduler poolsize task_list : unit =
           promises
     in
     let promises' = loop [] in
-    List.map (Domainslib.Task.await !pool) promises') |> ignore
+    List.map (Domainslib.Task.await !pool) promises') |> ignore *)
+    
+  (* All of the job creation is handled in SendDep currently -- all we have to do is make sure everything joins. *)
+  new_job initial_job;
+  Domainslib.Task.run !pool (fun () -> join_all !pool)
 
 
 (*** COMMUTATIVITY INFERENCE ***)
@@ -1359,12 +1375,12 @@ let prepare_prog (prog : prog) (argv : string array) =
   env, e
 
 
-let interp_tasks env0 decls tasks : unit =
+let interp_tasks env0 decls tasks : value =
   set_task_def tasks;
   (* create a first job *)
-  new_job 1 env0;
+  let job0 = {tid=1; env=env0} in
   (* start the scheduler *)
-  scheduler pool_size !task_defs
+  scheduler (* pool_size *) job0 |> flatten_value_option
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
@@ -1372,12 +1388,11 @@ let interp_tasks env0 decls tasks : unit =
 let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
-  if !dswp_mode then begin
-    interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks;
-    Int64.of_int 666
-  end else match interp_exp env e with
-  | _, VInt ret -> ret
-  | _, _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)
+  match (if !dswp_mode
+    then interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks
+    else interp_exp env e |> snd) with
+  | VInt ret -> ret
+  | _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)
 
 
 (* Execute but return lapsed time instead of program return *)

@@ -22,6 +22,10 @@ let null = function
   | [] -> true
   | _ -> false
 
+let first f (x, y) = (f x, y)
+
+let second f (x, y) = (x, f y)
+  
 let debug_sandwich id f =
   Printf.printf "%s" (id ^ ": Before call.\n");
   let x = f () in
