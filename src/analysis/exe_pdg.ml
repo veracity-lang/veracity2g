@@ -942,6 +942,22 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
   List.map (fun t -> update_sendDep_of_task t) out_tasks
 
 let generate_tasks dag_scc (block: block node) : dswp_task list =
+  let generate_task0 = 
+    let body = match dag_scc.entry_node with 
+    | Some entry ->
+      List.fold_left 
+      (fun b e -> 
+      if compare_dag_nodes {n=[entry];label =Sequential} e.dag_src then begin
+        let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
+        let i = find_taskID_from_node dag_scc elem in 
+        b @ [no_loc (SendEOP i)]
+      end
+      else b
+      ) [] dag_scc.edges
+    | None -> []
+    in 
+    {id = 0; deps_in = []; deps_out = []; body = no_loc body; label= Dswp_task.Sequential }
+  in 
   let rec generate_tasks_from_dag dag_scc (block: block node) : dswp_task list =
     match dag_scc.nodes with 
     | [] -> []
@@ -953,7 +969,8 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
   let tasks = generate_tasks_from_dag dag_scc block in
-  fill_task_dependency dag_scc (List.map (fun t -> (t.id, t)) tasks)
+  let tasks = fill_task_dependency dag_scc (List.map (fun t -> (t.id, t)) tasks) in
+  (generate_task0) :: tasks
 
 let thread_partitioning dag_scc pdg (threads: int list) body =
   Printf.printf "Merging DAG_scc:\n";
