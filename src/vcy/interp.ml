@@ -695,7 +695,22 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
        (* Parallel. TODO: make modular? *) new_job {tid = task_id; env = env'};
        (* now just return the unmodified environment *)
        env, None
-   | SendEOP(task_id) -> failwith "interp sendEOP todo - send a EOP job"
+   | SendEOP(task_id) -> 
+     (* Join all threads of the given task_id *)
+     join_all_task task_id;
+     (* Send dependencies to all children of the task_id *)
+     List.map (fun {pred_task; vars; _} -> 
+       let job_vals = List.fold_left (fun acc (varty,varid) ->
+          let values = local_env env @ env.g.globals in
+          begin match List.assoc_opt varid values with
+          | Some (_,v) -> (varty,varid,!v) :: acc
+          | None -> raise @@ IdNotFound (varid, Range.norange)
+          end          
+       ) [] vars in
+       let env' = senddep_extend_env env job_vals in
+       new_job {tid = pred_task; env = env'}
+     ) (load_task_def task_id).deps_out |>
+     const (env, None)
 
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -787,15 +802,19 @@ and load_task_def (taskid:int) : dswp_task =
   try List.find (fun t -> t.id == taskid) !task_defs
   with Not_found -> failwith "could not find task id"
 
-and join_all pool = 
+and join_all () = 
   let ret_value = ref None in
   while not (Queue.is_empty job_queue) do
-    begin match Domainslib.Task.await pool (Queue.take job_queue |> snd) with
+    begin match Domainslib.Task.await !pool (Queue.take job_queue |> snd) with
       | Some v -> if Option.is_none !ret_value then ret_value := (Some v)
       | _ -> () end
   done;
   !ret_value
-
+and join_all_task tid =
+  Queue.to_seq job_queue |>
+  Seq.filter (fun (j, _) -> j.tid == tid) |>
+  Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore)
+  
 and scheduler initial_job : value option =
   (* Create a domain pool with four worker domains *)
   (* create a function to quickly return a task by id *)
@@ -835,7 +854,7 @@ and scheduler initial_job : value option =
     
   (* All of the job creation is handled in SendDep currently -- all we have to do is make sure everything joins. *)
   new_job initial_job;
-  Domainslib.Task.run !pool (fun () -> join_all !pool)
+  Domainslib.Task.run !pool (fun () -> join_all ())
 
 
 (*** COMMUTATIVITY INFERENCE ***)
