@@ -75,6 +75,7 @@ and gen_stmt tsk = function
     | SBlock(blocklabel,block) -> sp "%s" (gen_blocknode tsk block) (** TODO: check *)
     | SendDep(tsk_id, vars) ->
       gen_senddep tsk tsk_id (* TODO: add vars *)
+    | SendEOP id -> sp "/* SendEOP (%d) */" id
       
 
 

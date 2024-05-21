@@ -819,6 +819,7 @@ let find_taskID_from_node dag_scc elem : int =
   !tmp
 
 let reconstructAST dag dag_scc_node (block: block node) taskID : block =
+  let sendDep_exists = ref [] in 
   let rec transform_block dag_scc_node (block: block node) : block * bool =
     let stmt_exist stmt node = 
       List.exists (fun s -> String.equal (Range.string_of_range s.l) (Range.string_of_range stmt.loc)) node.n
@@ -834,10 +835,16 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
           then begin
             let new_b1 = if not f1 then begin
               let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b1)) b1.elt) 
-              in new_b1 @ [no_loc @@ SendDep (find_taskID_from_node dag removed, [])] end else new_b1 in
+              in
+              let tid = find_taskID_from_node dag removed in 
+              sendDep_exists := tid :: !sendDep_exists;
+              new_b1 @ [no_loc @@ SendDep (tid, [])] end else new_b1 in
             let new_b2 = if not f2 then begin 
               let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b2)) b2.elt) 
-              in new_b2 @ [no_loc @@ SendDep (find_taskID_from_node dag removed, [])] end else new_b2 in
+              in
+              let tid = find_taskID_from_node dag removed in 
+              sendDep_exists := tid :: !sendDep_exists; 
+              new_b2 @ [no_loc @@ SendDep (tid, [])] end else new_b2 in
             let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
             (node_up stmt (If(e, node_up b1 new_b1, node_up b2 new_b2))) :: rest , true && f
           end
@@ -851,7 +858,10 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
           then begin
             let new_body = if not f then begin 
               let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_body)) b.elt) 
-              in new_body @ [no_loc @@ SendDep (find_taskID_from_node dag removed, [])] end else new_body in
+              in
+              let tid = find_taskID_from_node dag removed in 
+              sendDep_exists := tid :: !sendDep_exists;
+              new_body @ [no_loc @@ SendDep (tid, [])] end else new_body in
             let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
             (node_up stmt (While(e, node_up b new_body))) :: rest , true && f
           end 
@@ -874,7 +884,9 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
     in 
     res
   in
-  fst (transform_block dag_scc_node block)
+  let b = fst (transform_block dag_scc_node block) in 
+  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b !sendDep_exists
+  
 
 let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) = 
   let find_taskID node = 
