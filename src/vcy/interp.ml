@@ -852,8 +852,36 @@ and scheduler initial_jobs : value option =
     
   (* All of the job creation is handled in SendDep currently -- all we have to do is make sure everything joins. *)
   List.iter new_job initial_jobs;
-  Domainslib.Task.run !pool (fun () -> join_all ())
+  Domainslib.Task.run !pool join_all
 
+(* Draft of new scheduler that accumulates dependencies *)
+let received_dependencies = ref []
+let dep_mutex = Mutex.create()
+let env0 = ref None
+let scheduler' env =
+  env0 := Some env;
+  (* Start initial jobs -- one with no input dependencies. *)
+  List.filter (fun task -> null task.deps_in) !task_defs
+  |> List.map (fun task -> {tid=task.id; env=env})
+  |> List.iter new_job;
+  Domainslib.Task.run !pool join_all
+  
+let send_dep tfrom tto vals =
+  (* Receive the new dependency *)
+  Mutex.lock dep_mutex;
+  let pre_deps = !received_dependencies in
+  let post_deps = (tfrom, tto, vals) :: pre_deps in
+  received_dependencies := post_deps;
+  Mutex.unlock dep_mutex;
+  
+  (* Check if that was the last dependency we needed *)
+  let task = load_task_def tto in
+  let relevant_deps = List.filter (fun (_, tto', _) -> tto' = tto) post_deps in
+  if List.for_all (fun from -> 
+    List.exists (fun (from', _, _) -> from' = from) relevant_deps) task.deps_in
+    (* TODO: check that all the variables sent are the ones we needed? *)
+  then new_job {tid = tto; 
+    env = List.fold_left senddep_extend_env (Option.get !env0) (List.map trd relevant_deps)}
 
 (*** COMMUTATIVITY INFERENCE ***)
 
