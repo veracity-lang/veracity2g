@@ -2,32 +2,39 @@ commutativity {
     {f1(c)}, {f2(c)}: (true)
 }
 
-int main(int argc, string[] argv) {
-    int size = 1000;
+int[] x = new int[1000];
+int[] y = new int[1000];
+int[] z = new int[1000];
+int sum = 0;
+int l = 0;
+int i = 0;
+int j = 0;
+int k = 0;
 
-    int[] x = new int[size];
-    int[] y = new int[size];
-    int[] z = new int[size];
-    int sum = 0;
-    for(int i = 0; i < size; i = i+1;) {
-        x[i] = havoc();
+int main(int argc, string[] argv) {
+    while(l < 1000) {
+        x[l] = random(0, 256);
+        l = l + 1;
     }
 
     f1:{ 
-        for(int i = 0; i < size; i = i+1;) {
+        while(i < 1000) {
             y[i] = x[i] * x[i];
+            i = i + 1;
         }
     }
     
-    for(int i = 0; i < size; i = i+1;) {
-        sum = sum + y[i];
+    while(j < 1000) {
+        sum = sum + y[j];
+        j = j + 1;
     }
 
     f2:{ 
-        for(int i = 0; i < size; i = i+1;) {
-            z[i] = x[size-i];
+        while(k < 1000) {
+            z[k] = x[999-k];
+            k = k + 1;
         }
     }
     
-    return 0;
+    return z[0];
 }

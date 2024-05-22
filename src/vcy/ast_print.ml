@@ -70,10 +70,13 @@ module AstPP = struct
     begin match l with
       | []    -> ()
       | [h]   -> pp fmt h
-      | h::tl -> pp fmt h; sep ();
+      | h::tl -> pp fmt h; sep fmt;
               print_list_aux fmt sep pp tl
     end
 
+  let print_comma_sep_aux fmt = 
+    pp_print_string fmt ","; pp_print_space fmt ()
+    
   let rec print_ty_aux fmt t =
     let pps = pp_print_string fmt in
     match t with
@@ -102,7 +105,7 @@ module AstPP = struct
           pps "new "; print_ty_aux fmt ty; pps "[]";
           pps "{";
           pp_open_hbox fmt ();
-          print_list_aux fmt (fun () -> pps ","; pp_print_space fmt()) (print_exp_aux 0) vs;
+          print_list_aux fmt print_comma_sep_aux (print_exp_aux 0) vs;
           pp_close_box fmt ();
           pps "}";
         end
@@ -164,7 +167,7 @@ module AstPP = struct
     pps l;
     pp_open_hvbox fmt 0;
     print_list_aux fmt
-      (fun () -> pps ","; pp_print_space fmt())
+      print_comma_sep_aux
       (fun fmt -> fun e -> print_exp_aux 0 fmt e) es;
     pp_close_box fmt ();
     pps r
@@ -178,16 +181,25 @@ module AstPP = struct
     ppsp (); pps "="; ppsp ();
     print_exp_aux 0 fmt init; pps semi;
     pp_close_box fmt ()
+    
+  let print_blocklabel_aux fmt ((id, explist): blocklabel) = 
+    match explist with
+    | None -> print_id_aux fmt id;
+    | Some lbls ->
+      let pps = pp_print_string fmt in
+      print_id_aux fmt id;
+      pps "(";
+      print_list_aux fmt print_comma_sep_aux (print_exp_aux 0) lbls;
+      pps ")"
 
   let rec print_block_aux fmt (b : block node) =
     let pps = pp_print_string fmt in
-    let ppsp = pp_print_space fmt in
     let ppnl = pp_force_newline fmt in
 
     if (List.length b.elt) > 0 then
       begin pps "{"; ppnl (); pps "  ";
             pp_open_vbox fmt 0;
-            print_list_aux fmt (fun () -> ppsp ()) print_stmt_aux b.elt;
+            print_list_aux fmt (flip pp_print_space ()) print_stmt_aux b.elt;
             pp_close_box fmt ();
             ppnl (); pps "}"
       end
@@ -238,7 +250,7 @@ module AstPP = struct
 
       | For(decls, eo, so, body) ->
         pps "for ("; pp_open_hvbox fmt 0;
-          print_list_aux fmt (fun () -> pps ","; ppsp ()) (print_vdecl_aux "") decls;
+          print_list_aux fmt print_comma_sep_aux (print_vdecl_aux "") decls;
           pps ";"; ppsp ();
         begin match eo with
           | None -> ();
@@ -277,17 +289,21 @@ module AstPP = struct
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
       | Havoc(id) ->
         pps "havoc "; pps id; pps ";"
+      | SBlock(blocklabel, block) -> begin match blocklabel with
+          | None -> ()
+          | Some bl -> print_blocklabel_aux fmt bl
+        end;
+        print_block_aux fmt block
     end
 
   let print_mdecl_aux fmt {elt={pure; mrtyp; mname; args; body};_} = (* TODO: doesn't use pure *)
     let pps = pp_print_string fmt in
-    let ppsp = pp_print_space fmt in
     let ppnl = pp_force_newline fmt in
 
     print_ty_aux fmt mrtyp;
     pps @@ Printf.sprintf " %s(" mname;
     pp_open_hbox fmt ();
-    print_list_aux fmt (fun () -> pps ","; ppsp ())
+    print_list_aux fmt print_comma_sep_aux
       (fun fmt -> fun (t, id) ->
         print_ty_aux fmt t;
         pps " ";
@@ -320,11 +336,29 @@ module AstPP = struct
     pps "}";
     pp_close_box fmt ()
 
+  let print_group_commute_aux fmt (gc: group_commute node) =
+    let pps = pp_print_string fmt in
+    let (bls, phi) = gc.elt in 
+    print_list_aux fmt print_comma_sep_aux (fun fmt -> fun com_frag -> 
+      pps "{";
+      print_list_aux fmt print_comma_sep_aux print_blocklabel_aux com_frag;
+      pps "}"
+    ) bls;
+    pps ": ";
+    begin match phi with
+      | PhiInf   -> pps "_" 
+      | PhiExp e -> print_exp_aux 0 fmt e
+    end
+    
   let print_decl_aux fmt g =
     begin match g with
       | Gvdecl d -> print_gdecl_aux fmt d.elt
       | Gmdecl m -> print_mdecl_aux fmt m
       | Gsdecl s -> print_sdecl_aux fmt s.elt
+      | Commutativity gcoms ->
+         pp_print_string fmt "{";
+         print_list_aux fmt (fun fmt -> pp_print_string fmt ";"; pp_print_space fmt ()) print_group_commute_aux gcoms;
+         pp_print_string fmt "}"
     end
 
   let print_prog_aux fmt p =
@@ -540,6 +574,8 @@ module AstML = struct
       sp "SendDep (%d: %s)" id (string_of_args vars)
     | SendEOP (id) ->
       sp "SendEOP (%d)" id
+    | Require e ->
+      sp "Require (%s)" (string_of_exp e)
 
   and string_of_stmt (s:stmt node) : string =
     string_of_node string_of_stmt_aux s

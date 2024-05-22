@@ -295,7 +295,7 @@ and aseq = astmt list
 type gdecl = { name : id; ty : ty; init : exp node }
 
 type mdecl = { pure : bool; mrtyp : ty; mname : id; args : (ty * id) list; body : block node }
-let mdecl_of_tmethod name (t : tmethod) = { pure = t.pure; mrtyp = t.rty; mname = name; args = List.map flip t.args; body = t.body }
+let mdecl_of_tmethod name (t : tmethod) = { pure = t.pure; mrtyp = t.rty; mname = name; args = List.map swap t.args; body = t.body }
 (*type fdecl = { frtyp : ty; fname : id; args : (ty * id) list; body : exp node }*)
 
 type field = { field_name : id; ftyp : ty }

@@ -672,7 +672,7 @@ let display_help_message exe_name =
     (*"  phi         Generate commutativty condition between two methods\n" ^*)
     "  infer       Infer and emit all blank commutativity conditions\n" ^
     "  verify      Verify all provided commutativity conditions\n" ^
-    "  translate   Translate program to C\n "^
+    (* "  translate   Translate program to C\n "^ *)
     "  compile     Compile (to C) via global commutativity and task parallelism\n "
   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details
 

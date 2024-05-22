@@ -678,34 +678,24 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | SBlock (bl, b) ->
    interp_block env b
    | SendDep(task_id, var_id_list) -> 
-       (* capture the values of dependent variables from the environment *)
-       let job_vals = List.fold_left (fun acc (varty,varid) ->
-          let values = local_env env @ env.g.globals in
-          begin match List.assoc_opt varid values with
-          | Some (_,v) -> (varty,varid,!v) :: acc
-          | None -> raise @@ IdNotFound (varid, Range.norange)
-          end          
-       ) [] var_id_list in
-       let env' = senddep_extend_env env job_vals in
-       (* Parallel. TODO: make modular? *) new_job {tid = task_id; env = env'};
+       let job = make_job_deps task_id env var_id_list in
+       (* Parallel. TODO: make modular? *) new_job job;
        (* now just return the unmodified environment *)
        env, None
    | SendEOP(task_id) -> 
+     (* Sort dependencies into those that commute and those that don't *)
+     let com_dep, ncom_dep = List.partition (function
+         | {commute_cond=Some cond; _} -> interp_phi env cond
+         | _ -> false
+       ) (load_task_def task_id).deps_out
+     in
+     (* Start all things that do commute. *)
+     List.iter (fun {pred_task; vars; _} -> make_job_deps pred_task env vars |> new_job) com_dep;
      (* Join all threads of the given task_id *)
      join_all_task task_id;
-     (* Send dependencies to all children of the task_id *)
-     List.map (fun {pred_task; vars; _} -> 
-       let job_vals = List.fold_left (fun acc (varty,varid) ->
-          let values = local_env env @ env.g.globals in
-          begin match List.assoc_opt varid values with
-          | Some (_,v) -> (varty,varid,!v) :: acc
-          | None -> raise @@ IdNotFound (varid, Range.norange)
-          end          
-       ) [] vars in
-       let env' = senddep_extend_env env job_vals in
-       new_job {tid = pred_task; env = env'}
-     ) (load_task_def task_id).deps_out |>
-     const (env, None)
+     (* Start children tasks that didn't commute *)
+     List.iter (fun {pred_task; vars; _} -> make_job_deps pred_task env vars |> new_job) ncom_dep;
+     (env, None)
    | GCommute(_) -> failwith "gcommute in interp_stmt."
    | Require(_) -> failwith "require in interp_stmt."
 
@@ -786,6 +776,17 @@ and job_queue = Queue.create ()
 and run_job jb = 
     let (env',v) = interp_block jb.env (load_task_def jb.tid).body in
     v
+(* capture the values of dependent variables from the environment *)
+and make_job_deps task_id env deps = 
+  let job_vals = List.fold_left (fun acc (varty,varid) ->
+          let values = local_env env @ env.g.globals in
+          begin match List.assoc_opt varid values with
+          | Some (_,v) -> (varty,varid,!v) :: acc
+          | None -> raise @@ IdNotFound (varid, Range.norange)
+          end          
+       ) [] deps in
+  let env' = senddep_extend_env env job_vals in
+  {tid = task_id; env = env'}
 (* Interpreter calls this function at each SendDep to create a new job *)
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
@@ -1211,7 +1212,7 @@ let rec construct_env (g : global_env) (globals : texp_list) : prog -> global_en
     let m =
       { pure
       ; rty = mrtyp
-      ; args = List.map flip args
+      ; args = List.map swap args
       ; body
       }
     in construct_env {g with methods = (mname,m) :: g.methods } globals tl

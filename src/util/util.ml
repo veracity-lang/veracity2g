@@ -17,7 +17,9 @@ let check_prover () = !servois2_synth_option.prover
 let assoc_update (k : 'a) (v : 'b) (l : ('a * 'b) list) =
   (k,v) :: List.remove_assoc k l
 
-let flip (a,b) = b,a
+let swap (a,b) = b,a
+
+let flip f x y = f y x
 
 let compose f g x = f (g x)
 
