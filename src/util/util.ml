@@ -1,6 +1,13 @@
 exception UnreachableFailure of string
 exception NotImplemented of string
 
+let debug = ref false
+
+(* let dprintf fmt = if !debug then Printf.printf fmt else Printf.ifprintf stdout fmt *)
+
+let debug_print (s : string lazy_t) =
+  if !debug then (print_string (Lazy.force s); flush stdout)
+
 let sp = Printf.sprintf
 
 let servois2_synth_option = ref Servois2.Synth.default_synth_options
@@ -25,18 +32,6 @@ let null = function
 let first f (x, y) = (f x, y)
 
 let second f (x, y) = (x, f y)
-  
-let debug_sandwich id f =
-  Printf.printf "%s" (id ^ ": Before call.\n");
-  let x = f () in
-  Printf.printf "%s" (id ^ ": After call.\n");
-  x
-  
-let debug_sandwich_fn1 id f x =
-  Printf.printf "%s" (id ^ ": Before call.\n");
-  let y = f x in
-  Printf.printf "%s" (id ^ ": After call.\n");
-  y
   
 let rec square_list_unordered = function
   | [] -> []

@@ -8,8 +8,6 @@ open Dswp_task
 
 (*** INTERP MANAGEMENT ***)
 
-let debug_display = ref false
-
 let emit_inferred_phis = ref false
 let emit_quiet = ref false
 
@@ -21,9 +19,6 @@ let force_infer = ref false
 let dswp_mode = ref false
 
 let pool_size = 4
-
-let debug_print (s : string lazy_t) =
-  if !debug_display then print_string (Lazy.force s); flush stdout
 
 let flatten_value_option v = match v with
   | Some v -> v
@@ -711,6 +706,8 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
        new_job {tid = pred_task; env = env'}
      ) (load_task_def task_id).deps_out |>
      const (env, None)
+   | GCommute(_) -> failwith "gcommute in interp_stmt."
+   | Require(_) -> failwith "require in interp_stmt."
 
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -867,18 +864,25 @@ let infer_phi (g : global_env) (var : commute_variant) (bl : block node list) (g
 let labeled_blocks = ref []
 let global_defs = ref []
 
+let find_blocks_by_label labels = 
+  let blks = ref [] in
+  List.iter (fun ls -> List.iter (fun (id, args) -> 
+    let [@warning "-8"] {elt=SBlock(Some(i,_),bl);_} = List.find 
+      (function {elt=SBlock(Some(i,_),a);_} -> String.equal i id | _ -> false) !labeled_blocks 
+    in blks := !blks @ [bl]) ls) labels;
+  !blks
+
 let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
   let rec interp_group_commute (gc: group_commute node list) : group_commute node list = 
     begin match gc with 
     | [] -> [] 
     | gc::tl -> 
       let labels, phi = gc.elt in 
-      let blks = ref [] in
-      List.iter (fun ls -> List.iter (fun (id, args) -> let {elt=SBlock(Some(i,_),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in blks := !blks @ [bl]) ls) labels;
+      let blks = find_blocks_by_label labels in
       let phi' =
         let infer () =
         (* apply_pairs (fun b1 b2 -> infer_phi g CommuteVarPar (b1@b2) defs None None) !blks  *)
-        let phi' = infer_phi g CommuteVarPar !blks defs None None in
+        let phi' = infer_phi g CommuteVarPar blks defs None None in
           if !emit_inferred_phis then
             begin if !emit_quiet
             then Printf.printf "%s\n"
@@ -977,12 +981,13 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
         end;
       phi'
     in match phi with
-  | PhiExp e -> if !force_infer then infer () else e
-  | PhiInf -> infer ()
-  in let s = Commute (var, PhiExp phi', bl) in
-  node_app
-    (List.cons (node_up h s))
-    (infer_phis_of_block g defs t)
+    | PhiExp e -> if !force_infer then infer () else e
+    | PhiInf -> infer ()
+    in let s = Commute (var, PhiExp phi', bl) in
+    node_app
+      (List.cons (node_up h s))
+      (infer_phis_of_block g defs t)
+  | SendDep (_, _) | SendEOP(_) -> failwith "sendDep/sendEOP should not be in infer_phis_of_block."
 
 let infer_phis_of_prog (g : global_env) : global_env =
   let globals : ty bindlist =
@@ -997,21 +1002,19 @@ let infer_phis_of_prog (g : global_env) : global_env =
   let gc = infer_phis_of_global_commutativity g !global_defs in
   { g with methods = m; group_commute = gc }
 
-
 let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : unit = 
   let rec interp_group_commute (gc: group_commute node list) : unit = 
     begin match gc with 
     | [] -> () 
     | gc::tl -> 
       let labels, phi = gc.elt in 
-      let blks = ref [] in
-      List.iter (fun ls -> List.iter (fun (id, args) -> let {elt=SBlock(Some(i,_),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in blks := !blks @ [bl]) ls) labels;
+      let blks = find_blocks_by_label labels in
       begin match phi with
       | PhiExp e ->
         if !print_cond then 
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g CommuteVarPar !blks defs None None with
+        begin match Analyze.verify_of_block e g CommuteVarPar blks defs None None with
         | Some b, compl -> 
           let compl_str = 
             match compl with 
@@ -1169,6 +1172,7 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
+  | SendDep (_, _) | SendEOP(_) | Require(_) -> failwith "sendDep/sendEOP/require should not be present in verify_phis."
 
 let verify_phis_of_prog (g : global_env) : global_env =
   let globals : ty bindlist =
@@ -1312,7 +1316,6 @@ let cook_calls (g : global_env) : global_env =
       begin match bl with 
       | None -> SBlock(None, cook_calls_of_block b) 
       | Some l -> 
-        let (id, _) = l in 
         SBlock(Some l, cook_calls_of_block b)
       end
     | GCommute (v, c, pre, bl, post) ->
@@ -1322,6 +1325,7 @@ let cook_calls (g : global_env) : global_env =
         | PhiInf -> PhiInf
       in
       GCommute (v, c, cook_calls_of_exp pre, List.map cook_calls_of_block bl, cook_calls_of_exp post)
+    | SendDep (_, _) | SendEOP(_) -> failwith "sendDep/sendEOP should not be present in cook_calls."
     in
     node_up s s'
 

@@ -7,6 +7,7 @@ open Dswp_task
 
 let generated_tasks = ref []
 let generated_decl_vars = ref []
+let codegen = ref false
 
 type dependency =
 | ControlDep
@@ -120,14 +121,15 @@ let print_pdg pdg fn : unit =
     )) "" pdg.edges;
     "}\n";
   ]);
-  print_endline ("pdg written to " ^ fn);
+  debug_print (lazy ("pdg written to " ^ fn));
   close_out oc
 
 
 let print_pdg_debug pdg =
-  match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l);
-  List.iteri (fun i s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
-  List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (Range.string_of_range_nofn e.src.l) (Range.string_of_range_nofn e.dst.l)) pdg.edges
+  if !Util.debug then
+    match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l) | _ -> ();
+    List.iteri (fun i s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
+    List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (Range.string_of_range_nofn e.src.l) (Range.string_of_range_nofn e.dst.l)) pdg.edges
 
 
 let find_node (s: stmt node) pdg : pdg_node =
@@ -143,6 +145,8 @@ let m_vars = ref []
 
 let set_vars_side (vars : (ty * string) list) side : ((ty * string) * int) list = 
   List.map (fun v -> (v, side)) vars
+
+let find_global_by_name_opt name = List.find_opt (function (Gvdecl d) -> String.equal d.elt.name name | _ -> false) !decl_vars
 
 let rec find_block_vars block : ((ty * string) * int) list = 
   match block with 
@@ -170,6 +174,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | _ -> []
     end 
   | Entry -> []
+  | EFor(_, _, _) -> failwith "efor in find_stmt_vars."
 
   (* 
   | SCallRaw of id * exp node list
@@ -181,7 +186,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
 and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
   | CStr s | Id s -> 
-  begin match List.find_opt (fun (Gvdecl d) -> String.equal d.elt.name s) !decl_vars with 
+  begin match find_global_by_name_opt s with 
   | None -> [List.find (fun (ty, id) -> String.equal id s) !m_vars]
   | Some (Gvdecl v) -> [(v.elt.ty, s)]
   | _ -> failwith "undefined variable"
@@ -218,7 +223,7 @@ let has_data_dep src dst : bool * (ty * string) list * int =
       else
         has_common_element tail list2 vars
   in let (flag,vars,side) = has_common_element list1 list2 [] in 
-  flag, List.map (fun (t, id) -> let v = List.find_opt (fun (Gvdecl d) -> String.equal d.elt.name id) !decl_vars in match v with | Some (Gvdecl d) -> (d.elt.ty, id) | _ -> (t,id)) vars, side
+  flag, List.map (fun (t, id) -> match find_global_by_name_opt id with | Some (Gvdecl d) -> (d.elt.ty, id) | _ -> (t,id)) vars, side
 
 
 let add_dataDep_edges pdg = 
@@ -254,7 +259,7 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
   let p = ref pdg in 
   apply_pairs (fun (x : pdg_node) (y : pdg_node) -> 
     begin match x.src, y.src with 
-    | Some {elt=(SBlock (Some l1, _))}, Some {elt=(SBlock (Some l2, _))} -> 
+    | Some {elt=(SBlock (Some l1, _)); loc=_}, Some {elt=(SBlock (Some l2, _)); loc=_} -> 
       begin match !(find_commute_condition l1 l2) with 
       | None -> ()
       | Some (PhiExp cond) -> p := add_edge !p x y (Commute cond)
@@ -550,7 +555,7 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
     )) "" d.edges;
     "}\n";
   ]);
-  print_endline ("dag written to " ^ fn);
+  debug_print (lazy ("dag written to " ^ fn));
   close_out oc
 
 let has_loop_carried (scc: pdg_node list) (pdg: exe_pdg) : bool =
@@ -619,10 +624,11 @@ let string_of_dag_label = function
 
 
 let print_dag_debug dag_scc =
-  match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range_nofn en.l);
-  let string_of_node n = List.fold_left (fun acc s -> acc ^ (Range.string_of_range_nofn s.l) ^ " ") "" n in 
-  List.iteri (fun i sl -> Printf.printf "node %d (%s): %s" i (string_of_dag_label sl.label) (string_of_node sl.n); print_newline()) dag_scc.nodes;
-  List.iteri (fun i e -> Printf.printf "dag_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges
+  if !Util.debug then begin
+    match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range_nofn en.l) | _ -> ();
+    let string_of_node n = List.fold_left (fun acc s -> acc ^ (Range.string_of_range_nofn s.l) ^ " ") "" n in 
+    List.iteri (fun i sl -> Printf.printf "node %d (%s): %s" i (string_of_dag_label sl.label) (string_of_node sl.n); print_newline()) dag_scc.nodes;
+    List.iteri (fun i e -> Printf.printf "dag_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges end
   
 let rec all_in_list_a_in_b list_a list_b =
   match list_a with
@@ -973,7 +979,7 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
   (generate_task0) :: tasks
 
 let thread_partitioning dag_scc pdg (threads: int list) body =
-  Printf.printf "Merging DAG_scc:\n";
+  debug_print (lazy "Merging DAG_scc:\n");
   let merged_dag = merge_doall_blocks dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
   (* print_dag_debug dag_scc_with_max_profile; *)
@@ -982,8 +988,9 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
-  List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
-   List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks;
+  if !Util.debug then begin
+    List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
+    List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks end;
   tasks
 
 
@@ -1000,15 +1007,17 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   print_pdg_debug pdg;
   print_pdg pdg "/tmp/pdg.dot";
   let sccs = find_sccs pdg in
-  Printf.printf "Strongly Connected Components:\n";
-  print_sccs sccs;
+  if !Util.debug then begin
+    Printf.printf "Strongly Connected Components:\n";
+    print_sccs sccs end;
   let dag_scc = coalesce_sccs pdg sccs in
-  Printf.printf "DAG_SCCs:\n";
+  debug_print (lazy "DAG_SCCs:\n");
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
   let tasks = thread_partitioning dag_scc pdg [] body in 
-  Printf.printf "gen_tasks called with %d globals\n" (List.length !decl_vars);
-  Codegen_c.gen_tasks (!decl_vars) tasks;
-  Codegen_c.print_tasks tasks "/tmp/tasks.dot";
+  debug_print (lazy (Printf.sprintf "gen_tasks called with %d globals\n" (List.length !decl_vars)));
+  if !codegen then begin
+    Codegen_c.gen_tasks (!decl_vars) tasks;
+    Codegen_c.print_tasks tasks "/tmp/tasks.dot" end;
   generated_tasks := tasks;
   generated_decl_vars := !decl_vars;

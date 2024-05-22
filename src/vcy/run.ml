@@ -161,7 +161,7 @@ module RunInterp : Runner = struct
   let interp prog_name argv =
     try
       if !debug then begin
-        Interp.debug_display := true;
+        Util.debug := true;
         Interp.emit_inferred_phis := true;
         Printexc.record_backtrace true
       end;
@@ -263,7 +263,7 @@ module RunCompile : Runner = struct
   let debug = ref false
 
   let output_file = ref ""
-  let output_dir = ref ""
+  (* let output_dir = ref "" *)
 
   let anons = ref []
 
@@ -287,6 +287,7 @@ module RunCompile : Runner = struct
 
     (* 3. Code generation: from Tasks to C *)
     (*      (will use Codegen_c c_of_prog) *)
+    Exe_pdg.codegen := true;
     print_endline ("emitted "^(!output_file)^", which can now be compiled")
   end
 
@@ -480,6 +481,7 @@ module RunInfer : Runner = struct
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
     (* ; "--poke", Arg.Unit (fun () -> Choose.choose := Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
+    ; "--codegen", Arg.Set Exe_pdg.codegen, " Output generated .c file"
     ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke2), " Use improved poke heuristic (default: simple)"
     ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"    
@@ -513,7 +515,7 @@ module RunInfer : Runner = struct
   let infer_phis prog_name =
     if !debug then begin
       Printexc.record_backtrace true;
-      Interp.debug_display := true;
+      Util.debug := true;
     end;
 
     (* This will enable inference of global commutativity specs *)
@@ -528,7 +530,7 @@ module RunInfer : Runner = struct
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
-      let prog' = gmdecls @ List.filter (function Gvdecl _ | Gsdecl _ -> true | Gmdecl _ -> false) prog in
+      let prog' = gmdecls @ List.filter (function Gvdecl _ | Gsdecl _ -> true | Gmdecl _ | Commutativity _ -> false) prog in
       let translated_prog = Ast_print.AstPP.string_of_prog prog' in
       let out_chan = open_out !output_file in
       output_string out_chan translated_prog;
@@ -592,7 +594,7 @@ module RunVerify : Runner = struct
   let verify prog_name =
     if !debug then begin
       Printexc.record_backtrace true;
-      Interp.debug_display := true;
+      Util.debug := true;
     end;
 
     Interp.emit_inferred_phis := true;
