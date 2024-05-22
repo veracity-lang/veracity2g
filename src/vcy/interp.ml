@@ -813,7 +813,7 @@ and join_all_task tid =
   Seq.filter (fun (j, _) -> j.tid == tid) |>
   Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore)
   
-and scheduler initial_job : value option =
+and scheduler initial_jobs : value option =
   (* Create a domain pool with four worker domains *)
   (* create a function to quickly return a task by id *)
   (* let tid2task = List.fold_left (fun acc tsk -> 
@@ -851,7 +851,7 @@ and scheduler initial_job : value option =
     List.map (Domainslib.Task.await !pool) promises') |> ignore *)
     
   (* All of the job creation is handled in SendDep currently -- all we have to do is make sure everything joins. *)
-  new_job initial_job;
+  List.iter new_job initial_jobs;
   Domainslib.Task.run !pool (fun () -> join_all ())
 
 
@@ -1402,10 +1402,11 @@ let prepare_prog (prog : prog) (argv : string array) =
 
 let interp_tasks env0 decls tasks : value =
   set_task_def tasks;
-  (* create a first job *)
-  let job0 = {tid=1; env=env0} in
+  (* create a job for each task with no deps_in *)
+  let jobs = List.filter (fun task -> null task.deps_in && task.id <> 0) !task_defs (* TODO: figure out task 0? *)
+    |> List.map (fun task -> {tid=task.id; env=env0}) in
   (* start the scheduler *)
-  scheduler (* pool_size *) job0 |> flatten_value_option
+  scheduler (* pool_size *) jobs |> flatten_value_option
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,

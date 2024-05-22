@@ -13,7 +13,7 @@ int k = 0;
 
 int main(int argc, string[] argv) {
     while(l < 1000) {
-        x[l] = random(0, 256);
+        x[l] = random(-256, 256);
         l = l + 1;
     }
 
