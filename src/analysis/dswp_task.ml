@@ -21,7 +21,7 @@ type dswp_task = {
 
 let str_of_vars_list (vlist : (ty * id) list) : string  = 
   (String.concat ";" (List.map (fun (t,i) -> 
-       Printf.sprintf "%s %s" (AstML.string_of_ty t) i
+       Printf.sprintf "%s %s" (AstPP.string_of_ty t) i
   ) vlist))
 
 let str_of_task_deps deplist = 
@@ -30,7 +30,7 @@ let str_of_task_deps deplist =
     match dep.commute_cond with 
     | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
     | Some c -> 
-     Printf.sprintf "from %d: %s / commute_cond: %s" dep.pred_task (str_of_vars_list dep.vars) (AstML.string_of_exp c)
+     Printf.sprintf "from %d: %s / commute_cond: %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (AstPP.string_of_exp c)
   ) deplist))
   ^"}"
 
