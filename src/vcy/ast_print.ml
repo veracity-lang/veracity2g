@@ -191,6 +191,14 @@ module AstPP = struct
       pps "(";
       print_list_aux fmt print_comma_sep_aux (print_exp_aux 0) lbls;
       pps ")"
+      
+  let print_arglist_aux fmt args =
+    print_list_aux fmt print_comma_sep_aux
+        (fun fmt -> fun (t, id) ->
+          print_ty_aux fmt t;
+          pp_print_space fmt ();
+          print_id_aux fmt id
+      ) args
 
   let rec print_block_aux fmt (b : block node) =
     let pps = pp_print_string fmt in
@@ -294,6 +302,12 @@ module AstPP = struct
           | Some bl -> print_blocklabel_aux fmt bl
         end;
         print_block_aux fmt block
+      | SendDep(dep, varlist) ->
+        pps (Printf.sprintf "SendDep(%d, " dep);
+        print_arglist_aux fmt varlist;
+        pps ")"
+      | SendEOP(t) ->
+        pps (Printf.sprintf "SendEOP(%d)" t);
     end
 
   let print_mdecl_aux fmt {elt={pure; mrtyp; mname; args; body};_} = (* TODO: doesn't use pure *)
@@ -391,13 +405,7 @@ module AstPP = struct
   let print_exp (e:exp node) : unit = print (print_exp_aux 0) e
   let string_of_exp (e:exp node) : string = (string_of (print_exp_aux 0) e) |> Util.replace "\r" " " |> Util.replace "\n" " "
   let string_of_args args : string = 
-    string_of
-      (fun fmt -> print_list_aux fmt print_comma_sep_aux
-        (fun fmt -> fun (t, id) ->
-          print_ty_aux fmt t;
-          pp_print_space fmt ();
-          print_id_aux fmt id
-      )) args |> Util.replace "\r" " " |> Util.replace "\n" " "
+    string_of print_arglist_aux args |> Util.replace "\r" " " |> Util.replace "\n" " "
   
   let print_ty (t:ty) : unit = print print_ty_aux t
   let string_of_ty (t:ty) : string = string_of print_ty_aux t
