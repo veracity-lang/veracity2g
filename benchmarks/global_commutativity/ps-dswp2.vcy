@@ -14,9 +14,12 @@
 
 int main(int argc, string[] argv) {
 
+    mutex_init(0);
     while(i < 100) {
         pqFlag[i] = new bool[100];
-        if (pIds[i] < 0) { pIds[i] = i; }
+        pIds[i] = i;
+        pValue[i] = i;
+        /* if (pIds[i] < 0) { pIds[i] = i; } */
         i = i + 1;
     }
 
@@ -31,7 +34,9 @@ int main(int argc, string[] argv) {
                 q = q+1; 
             }
             if(q < 100){
-                sum = sum + pValue[row];
+                mutex_lock(0);
+                sum = (sum + pValue[row]) % 256;
+                mutex_unlock(0);
             }
         }
         p = p + 1; 
