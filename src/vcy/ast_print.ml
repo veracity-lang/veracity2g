@@ -390,7 +390,15 @@ module AstPP = struct
 
   let print_exp (e:exp node) : unit = print (print_exp_aux 0) e
   let string_of_exp (e:exp node) : string = (string_of (print_exp_aux 0) e) |> Util.replace "\r" " " |> Util.replace "\n" " "
-
+  let string_of_args args : string = 
+    string_of
+      (fun fmt -> print_list_aux fmt print_comma_sep_aux
+        (fun fmt -> fun (t, id) ->
+          print_ty_aux fmt t;
+          pp_print_space fmt ();
+          print_id_aux fmt id
+      )) args |> Util.replace "\r" " " |> Util.replace "\n" " "
+  
   let print_ty (t:ty) : unit = print print_ty_aux t
   let string_of_ty (t:ty) : string = string_of print_ty_aux t
 
