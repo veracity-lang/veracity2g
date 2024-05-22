@@ -66,8 +66,8 @@ let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg =
 
 let string_of_dep = function
   | ControlDep -> "ControlDep"
-  | DataDep vars -> sp "DataDep (%s)" (AstML.string_of_args vars) 
-  | Commute b -> sp "Commute (%s)" (AstML.string_of_exp b)
+  | DataDep vars -> sp "DataDep (%s)" (AstPP.string_of_args vars) 
+  | Commute b -> sp "Commute (%s)" (AstPP.string_of_exp b)
   | Disjoint -> "Disjoint"
 
 (*
@@ -114,12 +114,12 @@ let print_pdg pdg fn : unit =
       let pw = penwidth_of_pdgedge e in
       acc ^ (match e.dep with
        | DataDep vars ->
-           let vars = AstML.string_of_args vars in
+           let vars = AstPP.string_of_args vars in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
        | Commute exp ->
-          let cond = AstML.string_of_exp exp in
+          let cond = AstPP.string_of_exp exp in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
                 ^ "[style=dotted, color=red, label=\""^(dot_escape cond)^"\", penwidth=\""^pw^"\"];\n"
@@ -548,12 +548,12 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
       let pw = penwidth_of_dagedge e in
       acc ^ (match e.dep with
        | DataDep vars ->
-           let vars = AstML.string_of_args vars in
+           let vars = AstPP.string_of_args vars in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
        | Commute exp ->
-          let cond = AstML.string_of_exp exp in
+          let cond = AstPP.string_of_exp exp in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
                 ^ "[style=dotted, color=red, label=\""^(dot_escape cond)^"\", penwidth=\""^pw^"\"];\n"  
@@ -999,7 +999,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let tasks = generate_tasks merged_dag body in 
   if !Util.debug then begin
-    List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstML.string_of_block t.body)) tasks;
+    List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstPP.string_of_block t.body)) tasks;
     List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks end;
   tasks
 

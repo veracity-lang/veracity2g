@@ -1403,7 +1403,7 @@ let prepare_prog (prog : prog) (argv : string array) =
 let interp_tasks env0 decls tasks : value =
   set_task_def tasks;
   (* create a job for each task with no deps_in *)
-  let jobs = List.filter (fun task -> null task.deps_in && task.id <> 0) !task_defs (* TODO: figure out task 0? *)
+  let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs (* TODO: figure out task 0? *)
     |> List.map (fun task -> {tid=task.id; env=env0}) in
   (* start the scheduler *)
   scheduler (* pool_size *) jobs |> flatten_value_option
