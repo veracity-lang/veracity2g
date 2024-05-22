@@ -72,7 +72,7 @@ and gen_stmt tsk = function
     | Commute(var, phi, bodies) -> raise @@ TaskCodeGenErr "gen_stmt should not have Commute stmts"
     | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
-    | SBlock(blocklabel,block) -> sp "%s" (gen_blocknode tsk block) (** TODO: check *)
+    | SBlock(blocklabel,block) -> sp "%s" (gen_blocknode tsk block) (* TODO: check *)
     | SendDep(tsk_id, vars) ->
       gen_senddep tsk tsk_id (* TODO: add vars *)
     | SendEOP id -> sp "/* SendEOP (%d) */" id

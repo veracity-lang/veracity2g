@@ -70,7 +70,7 @@ let string_of_dep = function
   | Commute b -> sp "Commute (%s)" (AstML.string_of_exp b)
   | Disjoint -> "Disjoint"
 
-
+(*
 let c_of_stmt = function
   | Entry -> "Entry"
   | EWhile e -> sp "while(%s)" (Ast_to_c.c_of_expnode e)
@@ -78,11 +78,21 @@ let c_of_stmt = function
   | EIfElse e -> sp "if(%s)" (Ast_to_c.c_of_expnode e) 
   | EFor(inits, e, update) -> sp "for(%s; %s; %s)" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (Ast_to_c.c_of_ty ty) (!Ast_to_c.mangle id) (Ast_to_c.c_of_expnode rhs)) inits) (e |> Option.map Ast_to_c.c_of_expnode |> Option.value ~default:"") (update |> Option.map Ast_to_c.c_of_stmtnode |> Option.value ~default:"")
   | EStmt s -> Ast_to_c.c_of_stmt s.elt
-  
+*)
+let pp_stmt = function
+  | Entry -> "Entry"
+  | EWhile e -> sp "while(%s)" (Ast_print.AstPP.string_of_exp e)
+  | EIf e -> sp "if(%s)" (Ast_print.AstPP.string_of_exp e) 
+  | EIfElse e -> sp "if(%s)" (Ast_print.AstPP.string_of_exp e) 
+  | EFor(inits, e, update) -> sp "for(%s; %s; %s)" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (Ast_print.AstPP.string_of_ty ty) id (Ast_print.AstPP.string_of_exp rhs)) inits) (e |> Option.map Ast_print.AstPP.string_of_exp |> Option.value ~default:"") (update |> Option.map Ast_print.AstPP.string_of_stmt |> Option.value ~default:"")
+  | EStmt s -> Ast_print.AstPP.string_of_stmt (no_loc s.elt)
+
 let string_of_pdg_node_stmt s =
   (* let big_string = Ast_to_c.c_of_stmt s in  *)
   (* if String.length big_string > 20 then String.sub big_string 0 19 else big_string *)
-  c_of_stmt s
+  (* c_of_stmt s *)
+  pp_stmt s
+
 
 let penwidth_of_pdgedge p = 
   if p.loop_carried then "4.0" else "1.0"

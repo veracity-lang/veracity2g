@@ -207,7 +207,7 @@ module RunInterp : Runner = struct
 
 end
 
-
+(*
 module RunTranslate : Runner = struct
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " translate [<flags>] <vcy program>"
@@ -255,6 +255,7 @@ module RunTranslate : Runner = struct
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 
 end
+*)
 
 module RunCompile : Runner = struct
   let usage_msg exe_name =
@@ -631,7 +632,7 @@ type command =
   | CmdPhi (* Generate commutativity condition *)
   | CmdInfer (* Infer commute conditions *)
   | CmdVerify
-  | CmdTranslate
+  (* | CmdTranslate *)
   | CmdCompile (* Compile to C program implementing global commutativity PDG-base SWP *)
 
 let command_map =
@@ -644,7 +645,7 @@ let command_map =
   (*; "phi",       CmdPhi*)
   ; "infer",     CmdInfer
   ; "verify",    CmdVerify
-  ; "translate", CmdTranslate
+  (* ; "translate", CmdTranslate *)
   ; "compile",   CmdCompile
   ]
 
@@ -656,7 +657,7 @@ let runner_map : (command * (module Runner)) list =
   (*; CmdPhi,       (module RunPhi)*)
   ; CmdInfer,     (module RunInfer)
   ; CmdVerify,    (module RunVerify)
-  ; CmdTranslate, (module RunTranslate)
+  (* ; CmdTranslate, (module RunTranslate) *)
   ; CmdCompile,   (module RunCompile)
   ]
 

@@ -4,7 +4,7 @@
  (name vcy)
  (public_name vcy)
  (libraries unix threads str servois2 domainslib)
- (modules (:standard \ parallel_multicore parallel_singlecore run))
+ (modules (:standard \ parallel_multicore parallel_singlecore run ast_to_c))
  (wrapped true)
  (library_flags -linkall)
  (synopsis "Veracity language"))

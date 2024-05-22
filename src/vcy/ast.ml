@@ -175,7 +175,7 @@ and env =
   { g : global_env  (* Global environment *)
   ; l : callstk     (* Local environment *)
   }
-and lib_method =
+and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tmethod *)
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
@@ -392,11 +392,11 @@ let htdata_of_value : value -> value Hashtables.htdata =
   | v -> Hashtables.HTD v
 
 let init_mangle_id : id -> Smt.exp Smt.binding = fun i ->
-  let Smt.EVar mangled = (mangle_servois_id i 1) in
+  let [@warning "-8"] Smt.EVar mangled = (mangle_servois_id i 1) in
     (mangled, Smt.EVar (Var i))
   
 let init_mangle : ety -> Smt.exp Smt.bindlist = function
-  | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
+  | ETInt i | ETBool i | ETStr i | ETArr (i, _) | ETChannel i ->
     [init_mangle_id i]
   | ETHashTable (_,_,{ht;keys;size}) ->
     List.map init_mangle_id [ht;keys;size]
@@ -405,7 +405,7 @@ let final_mangle_id : int -> id -> Smt.exp = fun mangle i ->
     Smt.EBop (Eq, (mangle_servois_id_final i), (mangle_servois_id i mangle))
 
 let final_mangle (mangle : int) : ety -> Smt.exp = function
-  | ETInt i | ETBool i | ETStr i | ETArr (i, _) ->
+  | ETInt i | ETBool i | ETStr i | ETArr (i, _) | ETChannel i ->
     final_mangle_id mangle i
   | ETHashTable (_,_,{ht;keys;size}) ->
     Smt.ELop (And, (List.map (final_mangle_id mangle) [ht;keys;size]))
