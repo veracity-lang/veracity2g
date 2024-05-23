@@ -11,8 +11,10 @@
     int id = 0;
     int row = 0;
     int q = 0;
+int scalingfactor = 1000;
 
 int main(int argc, string[] argv) {
+    scalingfactor = int_of_string(argv[1]);
 
     mutex_init(0);
     while(i < 100) {
@@ -33,6 +35,7 @@ int main(int argc, string[] argv) {
             while (q < 99 && !pqFlag[row][q%100]){
                 q = q+1; 
             }
+            busy_wait(scalingfactor);
             if(q < 100){
                 mutex_lock(0);
                 sum = (sum + pValue[row]) % 256;
