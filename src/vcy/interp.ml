@@ -1433,9 +1433,7 @@ let prepare_prog (prog : prog) (argv : string array) =
     let blk_stk = ["argc",(TInt, ref (VInt(Int64.of_int @@ Array.length argv)));
                    "argv",(TArr(TStr),ref (VArr (TStr, argv |> Array.map (fun v -> VStr v))))] in
     let cstk = [blk_stk] in
-    { g = env.g; 
-      l = cstk :: env.l;
-    }, CBool(false) |> no_loc
+    { env with l = cstk :: env.l }, CBool(false) |> no_loc
     (* senddep_extend_env env [(TInt,"argc",VInt(Int64.of_int @@ Array.length argv));
                             (TArr(TStr),"argv",VArr (TStr, argv |> Array.map (fun v -> VStr v)))] *)
     (* { g=env.g; l=}, e *)
