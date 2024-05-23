@@ -65,15 +65,15 @@ let local_env {l;_} =
 let current_env env =
   local_env env @ env.g.globals
 
-let push_block_to_callstk {g;l} =
+let push_block_to_callstk env =
   (* debug_print @@ lazy (ColorPrint.color_string Light_red Default "Pushing block.\n"); *)
-  let env' = { g; l = if null l then [[[]]] else (([] :: List.hd l) :: List.tl l) } in
+  let env' = {env with l = ([] :: List.hd env.l) :: List.tl env.l} in
   (* debug_print @@ lazy (ColorPrint.color_string Light_red Default "Block pushed.\n"); *)
   env'
 
-let pop_block_from_callstack {g;l} =
+let pop_block_from_callstack {g;l;tid} =
   (* debug_print @@ lazy (ColorPrint.color_string Light_green Default "Popping block.\n"); *)
-  { g; l = if null l then [] else ((List.tl @@ List.hd l) :: List.tl l) }
+  { g; l = (List.tl @@ List.hd l) :: List.tl l; tid }
 
 type bind_type =
   | BindM (* Method or function *)
@@ -239,13 +239,13 @@ and interp_exp_seq (env : env) : exp node list -> env * value list =
       f env (v :: values) t
   in f env []
 
-and interp_exp_call {g;l} (loc : Range.t) (args : value list) (params : (id * ty) list) (body : block node) : env * value =
+and interp_exp_call {g;l;tid} (loc : Range.t) (args : value list) (params : (id * ty) list) (body : block node) : env * value =
   (* Check quantity of arguments *)
   if List.length args <> List.length params
   then raise @@ TypeFailure ("arity mismatch", loc)
 
   (* Check types of arguments *)
-  else if List.exists2 (fun v (_,ty) -> not @@ ty_match {g;l} v ty) args params
+  else if List.exists2 (fun v (_,ty) -> not @@ ty_match {g;l;tid} v ty) args params
   then raise @@ TypeFailure ("argument type mismatch", loc)
 
   else
@@ -258,7 +258,7 @@ and interp_exp_call {g;l} (loc : Range.t) (args : value list) (params : (id * ty
           (List.map snd params) 
           (List.map ref args))
     in let env =
-      {g; l = [new_block] :: l}
+      {g; l = [new_block] :: l; tid}
     in second flatten_value_option (interp_block env body)
 
 and interp_array_of_values (env : env) (loc : Range.t) (ty : ty) (vs : value list) : env * value =
@@ -545,9 +545,9 @@ and interp_phi (env : env) (phi : exp node) : bool =
   | _, VBool false -> false
   | _, _           -> raise @@ TypeFailure ("commutativity condition is not bool", phi.loc)
 
-and interp_return {g;l} (r : value) : env * value option =
+and interp_return {g;l;tid} (r : value) : env * value option =
   debug_print @@ lazy (ColorPrint.color_string Light_blue Default "Popping call. " ^ AstML.string_of_callstk l ^ "\n");
-  { g; l = List.tl l },
+  { g; l = List.tl l; tid },
   Some r
 
 and interp_global_commute (env: env) : (group_commute node * bool) list =
@@ -577,7 +577,7 @@ and senddep_extend_env env (vals: (ty * id * value) list) : env =
       let blk = List.hd stk in
       let blk = (i, (t, ref v)) :: blk in
       let stk = blk :: List.tl stk in
-      let env' = {g=env.g; l=(stk :: List.tl env.l)} in
+      let env' = {env with l=(stk :: List.tl env.l)} in
       senddep_extend_env env' rest
 
 
@@ -587,16 +587,16 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | Assn (enl, enr) ->
     interp_stmt_assn env stmt.loc enl enr, None
   | Decl (id, (ty, en)) ->
-    let {g;l}, v = interp_exp env en in
+    let env', v = interp_exp env en in
     if not @@ ty_match env v ty
     then raise @@ TypeFailure ("Assignment type mismatch", stmt.loc)
     else
     (* Add ID to environment - most recent call in callstack, innermost block *)
-    let stk = List.hd l in
+    let stk = List.hd env'.l in
     let blk = List.hd stk in
     let blk = (id, (ty, ref v)) :: blk in
     let stk = blk :: List.tl stk in
-    {g; l = stk :: List.tl l}, None
+    {env' with l = stk :: List.tl env'.l}, None
   | Ret None ->
     interp_return env VVoid
   | Ret (Some en) ->
@@ -680,7 +680,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | SendDep(task_id, var_id_list) -> 
     (* Tell the scheduler to do it *)
     let job_vals = make_job_vals env var_id_list in
-    send_dep task_id job_vals;
+    send_dep (Option.get env.tid) task_id job_vals;
     
     (* now just return the unmodified environment *)
     env, None
@@ -765,7 +765,7 @@ and interp_block (env : env) (block : block node) : env * value option =
 (* A queue of all things that must be joined before we exit. *)
 and job_queue = Queue.create ()
 and run_job jb = 
-    let (env',v) = interp_block jb.env (load_task_def jb.tid).body in
+    let (env',v) = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body in
     v
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
@@ -805,6 +805,7 @@ and join_all_task tid =
   
 and scheduler env : value option =
   env0 := Some env;
+  (* Domainslib.Task.run !pool (fun () -> run_job {tid = 0; env}) *)
   new_job {tid = 0; env};
   Domainslib.Task.run !pool join_all
 
@@ -813,23 +814,28 @@ and eop_tasks = ref []
 and eop_mutex = Mutex.create()
 (* Outer executing environment *)
 and env0 = ref None
-and send_dep tid vals =
+and send_dep calling_tid tid vals =
   (* 1 - Check input dependencies and check commutativity conditions.
-     2 - For each dependency that doesn't satisfy the commutativity condition, wait.
+     2 - For each dependency that doesn't satisfy the commutativity condition
+         or is the parent process, wait.
        2a - If it has called EOP, then wait for all of them to join.
        2b - If it hasn't called EOP, then add ourselves to a list of processes to be woken up when it does
             (For now, we just poll)
      3 - Create new environment, and create new job.
   *)
   
+  debug_print (lazy (Printf.sprintf "send_dep called for tid=%d\n" tid));
+  
   (* 1 *)
   let task = load_task_def tid in
   let deps =
     List.filter (function
+      | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)
       | {commute_cond = Some phi; _} -> not (interp_phi (Option.get !env0) phi)
       (* TODO: What env? Update env0? *)
       | _ -> true ) task.deps_in
   in
+  (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
   
   (* 2 *)
   (* Get list of things that EOP'd *)
@@ -844,7 +850,6 @@ and send_dep tid vals =
     done;
     join_all_task dep.pred_task
   ) deps;
-  
   (* 3 *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
   new_job {tid; 
@@ -1265,7 +1270,7 @@ let cook_calls (g : global_env) : global_env =
         Index (cook_calls_of_exp e1, cook_calls_of_exp e2)
       | CallRaw (id, el) ->
         let el = List.map cook_calls_of_exp el in
-        begin match find_binding id {g;l=[]} BindM with
+        begin match find_binding id {g;l=[];tid=None} BindM with
         | BMGlobal mv ->
           Call (MethodM (id, mv), el)
         | BMLib mv -> 
@@ -1304,7 +1309,7 @@ let cook_calls (g : global_env) : global_env =
       Ret (Option.map cook_calls_of_exp e)
     | SCallRaw (id, el) ->
       let el = List.map cook_calls_of_exp el in
-      begin match find_binding id {g;l=[]} BindM with
+      begin match find_binding id {g;l=[];tid=None} BindM with
       | BMGlobal mv ->
         SCall (MethodM (id, mv), el)
       | BMLib mv -> 
@@ -1373,7 +1378,7 @@ let cook_calls (g : global_env) : global_env =
 
 let evaluate_globals (g : global_env) (es : texp_list) : global_env =
   let vs = List.map 
-    (fun (i,(t,e)) -> i, (t, ref @@ snd @@ interp_exp {g;l=[]} e)) 
+    (fun (i,(t,e)) -> i, (t, ref @@ snd @@ interp_exp {g;l=[];tid=None} e)) 
     es 
   in {g with globals = vs}
 
@@ -1408,7 +1413,7 @@ let initialize_env (prog : prog) (infer_phis : bool) =
 
   (* EK TODO - complain if more than 1 method declaraiton in SWP mode *)
 
-  {g;l=[]}
+  {g;l=[[[]]];tid=None}
 
 
 let prepare_prog (prog : prog) (argv : string array) =

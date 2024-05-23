@@ -174,6 +174,7 @@ and global_env =
 and env =
   { g : global_env  (* Global environment *)
   ; l : callstk     (* Local environment *)
+  ; tid : int option
   }
 and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tmethod *)
   { pure : bool
