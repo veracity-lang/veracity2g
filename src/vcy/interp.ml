@@ -1421,11 +1421,23 @@ let prepare_prog (prog : prog) (argv : string array) =
     let l = argv |> Array.map (fun v -> CStr v |> no_loc) |> Array.to_list in
     CArr (TStr, l) |> no_loc
   in
+  (* Printf.printf "%s\n" (AstPP.string_of_exp e_argv); *)
 
-  (* Construct main function 'Call' expression *)
-  let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
-  env, e
-
+  if !dswp_mode then begin
+    (* No "main call" in DSWP mode. Instead augment env with argc/argv*)
+    let blk_stk = ["argc",(TInt, ref (VInt(Int64.of_int @@ Array.length argv)));
+                   "argv",(TArr(TStr),ref (VArr (TStr, argv |> Array.map (fun v -> VStr v))))] in
+    let cstk = [blk_stk] in
+    { g = env.g; 
+      l = cstk :: env.l;
+    }, CBool(false) |> no_loc
+    (* senddep_extend_env env [(TInt,"argc",VInt(Int64.of_int @@ Array.length argv));
+                            (TArr(TStr),"argv",VArr (TStr, argv |> Array.map (fun v -> VStr v)))] *)
+    (* { g=env.g; l=}, e *)
+  end else 
+    (* Construct main function 'Call' expression *)
+    let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
+    env, e
 
 let interp_tasks env0 decls tasks : value =
   set_task_def tasks;
