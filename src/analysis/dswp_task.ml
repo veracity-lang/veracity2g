@@ -26,7 +26,7 @@ let str_of_vars_list (vlist : (ty * id) list) : string  =
 
 let str_of_task_deps deplist = 
   "{"
-  ^(String.concat " | " (List.map (fun dep ->
+  ^(String.concat " AND " (List.map (fun dep ->
     match dep.commute_cond with 
     | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
     | Some c -> 

@@ -1453,9 +1453,12 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
 let interp_prog_time (prog : prog) (argv : string array) : float =
   let env, e = prepare_prog prog argv in
   Vcylib.suppress_print := true;
-  if !dswp_mode then failwith "interp_prog_time todo dswp mode";
-  let dt, _ = time_exec @@ fun () -> interp_exp env e in
-  dt
+  if !dswp_mode then
+    let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks in
+    dt
+  else
+    let dt, _ = time_exec @@ fun () -> interp_exp env e in
+    dt
   (*let t0 = Unix.gettimeofday () in
   ignore @@ interp_exp env e;
   let t1 = Unix.gettimeofday () in

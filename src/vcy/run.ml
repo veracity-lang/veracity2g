@@ -139,6 +139,7 @@ module RunInterp : Runner = struct
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
+    ; "--codegen", Arg.Set Exe_pdg.codegen, " Output generated .c file"
     ; "--force-sequential", Arg.Set force_sequential, " Force all commutativity blocks to execute in sequence"
     ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, "Servois2 verbose output"
@@ -482,7 +483,6 @@ module RunInfer : Runner = struct
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
     (* ; "--poke", Arg.Unit (fun () -> Choose.choose := Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
-    ; "--codegen", Arg.Set Exe_pdg.codegen, " Output generated .c file"
     ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke2), " Use improved poke heuristic (default: simple)"
     ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"    
