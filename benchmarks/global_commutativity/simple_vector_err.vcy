@@ -17,6 +17,7 @@ int main(int argc, string[] argv) {
         if(l == 999) {x[l] = 1;}
         l = l + 1;
     }
+    x[999] = 999;
 
     f1:{ 
         while(i < 1000) {
