@@ -10,29 +10,24 @@ int l = 0;
 int i = 0;
 int j = 0;
 int k = 0;
-int scalingfactor = 1000;
 
 int main(int argc, string[] argv) {
-
     while(l < 1000) {
         x[l] = random(-256, 256);
         if(l == 999) {x[l] = 1;}
         l = l + 1;
     }
-    x[999] = 999;
 
     f1:{ 
         while(i < 1000) {
             y[i] = x[i] * x[i];
             i = i + 1;
         }
-        busy_wait(scalingfactor);
     }
     
     while(j < 1000) {
         sum = sum + y[j];
         j = j + 1;
-        busy_wait(scalingfactor);
     }
 
     f2:{ 
@@ -40,7 +35,6 @@ int main(int argc, string[] argv) {
             z[k] = x[999-k];
             k = k + 1;
         }
-        busy_wait(scalingfactor);
     }
     
     return z[0];

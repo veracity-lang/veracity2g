@@ -966,7 +966,7 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       if compare_dag_nodes {n=[entry];label =Sequential} e.dag_src then begin
         let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
         let i = find_taskID_from_node dag_scc elem in 
-        b @ [no_loc (SendEOP i)]
+        b @ [no_loc (SendDep(i, [(* TODO: actual variables? *)])) ; no_loc (SendEOP i)]
       end
       else b
       ) [] dag_scc.edges

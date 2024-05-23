@@ -676,28 +676,19 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | Assume _ | Havoc _ ->
     env, None (* We simply ignore 'assume's and 'havoc's at runtime *)
   | SBlock (bl, b) ->
-   interp_block env b
-   | SendDep(task_id, var_id_list) -> 
-       let job = make_job_deps task_id env var_id_list in
-       (* Parallel. TODO: make modular? *) new_job job;
-       (* now just return the unmodified environment *)
-       env, None
-   | SendEOP(task_id) -> 
-     (* Sort dependencies into those that commute and those that don't *)
-     let com_dep, ncom_dep = List.partition (function
-         | {commute_cond=Some cond; _} -> interp_phi env cond
-         | _ -> false
-       ) (load_task_def task_id).deps_out
-     in
-     (* Start all things that do commute. *)
-     List.iter (fun {pred_task; vars; _} -> make_job_deps pred_task env vars |> new_job) com_dep;
-     (* Join all threads of the given task_id *)
-     join_all_task task_id;
-     (* Start children tasks that didn't commute *)
-     List.iter (fun {pred_task; vars; _} -> make_job_deps pred_task env vars |> new_job) ncom_dep;
-     (env, None)
-   | GCommute(_) -> failwith "gcommute in interp_stmt."
-   | Require(_) -> failwith "require in interp_stmt."
+    interp_block env b
+  | SendDep(task_id, var_id_list) -> 
+    (* Tell the scheduler to do it *)
+    let job_vals = make_job_vals env var_id_list in
+    send_dep task_id job_vals;
+    
+    (* now just return the unmodified environment *)
+    env, None
+  | SendEOP(task_id) -> 
+    Mutex.protect eop_mutex (fun () -> eop_tasks := task_id :: !eop_tasks);
+    env, None
+  | GCommute(_) -> failwith "gcommute in interp_stmt."
+  | Require(_) -> failwith "require in interp_stmt."
 
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -777,16 +768,14 @@ and run_job jb =
     let (env',v) = interp_block jb.env (load_task_def jb.tid).body in
     v
 (* capture the values of dependent variables from the environment *)
-and make_job_deps task_id env deps = 
-  let job_vals = List.fold_left (fun acc (varty,varid) ->
-          let values = local_env env @ env.g.globals in
-          begin match List.assoc_opt varid values with
-          | Some (_,v) -> (varty,varid,!v) :: acc
-          | None -> raise @@ IdNotFound (varid, Range.norange)
-          end          
-       ) [] deps in
-  let env' = senddep_extend_env env job_vals in
-  {tid = task_id; env = env'}
+and make_job_vals env deps = 
+  List.fold_left (fun acc (varty,varid) ->
+      let values = local_env env @ env.g.globals in
+      begin match List.assoc_opt varid values with
+      | Some (_,v) -> (varty,varid,!v) :: acc
+      | None -> raise @@ IdNotFound (varid, Range.norange)
+      end          
+   ) [] deps
 (* Interpreter calls this function at each SendDep to create a new job *)
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
@@ -810,51 +799,59 @@ and join_all () =
   !ret_value
 and join_all_task tid =
   Queue.to_seq job_queue |>
-  Seq.filter (fun (j, _) -> j.tid == tid) |>
-  Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore)
+  Seq.filter (fun (j, _) -> j.tid == tid) |> fun q ->
+  debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
+  Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
   
-and scheduler initial_jobs : value option =
-  (* Create a domain pool with four worker domains *)
-  (* create a function to quickly return a task by id *)
-  (* let tid2task = List.fold_left (fun acc tsk -> 
-        (fun tid -> if tsk.id == tid then tsk else (acc tid))
-    ) (fun _ -> failwith "could not find task id") task_list in *)
-
-     (* env = local callstack and globals *)
-     (* 1. how do we make sure that mutation to shared vars? *)
-     (* 2. how do we extend env to include the input vals? *)
-       
-    (* Idea:
-        all variables are by default global.
-        at the beginning of a task, input dependences are local.
-        interp a variable,
-       *)
-
-        (* what about accuulated senddeps that need to become new jobs? *)
-
-  (* (fun () ->
-    let rec loop promises =
-      match Queue.take_opt job_queue with
-      | Some j ->
-          begin 
-            let pr' = Domainslib.Task.async !pool (fun () ->
-              (* use doall information to have replicas of a task? *)
-              Printf.printf "about to exec a new job for task %d\n" j.tid;
-              run_job j) in
-            loop (pr'::promises)
-          end
-      | None -> 
-          Printf.printf "scheduler: reached an empty queue. need to now wait to join!\n";
-          promises
-    in
-    let promises' = loop [] in
-    List.map (Domainslib.Task.await !pool) promises') |> ignore *)
-    
-  (* All of the job creation is handled in SendDep currently -- all we have to do is make sure everything joins. *)
-  List.iter new_job initial_jobs;
+and scheduler env : value option =
+  env0 := Some env;
+  new_job {tid = 0; env};
   Domainslib.Task.run !pool join_all
 
+(* List of things that have sendEOP'd *)
+and eop_tasks = ref []
+and eop_mutex = Mutex.create()
+(* Outer executing environment *)
+and env0 = ref None
+and send_dep tid vals =
+  (* 1 - Check input dependencies and check commutativity conditions.
+     2 - For each dependency that doesn't satisfy the commutativity condition, wait.
+       2a - If it has called EOP, then wait for all of them to join.
+       2b - If it hasn't called EOP, then add ourselves to a list of processes to be woken up when it does
+            (For now, we just poll)
+     3 - Create new environment, and create new job.
+  *)
+  
+  (* 1 *)
+  let task = load_task_def tid in
+  let deps =
+    List.filter (function
+      | {commute_cond = Some phi; _} -> not (interp_phi (Option.get !env0) phi)
+      (* TODO: What env? Update env0? *)
+      | _ -> true ) task.deps_in
+  in
+  
+  (* 2 *)
+  (* Get list of things that EOP'd *)
+  let eop_list = ref [] in
+  eop_list := Mutex.protect eop_mutex (fun () -> !eop_tasks);
+  List.iter (fun dep ->
+    (* TODO: We do polling.
+             Just kill execution here and try again later with the remaining dep list (fold?) *)
+    while not (List.mem dep.pred_task !eop_list) do
+      Unix.sleepf 0.01;
+      Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
+    done;
+    join_all_task dep.pred_task
+  ) deps;
+  
+  (* 3 *)
+  (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
+  new_job {tid; 
+    env = senddep_extend_env (Option.get !env0) vals}
+
 (* Draft of new scheduler that accumulates dependencies *)
+(*
 let received_dependencies = ref []
 let dep_mutex = Mutex.create()
 let env0 = ref None
@@ -882,6 +879,8 @@ let send_dep tfrom tto vals =
     (* TODO: check that all the variables sent are the ones we needed? *)
   then new_job {tid = tto; 
     env = List.fold_left senddep_extend_env (Option.get !env0) (List.map trd relevant_deps)}
+*)
+
 
 (*** COMMUTATIVITY INFERENCE ***)
 
@@ -1430,11 +1429,11 @@ let prepare_prog (prog : prog) (argv : string array) =
 
 let interp_tasks env0 decls tasks : value =
   set_task_def tasks;
-  (* create a job for each task with no deps_in *)
-  let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs (* TODO: figure out task 0? *)
-    |> List.map (fun task -> {tid=task.id; env=env0}) in
+  (* create a job for each task with no deps_in -- REMOVED, just start job 0 in scheduler. *)
+  (* let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs
+    |> List.map (fun task -> {tid=task.id; env=env0}) in *)
   (* start the scheduler *)
-  scheduler (* pool_size *) jobs |> flatten_value_option
+  scheduler env0 |> flatten_value_option
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
