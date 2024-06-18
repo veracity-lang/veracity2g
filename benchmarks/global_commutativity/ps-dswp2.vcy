@@ -33,9 +33,9 @@ int main(int argc, string[] argv) {
             row = p; /* "row" should be the dep */
             q = 0;
             while (q < 99 && !pqFlag[row][q%100]){
+                busy_wait(scalingfactor);
                 q = q+1; 
             }
-            busy_wait(scalingfactor);
             if(q < 100){
                 mutex_lock(0);
                 sum = (sum + pValue[row]) % 256;
