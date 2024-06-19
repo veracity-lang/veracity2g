@@ -815,13 +815,12 @@ and eop_mutex = Mutex.create()
 (* Outer executing environment *)
 and env0 = ref None
 and send_dep calling_tid tid vals =
-  (* 1 - Check input dependencies and check commutativity conditions.
-     2 - For each dependency that doesn't satisfy the commutativity condition
-         or is the parent process, wait.
-       2a - If it has called EOP, then wait for all of them to join.
-       2b - If it hasn't called EOP, then add ourselves to a list of processes to be woken up when it does
-            (For now, we just poll)
-     3 - Create new environment, and create new job.
+  (* 1 - Check input dependencies
+       1a - If it doesn't commute, then wait for EOP and for all of them to join.
+            (For now we poll, can add ourselves to a list of processes to be woken up when EPO happens)
+       1a - If it's a commute condition, still wait for EOP,
+            Check all existing jobs and check commutativity condition between them.
+     2 - Create new environment, and create new job.
   *)
   
   debug_print (lazy (Printf.sprintf "send_dep called for tid=%d\n" tid));
@@ -831,26 +830,36 @@ and send_dep calling_tid tid vals =
   let deps =
     List.filter (function
       | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)
-      | {commute_cond = Some phi; _} -> not (interp_phi (Option.get !env0) phi)
+      | {commute_cond = Some phi; _} -> true (* not (interp_phi (Option.get !env0) phi) *)
       (* TODO: What env? Update env0? *)
       | _ -> true ) task.deps_in
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
   
-  (* 2 *)
   (* Get list of things that EOP'd *)
   let eop_list = ref [] in
   eop_list := Mutex.protect eop_mutex (fun () -> !eop_tasks);
-  List.iter (fun dep ->
-    (* TODO: We do polling.
+  (* Wait for everything we need to EOP to EOP. *)
+  while List.exists (fun dep -> not (List.mem dep.pred_task !eop_list)) deps do
+      (* TODO: We do polling.
              Just kill execution here and try again later with the remaining dep list (fold?) *)
-    while not (List.mem dep.pred_task !eop_list) do
       Unix.sleepf 0.01;
       Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
-    done;
-    join_all_task dep.pred_task
-  ) deps;
-  (* 3 *)
+  done;
+  
+  (* Now for each job, if we're dependent on it, wait for it. *)
+  let find_dep tid = List.find_opt (function {pred_task;_} -> pred_task = tid) deps in
+  
+  Queue.to_seq job_queue |>
+  Seq.iter (fun (j, promise) -> match find_dep j.tid with
+    | Some {pred_task; commute_cond = Some phi; _} when not (interp_phi (Option.get !env0) phi) -> (* TODO: change which env this is *)
+        Domainslib.Task.await !pool promise |> ignore
+    | Some {pred_task; commute_cond = None; _} -> Domainslib.Task.await !pool promise |> ignore
+    | None -> ()
+  );
+  
+  
+  (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
   new_job {tid; 
     env = senddep_extend_env (Option.get !env0) vals}
