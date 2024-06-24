@@ -197,7 +197,7 @@ and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
   | CStr s | Id s -> 
   begin match find_global_by_name_opt s with 
-  | None -> [List.find (fun (ty, id) -> String.equal id s) !m_vars]
+  | None -> if s = "" then [] else [List.find (fun (ty, id) -> String.equal id s) !m_vars]
   | Some (Gvdecl v) -> [(v.elt.ty, s)]
   | _ -> failwith "undefined variable"
   end

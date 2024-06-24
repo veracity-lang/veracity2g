@@ -26,8 +26,8 @@ let rec gen_ty = function
     | TStr -> "const char*"
     | TArr(ty) -> sp "%s*" (gen_ty ty)
     | THashTable(kty, vty) -> "<<new Thashtable stmt>>" (*raise @@ NotImplemented "gen_ty THashTable"*)
-    | TChanR -> raise @@ NotImplemented "gen_ty TChanR"
-    | TChanW -> raise @@ NotImplemented "gen_ty TChanW"
+    | TChanR -> "TChanR"
+    | TChanW -> "TChanW"
     | TStruct(id) -> raise @@ NotImplemented "gen_ty TStruct"
 
 let rec gen_expnode x = gen_exp x.elt

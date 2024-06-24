@@ -84,8 +84,10 @@ module AstPP = struct
     | TInt   -> pps "int"
     | TVoid  -> pps "void"
     | TStr   -> pps "string"
-    | TChanR -> raise @@ NotImplemented "TChanR pretty print"
-    | TChanW -> raise @@ NotImplemented "TChanW pretty print"
+    (* | TChanR -> raise @@ NotImplemented "TChanR pretty print"
+    | TChanW -> raise @@ NotImplemented "TChanW pretty print" *)
+    | TChanR -> pps "TChanR"
+    | TChanW -> pps "TChanW"
     | THashTable (tyk, tyv) -> pps "hashtable["; print_ty_aux fmt tyk; pps ", "; print_ty_aux fmt tyv; pps "]"
     | TStruct sid -> pps sid
     | TArr ty -> print_ty_aux fmt ty; pps "[]"
