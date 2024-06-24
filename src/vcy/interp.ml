@@ -852,10 +852,10 @@ and send_dep calling_tid tid vals =
   
   Queue.to_seq job_queue |>
   Seq.iter (fun (j, promise) -> match find_dep j.tid with
-    | Some {pred_task; commute_cond = Some phi; _} when not (interp_phi (Option.get !env0) phi) -> (* TODO: change which env this is *)
+    | Some {commute_cond = Some phi; _} when not (interp_phi (Option.get !env0) phi) -> (* TODO: change which env this is *)
         Domainslib.Task.await !pool promise |> ignore
-    | Some {pred_task; commute_cond = None; _} -> Domainslib.Task.await !pool promise |> ignore
-    | None -> ()
+    | Some {commute_cond = None; _} -> Domainslib.Task.await !pool promise |> ignore
+    | _ -> ()
   );
   
   
