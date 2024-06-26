@@ -545,6 +545,9 @@ and interp_phi (env : env) (phi : exp node) : bool =
   | _, VBool false -> false
   | _, _           -> raise @@ TypeFailure ("commutativity condition is not bool", phi.loc)
 
+and interp_joint_phi (env_l : env) (env_r : env) (phi : exp node) : bool =
+  interp_phi env_l phi (* TODO *)
+
 and interp_return {g;l;tid} (r : value) : env * value option =
   debug_print @@ lazy (ColorPrint.color_string Light_blue Default "Popping call. " ^ AstML.string_of_callstk l ^ "\n");
   { g; l = List.tl l; tid },
@@ -680,7 +683,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | SendDep(task_id, var_id_list) -> 
     (* Tell the scheduler to do it *)
     let job_vals = make_job_vals env var_id_list in
-    send_dep (Option.get env.tid) task_id job_vals;
+    send_dep (Option.get env.tid) task_id env job_vals;
     
     (* now just return the unmodified environment *)
     env, None
@@ -814,7 +817,7 @@ and eop_tasks = ref []
 and eop_mutex = Mutex.create()
 (* Outer executing environment *)
 and env0 = ref None
-and send_dep calling_tid tid vals =
+and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
        1a - If it doesn't commute, then wait for EOP and for all of them to join.
             (For now we poll, can add ourselves to a list of processes to be woken up when EPO happens)
@@ -825,13 +828,14 @@ and send_dep calling_tid tid vals =
   
   debug_print (lazy (Printf.sprintf "send_dep called for tid=%d\n" tid));
   
+  let env' = senddep_extend_env env vals in
+  
   (* 1 *)
   let task = load_task_def tid in
   let deps =
     List.filter (function
       | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)
-      | {commute_cond = Some phi; _} -> true (* not (interp_phi (Option.get !env0) phi) *)
-      (* TODO: What env? Update env0? *)
+      | {commute_cond = Some phi; _} -> true
       | _ -> true ) task.deps_in
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
@@ -852,7 +856,7 @@ and send_dep calling_tid tid vals =
   
   Queue.to_seq job_queue |>
   Seq.iter (fun (j, promise) -> match find_dep j.tid with
-    | Some {commute_cond = Some phi; _} when not (interp_phi (Option.get !env0) phi) -> (* TODO: change which env this is *)
+    | Some {commute_cond = Some phi; _} when not (interp_joint_phi env' j.env phi) -> (* TODO: make sure left/right line up right *)
         Domainslib.Task.await !pool promise |> ignore
     | Some {commute_cond = None; _} -> Domainslib.Task.await !pool promise |> ignore
     | _ -> ()
@@ -862,7 +866,7 @@ and send_dep calling_tid tid vals =
   (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
   new_job {tid; 
-    env = senddep_extend_env (Option.get !env0) vals}
+    env = env'}
 
 (* Draft of new scheduler that accumulates dependencies *)
 (*
