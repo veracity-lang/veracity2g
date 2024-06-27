@@ -1,25 +1,27 @@
 commutativity {
-   {f1}, {f1} : _;
-   {f1}, {f3} : _
+   {f1}, {f1} : (false);
+   {f1}, {f3} : (false)
 }
 
+
 int main(int argc, string[] argv) {
-    int i = 0;
+    int i = 1;
     string[] digest = new string[16];
     string s = "";
     string filename = "";
     int i_1 = i;
     int i_2 = i;
+    in_channel c = open_read(argv[0]);
 
     while (i < argc){
         f1(i):{
-            filename = argv[i];
-            in_channel c = open_read(filename);
+            c = open_read(argv[i]);
         }
-        s = read_line(i);
-        digest = string_of_int(md5_lower(s));
-        f2:{
-            print(digest);
+        s = read_line(c);
+        digest[i] = string_of_int(md5_lower(s));
+        f2(i):{
+            print(digest[i]);
+            print("\n");
         }
         f3(i):{
             close(c);
