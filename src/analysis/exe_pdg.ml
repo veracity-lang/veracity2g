@@ -12,7 +12,7 @@ let codegen = ref false
 type dependency =
 | ControlDep
 | DataDep of (ty * id) list
-| Commute of (exp node) * (exp node list) * (exp node list)
+| Commute of (exp node) * (string list) * (string list)
 | Disjoint
 
 type enode_ast_elt = 
@@ -67,7 +67,7 @@ let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg =
 let string_of_dep = function
   | ControlDep -> "ControlDep"
   | DataDep vars -> sp "DataDep (%s)" (AstPP.string_of_args vars) 
-  | Commute (b,args1,args2) -> sp "[%s]; [%s]; Commute (%s)" (AstML.string_of_list AstPP.string_of_exp args1) (AstML.string_of_list AstPP.string_of_exp args2) (AstPP.string_of_exp b)
+  | Commute (b,args1,args2) -> sp "[%s]; [%s]; Commute (%s)" (AstML.string_of_list Fun.id args1) (AstML.string_of_list Fun.id args2) (AstPP.string_of_exp b)
   | Disjoint -> "Disjoint"
 
 (*
@@ -261,7 +261,7 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
           let args = snd (List.find (fun (l,_) -> String.equal (fst label) l) lb_list)
           in match args with
           | None -> [] 
-          | Some a -> a
+          | Some a -> List.map (function | {elt=Id s; _} -> s | _ -> failwith "Non-ids used for formal parameters in gcommute condition.") a
         in
         apply_pairs (
           fun x y -> 

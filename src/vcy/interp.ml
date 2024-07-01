@@ -817,9 +817,9 @@ and env0 = ref None
 and bind_formals formals body env =
   match formals with
   | [] -> [[]]
-  | xs -> begin match body with
-    | SBlock(Some (_, Some vars), _) -> [List.combine formals (List.map (interp_exp env) vars)]
-    | _ -> failwith "Expected formals, but did not find labeled block."
+  | xs -> begin match body.elt with
+    | [{elt=SBlock(Some (_, Some vars), _); _}] -> [List.combine formals (List.map (interp_exp env) vars)]
+    | _ -> failwith "Expected formals, but did not find singleton, labeled block."
   end
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies

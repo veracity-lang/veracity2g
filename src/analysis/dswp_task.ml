@@ -3,8 +3,8 @@ open Ast_print
 type dswp_taskid = int 
 
 type commute_condition = {
-  my_task_formals: exp node list;
-  other_task_formals: exp node list;
+  my_task_formals: string list; (* TODO: Can make string * type? *)
+  other_task_formals: string list;
   condition: exp node option
 }
 (* t_i can depend on a list of variables written by some predecessor t_j *)
@@ -38,7 +38,7 @@ let str_of_task_deps deplist =
     match dep.commute_cond.condition with 
     | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
     | Some c -> 
-     Printf.sprintf "from %d: %s / commute_cond: [%s],[%s] => %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (str_of_exp_list dep.commute_cond.my_task_formals)(str_of_exp_list dep.commute_cond.other_task_formals) (AstPP.string_of_exp c)
+     Printf.sprintf "from %d: %s / commute_cond: [%s],[%s] => %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (String.concat "," dep.commute_cond.my_task_formals)(String.concat "," dep.commute_cond.other_task_formals) (AstPP.string_of_exp c)
   ) deplist))
   ^"}"
 
