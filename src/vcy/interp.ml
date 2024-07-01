@@ -545,9 +545,6 @@ and interp_phi (env : env) (phi : exp node) : bool =
   | _, VBool false -> false
   | _, _           -> raise @@ TypeFailure ("commutativity condition is not bool", phi.loc)
 
-and interp_joint_phi (env_l : env) (env_r : env) (phi : exp node) : bool =
-  interp_phi env_l phi (* TODO *)
-
 and interp_return {g;l;tid} (r : value) : env * value option =
   debug_print @@ lazy (ColorPrint.color_string Light_blue Default "Popping call. " ^ AstML.string_of_callstk l ^ "\n");
   { g; l = List.tl l; tid },
@@ -817,6 +814,13 @@ and eop_tasks = ref []
 and eop_mutex = Mutex.create()
 (* Outer executing environment *)
 and env0 = ref None
+and bind_formals formals body env =
+  match formals with
+  | [] -> [[]]
+  | xs -> begin match body with
+    | SBlock(Some (_, Some vars), _) -> [List.combine formals (List.map (interp_exp env) vars)]
+    | _ -> failwith "Expected formals, but did not find labeled block."
+  end
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
        1a - If it doesn't commute, then wait for EOP and for all of them to join.
@@ -835,7 +839,7 @@ and send_dep calling_tid tid env vals =
   let deps =
     List.filter (function
       | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)
-      | {commute_cond = {my_task_formals=_;other_task_formals=_;condition = Some phi}; _} -> true
+      | {commute_cond = {condition = Some phi; _}; _} -> true
       | _ -> true ) task.deps_in
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
@@ -856,9 +860,10 @@ and send_dep calling_tid tid env vals =
   
   Queue.to_seq job_queue |>
   Seq.iter (fun (j, promise) -> match find_dep j.tid with
-    | Some {commute_cond = {my_task_formals=_;other_task_formals=_;condition = Some phi}; _} when not (interp_joint_phi env' j.env phi) -> (* TODO: make sure left/right line up right *)
-        Domainslib.Task.await !pool promise |> ignore
-    | Some {commute_cond = {my_task_formals=_;other_task_formals=_;condition = None}; _} -> Domainslib.Task.await !pool promise |> ignore
+    | Some {commute_cond = {my_task_formals=formals; other_task_formals=formals'; condition = Some phi}; _} 
+      when not (interp_phi {env' with l = bind_formals formals task.body env' :: bind_formals formals' j.body j.env:: []}
+        phi) -> Domainslib.Task.await !pool promise |> ignore
+    | Some _ -> Domainslib.Task.await !pool promise |> ignore
     | _ -> ()
   );
   
