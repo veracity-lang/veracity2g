@@ -181,14 +181,13 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
     | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue
+    | SCall (_, el) | SCallRaw (_, el) -> (set_vars_side (List.concat_map find_exp_vars el) rvalue)
     | _ -> []
     end 
   | Entry -> []
   | EFor(_, _, _) -> failwith "efor in find_stmt_vars."
 
   (* 
-  | SCallRaw of id * exp node list
-  | SCall of method_variant * exp node list
   | Commute of commute_variant * commute_condition * block node list
   | Havoc of id
   | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond *)
@@ -197,7 +196,7 @@ and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
   | CStr s | Id s -> 
   begin match find_global_by_name_opt s with 
-  | None -> if s = "" then [] else [List.find (fun (ty, id) -> String.equal id s) !m_vars]
+  | None -> begin match List.find_opt (fun (ty, id) -> String.equal id s) !m_vars with | None -> [] | Some l -> [l] end
   | Some (Gvdecl v) -> [(v.elt.ty, s)]
   | _ -> failwith "undefined variable"
   end
@@ -951,8 +950,9 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
       | stmt::tl ->
         let s' = begin match stmt.elt with
         | SendDep (i, vars) -> 
-          let t = (List.find (fun tk -> tk.id == i) out_tasks) 
-          in SendDep (i, vars @ (List.concat_map (fun d -> if d.pred_task == task.id then d.vars else []) t.deps_in))
+          let t = (List.find (fun tk -> tk.id == i) out_tasks)
+          in
+          SendDep (i, vars @ (List.concat_map (fun d -> if d.pred_task == task.id then d.vars else []) t.deps_in))
         | If(e,bl1,bl2) -> If(e, node_up bl1 (update_body bl1.elt), node_up bl2 (update_body bl2.elt))
         | While(e,bl) -> While(e, node_up bl (update_body bl.elt))
         | s -> s 

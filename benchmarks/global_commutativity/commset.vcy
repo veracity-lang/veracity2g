@@ -3,14 +3,14 @@ commutativity {
    {f1(i_1)}, {f3(i_2)} : (false)
 }
 
+int i = 1;
+string[] digest = new string[16];
+string s = "";
+string filename = "";
+int i_1 = 1;
+int i_2 = 1;
 
 int main(int argc, string[] argv) {
-    int i = 1;
-    string[] digest = new string[16];
-    string s = "";
-    string filename = "";
-    int i_1 = i;
-    int i_2 = i;
     in_channel c = open_read(argv[0]);
 
     while (i < argc){
