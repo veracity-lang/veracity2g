@@ -924,16 +924,97 @@ let find_blocks_by_label labels =
   !blks
 
 let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
+  (* Find the index of the first occurrence of x in list l *)
+  let rec find_index x l =
+    let rec aux x l idx =
+      match l with
+      | [] -> -1 (* x not found *)
+      | h :: t -> if h.elt = x.elt then idx else aux x t (idx + 1)
+    in
+    aux x l 0
+  in
+  (* Find the corresponding element in B given the index of s in A *)
+  (* let find_corresponding a b s =
+    let idx = find_index s a in
+    if idx = -1 || idx >= List.length b then
+      None
+    else
+      Some (List.nth b idx) *)
+  let find_corresponding a b s =
+    let idx = find_index s b in
+    (* Printf.printf "--> %d - %d - %s - %d\n" (List.length a)(List.length b)(AstML.string_of_exp s)idx;  *)
+    if idx == -1 then None
+    else Some (List.nth a idx)
+    
+  in
+  let rec substitute_vars_exp (args_in: exp node list) (args_out: exp node list) exp = 
+    let e = match exp.elt with 
+    | CStr _ | Id _ -> find_corresponding args_in args_out exp
+    | Index (e1, e2) -> Some (node_up exp (Index (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)))
+    | _ -> None
+    (* | CStr s -> let e' = find_corresponding args_in args_out s in node_up exp (CStr e')
+    | Id s -> let e' = find_corresponding args_in args_out s in node_up exp (Id e')
+    | CArr (t, expl) -> let e' = List.map (substitute_vars_exp args_in args_out) expl in node_up exp (CArr (t, e')) *)
+    (* | NewArr (_, e) | Uop (_, e) -> find_exp_vars e
+    | Index (e1, e2) | Bop (_, e1, e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
+    | CallRaw (_, expl) -> List.concat_map find_exp_vars expl
+    | Call (m, expl) -> List.concat_map find_exp_vars expl (* TODO: check *)
+    | Ternary (e1, e2, e3) -> (find_exp_vars e1) @ (find_exp_vars e2) @ (find_exp_vars e3) *)
+    in 
+    match e with
+    | None -> exp 
+    | Some ex -> ex
+    
+  in
+  let rec substitute_vars_block (args_in: exp node list) (args_out: exp node list) block = 
+    match block with 
+    | [] -> block
+    | s::tl -> 
+    let s' = begin match s.elt with 
+    | Assn (e1,e2) -> Assn (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)
+    (* | Decl vdecl ->
+      let id, (ty, e) = vdecl in 
+      let decl = Gvdecl (no_loc { name = id; ty = ty; init = e }) in 
+      if not (List.mem decl !decl_vars) then 
+        decl_vars := decl :: !decl_vars;
+      ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
+    | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
+    | SBlock (bl,body) -> find_block_vars body.elt
+    | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
+    | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
+    | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue *)
+    | _ -> s.elt
+    end 
+    in (node_up s s') :: substitute_vars_block args_in args_out tl
+  in
+
   let rec interp_group_commute (gc: group_commute node list) : group_commute node list = 
     begin match gc with 
     | [] -> [] 
     | gc::tl -> 
       let labels, phi = gc.elt in 
-      let blks = find_blocks_by_label labels in
+      let blks = ref [] in
+      List.iter (
+        fun ls -> 
+          List.iter (
+            fun (id, args) ->
+            let {elt=SBlock(Some(i,args'),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in
+            let bl' = match args, args' with 
+            | Some a, Some a' -> 
+            (* List.iter (fun x -> Printf.printf "args: %s \n" (AstML.string_of_exp x)) a;
+            List.iter (fun x -> Printf.printf "args': %s \n" (AstML.string_of_exp x)) a'; *)
+            let b' = node_up bl (substitute_vars_block a a' bl.elt) in
+            (* Printf.printf "==> %s \n" (AstML.string_of_block b'); *)
+            b'
+            | _, _ -> bl
+            in 
+            blks := !blks @ [bl']
+          ) ls
+      ) labels;
       let phi' =
         let infer () =
         (* apply_pairs (fun b1 b2 -> infer_phi g CommuteVarPar (b1@b2) defs None None) !blks  *)
-        let phi' = infer_phi g CommuteVarPar blks defs None None in
+        let phi' = infer_phi g CommuteVarPar !blks defs None None in
           if !emit_inferred_phis then
             begin if !emit_quiet
             then Printf.printf "%s\n"
