@@ -835,7 +835,7 @@ and send_dep calling_tid tid env vals =
   let deps =
     List.filter (function
       | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)
-      | {commute_cond = Some phi; _} -> true
+      | {commute_cond = {my_task_formals=_;other_task_formals=_;condition = Some phi}; _} -> true
       | _ -> true ) task.deps_in
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
@@ -856,9 +856,9 @@ and send_dep calling_tid tid env vals =
   
   Queue.to_seq job_queue |>
   Seq.iter (fun (j, promise) -> match find_dep j.tid with
-    | Some {commute_cond = Some phi; _} when not (interp_joint_phi env' j.env phi) -> (* TODO: make sure left/right line up right *)
+    | Some {commute_cond = {my_task_formals=_;other_task_formals=_;condition = Some phi}; _} when not (interp_joint_phi env' j.env phi) -> (* TODO: make sure left/right line up right *)
         Domainslib.Task.await !pool promise |> ignore
-    | Some {commute_cond = None; _} -> Domainslib.Task.await !pool promise |> ignore
+    | Some {commute_cond = {my_task_formals=_;other_task_formals=_;condition = None}; _} -> Domainslib.Task.await !pool promise |> ignore
     | _ -> ()
   );
   

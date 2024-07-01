@@ -1,6 +1,6 @@
 commutativity {
-   {f1}, {f1} : (false);
-   {f1}, {f3} : (false)
+   {f1(i_1)}, {f1(i_2)} : (false);
+   {f1(i_1)}, {f3(i_2)} : (false)
 }
 
 

@@ -12,7 +12,7 @@ let codegen = ref false
 type dependency =
 | ControlDep
 | DataDep of (ty * id) list
-| Commute of exp node
+| Commute of (exp node) * (exp node list) * (exp node list)
 | Disjoint
 
 type enode_ast_elt = 
@@ -67,7 +67,7 @@ let add_edge (pdg : exe_pdg) (src : pdg_node) (dst : pdg_node) dep : exe_pdg =
 let string_of_dep = function
   | ControlDep -> "ControlDep"
   | DataDep vars -> sp "DataDep (%s)" (AstPP.string_of_args vars) 
-  | Commute b -> sp "Commute (%s)" (AstPP.string_of_exp b)
+  | Commute (b,args1,args2) -> sp "[%s]; [%s]; Commute (%s)" (AstML.string_of_list AstPP.string_of_exp args1) (AstML.string_of_list AstPP.string_of_exp args2) (AstPP.string_of_exp b)
   | Disjoint -> "Disjoint"
 
 (*
@@ -118,7 +118,7 @@ let print_pdg pdg fn : unit =
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
-       | Commute exp ->
+       | Commute (exp, args1, args2) ->
           let cond = AstPP.string_of_exp exp in
           "\"" ^ (Range.string_of_range_nofn e.src.l) ^ "\" -> \"" 
                 ^ (Range.string_of_range_nofn e.dst.l) ^ "\" "
@@ -252,16 +252,24 @@ let add_dataDep_edges pdg =
 
 let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
   let find_commute_condition l1 l2 =
-    let res = ref None in 
+    let res = ref (None,[],[]) in 
     List.iter (
       fun {elt=(bl, cond); _} ->
         let check_label label lb_list = 
           List.exists (fun (l,_) -> String.equal (fst label) l) lb_list
         in 
+        let find_label_args label lb_list = 
+          let args = snd (List.find (fun (l,_) -> String.equal (fst label) l) lb_list)
+          in match args with
+          | None -> [] 
+          | Some a -> a
+        in
         apply_pairs (
           fun x y -> 
-            if (check_label l1 x && check_label l2 y ||
-            check_label l1 y && check_label l2 x) then res := Some cond 
+            if (check_label l1 x && check_label l2 y) then 
+              res := ((Some cond), find_label_args l1 x, find_label_args l2 y)
+            else if (check_label l1 y && check_label l2 x) then 
+              res := ((Some cond), find_label_args l1 y, find_label_args l2 x)
           ) bl
       ) gc;
     res
@@ -270,9 +278,10 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
   apply_pairs (fun (x : pdg_node) (y : pdg_node) -> 
     begin match x.src, y.src with 
     | Some {elt=(SBlock (Some l1, _)); loc=_}, Some {elt=(SBlock (Some l2, _)); loc=_} -> 
-      begin match !(find_commute_condition l1 l2) with 
+      let cond, vars1, vars2 = !(find_commute_condition l1 l2) in
+      begin match cond with 
       | None -> ()
-      | Some (PhiExp cond) -> p := add_edge !p x y (Commute cond)
+      | Some (PhiExp cond) -> p := add_edge !p x y (Commute (cond, vars1, vars2))
       | _ -> failwith "undefined commute condition"
       end
     | _, _ -> ()
@@ -552,7 +561,7 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
                 ^ "[style=solid, color=green, label=\""^(dot_escape vars)^"\", penwidth=\""^pw^"\"];\n" 
-       | Commute exp ->
+       | Commute (exp, args1, args2) ->
           let cond = AstPP.string_of_exp exp in
           "\"" ^ (id_of_dag_node e.dag_src) ^ "\" -> \"" 
                 ^ (id_of_dag_node e.dag_dst) ^ "\" "
@@ -919,15 +928,15 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
     | DataDep vars -> 
       let src_task = List.assoc src_taskID !res in 
       let dst_task = List.assoc dst_taskID !res in
-      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = None} :: src_task.deps_out}) in
-      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = None} :: dst_task.deps_in}) in 
+      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}} :: src_task.deps_out}) in
+      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}} :: dst_task.deps_in}) in 
       res := new_src_task :: new_dst_task ::
       List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
-    | Commute c ->
+    | Commute (c, args1, args2) ->
       let src_task = List.assoc src_taskID !res in 
       let dst_task = List.assoc dst_taskID !res in
-      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = Some c} :: src_task.deps_out}) in
-      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = Some c} :: dst_task.deps_in}) in 
+      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out}) in
+      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: dst_task.deps_in}) in 
       res := new_src_task :: new_dst_task ::
       List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
     | _ ->()

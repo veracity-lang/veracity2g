@@ -2,11 +2,16 @@ open Ast
 open Ast_print
 type dswp_taskid = int 
 
+type commute_condition = {
+  my_task_formals: exp node list;
+  other_task_formals: exp node list;
+  condition: exp node option
+}
 (* t_i can depend on a list of variables written by some predecessor t_j *)
 type dependency = {
   pred_task: dswp_taskid;
   vars: (ty * id) list;
-  commute_cond : exp node option
+  commute_cond : commute_condition
 }
 
 type exe_label = Doall | Sequential
@@ -24,13 +29,16 @@ let str_of_vars_list (vlist : (ty * id) list) : string  =
        Printf.sprintf "%s %s" (AstPP.string_of_ty t) i
   ) vlist))
 
+let str_of_exp_list (elist : exp node list) : string =
+  (String.concat "," (List.map AstML.string_of_exp elist))
+
 let str_of_task_deps deplist = 
   "{"
   ^(String.concat " AND " (List.map (fun dep ->
-    match dep.commute_cond with 
+    match dep.commute_cond.condition with 
     | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
     | Some c -> 
-     Printf.sprintf "from %d: %s / commute_cond: %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (AstPP.string_of_exp c)
+     Printf.sprintf "from %d: %s / commute_cond: [%s],[%s] => %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (str_of_exp_list dep.commute_cond.my_task_formals)(str_of_exp_list dep.commute_cond.other_task_formals) (AstPP.string_of_exp c)
   ) deplist))
   ^"}"
 
@@ -72,7 +80,7 @@ task3:
     body="q=p->inner_list; .."}
 *)
 
-let mk_int_dep pred_id var_id = {pred_task=pred_id; vars=[(TInt,var_id)]; commute_cond = None}
+let mk_int_dep pred_id var_id = {pred_task=pred_id; vars=[(TInt,var_id)]; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}}
 
 let example_var_decls () =
   [
