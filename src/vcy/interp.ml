@@ -818,7 +818,10 @@ and bind_formals formals body env : (string * tyval) list list =
   match formals with
   | [] -> [[]]
   | xs -> begin match body.elt with
-    | [{elt=SBlock(Some (_, Some vars), _); _}] -> [List.combine formals (List.map (fun var -> interp_exp env var |> snd |> fun v -> (type_of_value v, ref v)) vars)]
+    | [{elt=SBlock(Some (_, Some vars), _); _}] ->
+     (* List.iter (fun s -> print_string(s ^ "\n")) formals;
+     List.iter (fun var -> interp_exp env var |> snd |> AstML.string_of_value |> print_string ) vars; *)
+     [List.combine formals (List.map (fun var -> interp_exp env var |> snd |> fun v -> (type_of_value v, ref v)) vars)]
     | stmts -> List.iter (compose Lazy.from_val AstML.string_of_stmt |> compose debug_print) stmts; failwith "Expected formals, but did not find singleton, labeled block."
   end
 and send_dep calling_tid tid env vals =
@@ -861,7 +864,7 @@ and send_dep calling_tid tid env vals =
   Queue.to_seq job_queue |>
   Seq.iter (fun (j, promise) -> match find_dep j.tid with
     | Some {commute_cond = {my_task_formals=formals; other_task_formals=formals'; condition = Some phi}; _} 
-      when not (interp_phi {env' with l = bind_formals formals task.body env' :: bind_formals formals' (load_task_def j.tid).body j.env:: []}
+      when not (interp_phi {env' with l = (bind_formals formals task.body env' @ bind_formals formals' (load_task_def j.tid).body j.env) :: []}
         phi) -> Domainslib.Task.await !pool promise |> ignore
     | Some _ -> Domainslib.Task.await !pool promise |> ignore
     | _ -> ()

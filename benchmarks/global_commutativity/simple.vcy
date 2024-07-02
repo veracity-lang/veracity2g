@@ -2,12 +2,12 @@ commutativity {
     {f1(files,i_1)}, {f2(files,i_2)}: (i_1 != i_2)
 }
 
+int[] files = new int[10];
+int f = 0;
+int g = 0;
+int i = 5;
+
 int main(int argc, string[] argv) {
-    int[] files = new int[10];
-    int f = 0;
-    int g = 0;
-    int i_1 = 0;
-    int i_2 = 1;
 
     
     f1(files,i):{ 
