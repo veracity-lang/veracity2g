@@ -819,7 +819,7 @@ and bind_formals formals body env : (string * tyval) list list =
   | [] -> [[]]
   | xs -> begin match body.elt with
     | [{elt=SBlock(Some (_, Some vars), _); _}] -> [List.combine formals (List.map (fun var -> interp_exp env var |> snd |> fun v -> (type_of_value v, ref v)) vars)]
-    | _ -> failwith "Expected formals, but did not find singleton, labeled block."
+    | stmts -> List.iter (compose Lazy.from_val AstML.string_of_stmt |> compose debug_print) stmts; failwith "Expected formals, but did not find singleton, labeled block."
   end
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
