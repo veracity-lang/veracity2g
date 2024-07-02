@@ -502,7 +502,7 @@ let generate_spec_preamble { methods; globals; structs; lib_methods} = Some begi
   
 
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
-  let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
+  (* let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in *)
   gstates := embedding_vars;
 
   let predicates = generate_spec_predicates embedding_vars in
