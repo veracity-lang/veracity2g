@@ -933,16 +933,8 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
     in
     aux x l 0
   in
-  (* Find the corresponding element in B given the index of s in A *)
-  (* let find_corresponding a b s =
-    let idx = find_index s a in
-    if idx = -1 || idx >= List.length b then
-      None
-    else
-      Some (List.nth b idx) *)
   let find_corresponding a b s =
     let idx = find_index s b in
-    (* Printf.printf "--> %d - %d - %s - %d\n" (List.length a)(List.length b)(AstML.string_of_exp s)idx;  *)
     if idx == -1 then None
     else Some (List.nth a idx)
     
@@ -951,15 +943,20 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
     let e = match exp.elt with 
     | CStr _ | Id _ -> find_corresponding args_in args_out exp
     | Index (e1, e2) -> Some (node_up exp (Index (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)))
+    | Bop (op, e1, e2) -> Some (node_up exp @@ Bop (op, substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2))
+    | Uop (op, e) -> Some (node_up exp @@ Uop (op, substitute_vars_exp args_in args_out e))
+    | CallRaw (id, el) -> Some (node_up exp @@ CallRaw (id, List.map (substitute_vars_exp args_in args_out) el))
+    | Call (method_variant, el) -> Some (node_up exp @@ Call (method_variant, List.map (substitute_vars_exp args_in args_out) el))
+    | CNull _ | CBool _ | CInt _ -> None
     | _ -> None
-    (* | CStr s -> let e' = find_corresponding args_in args_out s in node_up exp (CStr e')
-    | Id s -> let e' = find_corresponding args_in args_out s in node_up exp (Id e')
-    | CArr (t, expl) -> let e' = List.map (substitute_vars_exp args_in args_out) expl in node_up exp (CArr (t, e')) *)
-    (* | NewArr (_, e) | Uop (_, e) -> find_exp_vars e
-    | Index (e1, e2) | Bop (_, e1, e2) -> (find_exp_vars e1) @ (find_exp_vars e2) 
-    | CallRaw (_, expl) -> List.concat_map find_exp_vars expl
-    | Call (m, expl) -> List.concat_map find_exp_vars expl (* TODO: check *)
-    | Ternary (e1, e2, e3) -> (find_exp_vars e1) @ (find_exp_vars e2) @ (find_exp_vars e3) *)
+    (* 
+    | CArr of ty * exp node list
+    | NewArr of ty * exp node
+    | NewHashTable of hashtable_variant * ty * ty
+    | Ternary of exp node * exp node * exp node
+    | CStruct of id * exp node bindlist
+    | Proj of exp node * id
+     *)
     in 
     match e with
     | None -> exp 
@@ -972,17 +969,25 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
     | s::tl -> 
     let s' = begin match s.elt with 
     | Assn (e1,e2) -> Assn (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)
-    (* | Decl vdecl ->
-      let id, (ty, e) = vdecl in 
-      let decl = Gvdecl (no_loc { name = id; ty = ty; init = e }) in 
-      if not (List.mem decl !decl_vars) then 
-        decl_vars := decl :: !decl_vars;
-      ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
-    | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
-    | SBlock (bl,body) -> find_block_vars body.elt
-    | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
-    | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
-    | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue *)
+    | If (e,b1,b2) -> If (substitute_vars_exp args_in args_out e, node_up b1 @@ substitute_vars_block args_in args_out b1.elt, node_up b2 @@ substitute_vars_block args_in args_out b2.elt)
+    | Ret (Some e) -> Ret (Some (substitute_vars_exp args_in args_out e))
+    | Decl (id, (ty, e)) -> Decl (id,(ty,substitute_vars_exp args_in args_out e))
+    | SCallRaw (id, el) -> SCallRaw (id, List.map (substitute_vars_exp args_in args_out) el)
+    | SCall (method_variant, el) -> SCall (method_variant, List.map (substitute_vars_exp args_in args_out) el)
+    (* 
+    
+    | For of vdecl list * exp node option * stmt node option * block node
+    | While of exp node * block node
+    | Raise of exp node
+    | Commute of commute_variant * commute_condition * block node list
+    | Assert of exp node
+    | Assume of exp node
+    | Havoc of id
+    | Require of exp node
+    | SBlock of blocklabel option * block node
+    | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
+    | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
+    | SendEOP of int *)
     | _ -> s.elt
     end 
     in (node_up s s') :: substitute_vars_block args_in args_out tl
