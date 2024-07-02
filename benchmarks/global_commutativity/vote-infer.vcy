@@ -8,8 +8,12 @@ commutativity {
 hashtable[int,int] voter_weight = new hashtable_seq[int,int];
 hashtable[int,int] voter_voted = new hashtable_seq[int,int];
 hashtable[int,int] voter_vote = new hashtable_seq[int,int];
+hashtable[int,int] proposals = new hashtable_seq[int,int];
 int r_vote1 = 0;
 int r_vote2 = 0;
+int voterID = 0;
+int proposal = 0;
+int init = 1;
 
 int main(int argc, string[] argv) {
     scalingfactor = int_of_string(argv[1]);
@@ -25,10 +29,11 @@ int main(int argc, string[] argv) {
             if(voted == 1) {
                 r_vote1 = -1;
             } else {
-                ht_put(voter_voted,voterID,1);
+                ht_put(voter_voted,voterID,init);
                 ht_put(voter_vote,voterID,proposal);
                 int curVotes = ht_get(proposals,proposal);
-                ht_put(proposals,proposal,curVotes + weight);
+                int value = curVotes + weight;
+                ht_put(proposals,proposal,value);
             }
         }
 /*
@@ -55,10 +60,11 @@ int main(int argc, string[] argv) {
             if(voted == 1) {
                 r_vote2 = -1;
             } else {
-                ht_put(voter_voted,voterID,1);
+                ht_put(voter_voted,voterID,init);
                 ht_put(voter_vote,voterID,proposal);
                 int curVotes = ht_get(proposals,proposal);
-                ht_put(proposals,proposal,curVotes + weight);
+                int value = curVotes + weight;
+                ht_put(proposals,proposal,value);
             }
         }
 /*
