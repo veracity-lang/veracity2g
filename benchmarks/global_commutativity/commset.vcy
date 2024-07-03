@@ -1,6 +1,6 @@
 commutativity {
-   {f1(i_1)}, {f1(i_2)} : (false);
-   {f1(i_1)}, {f3(i_2)} : (false)
+   {f1(i_1)}, {f1(i_2)} : _;
+   {f1}, {f3} : _
 }
 
 int i = 1;
@@ -15,7 +15,8 @@ int main(int argc, string[] argv) {
 
     while (i < argc){
         f1(i):{
-            c = open_read(argv[i]);
+            filename = argv[i];
+            c = open_read(filename);
         }
         s = read_line(c);
         digest[i] = string_of_int(md5_lower(s));

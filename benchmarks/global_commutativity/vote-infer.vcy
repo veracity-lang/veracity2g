@@ -19,7 +19,7 @@ int main(int argc, string[] argv) {
     scalingfactor = int_of_string(argv[1]);
 
     /* https://docs.soliditylang.org/en/latest/solidity-by-example.html */
-   vote1(voterID,proposal):{
+   vote1(voterID/*replicate*/,   proposal):{ 
         r_vote1 = 0;
         int weight = ht_get(voter_weight,voterID);
         if (weight != 0) {
