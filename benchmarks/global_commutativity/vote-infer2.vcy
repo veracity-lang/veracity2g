@@ -2,7 +2,7 @@
 ./vcy.exe infer ../benchmarks/global_commutativity/vote-infer.vcy --debug --prover cvc5
 */
 commutativity {
-   {vote1(voterID_1,proposal_1)}, {vote2(voterID_2,proposal_2)}: _
+   {vote1}, {vote2}: _
 }
 
 hashtable[int,int] voter_weight = new hashtable_seq[int,int];
@@ -14,10 +14,6 @@ int r_vote2 = 0;
 int voterID = 0;
 int proposal = 0;
 int init = 1;
-int voterID_1 = 0;
-int proposal_1 = 0;
-int voterID_2 = 0;
-int proposal_2 = 0;
 
 int main(int argc, string[] argv) {
     scalingfactor = int_of_string(argv[1]);
