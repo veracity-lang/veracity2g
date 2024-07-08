@@ -136,11 +136,11 @@ let print_pdg pdg fn : unit =
 
 
 let print_pdg_debug pdg =
-  if !Util.debug then
-    match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l) | _ -> ();
+  if !Util.debug then begin
+    begin match pdg.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range en.l) | _ -> () end;
     List.iteri (fun i s -> Printf.printf "node %d: %s\n" i (Range.string_of_range s.l)) pdg.nodes;
     List.iteri (fun i e -> Printf.printf "pdg_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (Range.string_of_range_nofn e.src.l) (Range.string_of_range_nofn e.dst.l)) pdg.edges
-
+  end
 
 let find_node (s: stmt node) pdg : pdg_node =
     let sl = s.loc in 
@@ -425,6 +425,7 @@ let mark_loop_carried_dependencies pdg : exe_pdg =
   in 
   {pdg with edges = e}
 
+let local_decl = ref []
 
 let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg = 
   let pdg = empty_exe_pdg() in 
@@ -434,6 +435,9 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
     | [] -> pdg
     | stmt::tl ->
       let updated_pdg = begin match stmt.elt with 
+      | Decl _ ->
+        local_decl := !local_decl @ [Some stmt];
+        snd (add_node pdg stmt)
       | If (e, blk1, blk2) ->
         let src, pdg = add_node pdg stmt in
         let pdg = traverse_ast blk2.elt (traverse_ast blk1.elt pdg) in 
@@ -522,7 +526,7 @@ type dag_edge = {
 }
 
 type dag_scc = {
-  entry_node: pdg_node option;
+  entry_node: dag_node option;
   nodes : dag_node list;
   edges : dag_edge list;
 }
@@ -617,6 +621,35 @@ let remove_duplicate_edge (edges: dag_edge list) =
   loop edges
 
 let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =  
+  let update_edges = ref pdg.edges in 
+  let update_nodes = ref pdg.nodes in 
+  let sccs = ref sccs in
+  let entry = 
+    match pdg.entry_node with 
+    | None -> None 
+    | Some e -> 
+      let remove_node nodes n = 
+        let rec remove_from_list x lst = match lst with
+        | [] -> []
+        | hd :: tl -> if (compare_nodes hd x) then remove_from_list x tl
+                      else hd :: remove_from_list x tl
+        in
+        let rec remove_from_2d_list x lst2d = match lst2d with
+            | [] -> []
+            | hd :: tl -> (remove_from_list x hd) :: (remove_from_2d_list x tl)
+        in
+        sccs := List.filter (fun s -> not (List.is_empty s)) (remove_from_2d_list n !sccs);
+        List.filter (fun node -> not (compare_nodes n node)) nodes
+      in
+      let remove_edge edges e = 
+        List.filter (fun edge -> not ((compare_nodes e.src edge.src) && (compare_nodes e.dst edge.dst))) edges 
+      in
+      let new_entry = List.fold_left (fun acc edge -> if compare_nodes edge.src e && List.mem edge.dst.src !local_decl then begin update_nodes := remove_node !update_nodes edge.dst; update_edges := remove_edge !update_edges edge; acc @ [edge.dst] end else acc) [] pdg.edges in
+      sccs := List.map (fun s -> if List.mem e s then [e] @ new_entry else s) !sccs;
+      Some {n = [e] @ new_entry; label = Sequential} 
+  in 
+  let sccs = !sccs in
+  let pdg = {pdg with nodes = !update_nodes; edges = !update_edges} in
   let nodes = List.map (fun scc -> if has_loop_carried scc pdg then {n= scc; label= Sequential} else {n= scc; label= Doall}) sccs in
   let find_node_scc n scc =
     List.mem n scc
@@ -632,8 +665,9 @@ let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
     fun {src= s; dst= d; dep=dp; loop_carried =l} -> 
     {dag_src= find_dag_node s; dag_dst= find_dag_node d; dep=dp; loop_carried=l}
   ) filtered_edges in 
-  let nodes = List.filter (fun n -> match pdg.entry_node with | None -> true | Some node -> not (compare_dag_nodes n {n = [node]; label = Sequential})) nodes in
-  {entry_node = pdg.entry_node; nodes; edges}
+  let edges = remove_duplicate_edge edges in
+  let nodes = List.filter (fun n -> match entry with | None -> true | Some node -> not (compare_dag_nodes n node)) nodes in
+  {entry_node = entry; nodes; edges}
 
 
 let string_of_dag_label = function
@@ -643,11 +677,11 @@ let string_of_dag_label = function
 
 let print_dag_debug dag_scc =
   if !Util.debug then begin
-    begin match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (Range.string_of_range_nofn en.l) | _ -> () end;
     let string_of_node n = List.fold_left (fun acc s -> acc ^ (Range.string_of_range_nofn s.l) ^ " ") "" n in 
+    begin match dag_scc.entry_node with | Some en -> Printf.printf "entry node: %s\n" (string_of_node en.n) | _ -> () end;
     List.iteri (fun i sl -> Printf.printf "node %d (%s): %s" i (string_of_dag_label sl.label) (string_of_node sl.n); print_newline()) dag_scc.nodes;
     List.iteri (fun i e -> Printf.printf "dag_edge %d (%s) - %b: %s - %s\n" i (string_of_dep e.dep) e.loop_carried (string_of_node e.dag_src.n) (string_of_node e.dag_dst.n)) dag_scc.edges end
-  
+
 let rec all_in_list_a_in_b list_a list_b =
   match list_a with
   | [] -> true
@@ -725,7 +759,7 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
         let remaining_blocks = List.filter (fun b -> not (List.mem b mergeable_blocks) && b != block) dag_scc.nodes in
         let new_edges = List.filter (fun e -> not (all_in_list_a_in_b e.dag_src.n merged_block.n && all_in_list_a_in_b e.dag_dst.n merged_block.n)) dag_scc.edges in
         let nodes = merged_block :: remaining_blocks in
-        let temp_nodes = match dag_scc.entry_node with | Some s -> {n = [s]; label = Doall} :: nodes | None -> nodes in
+        let temp_nodes = match dag_scc.entry_node with | Some s -> {n = s.n; label = Doall} :: nodes | None -> nodes in
         let updated_edges = List.map (
           fun e -> 
           let src = List.find (fun n -> all_in_list_a_in_b e.dag_src.n n.n) temp_nodes in
@@ -811,7 +845,7 @@ let merge_sequential_blocks dag_scc =
         let remaining_blocks = List.filter (fun b -> not (List.mem b mergeable_blocks) && b != block) dag_scc.nodes in
         let new_edges = List.filter (fun e -> not (all_in_list_a_in_b e.dag_src.n merged_block.n && all_in_list_a_in_b e.dag_dst.n merged_block.n)) dag_scc.edges in
         let nodes = merged_block :: remaining_blocks in
-        let temp_nodes = match dag_scc.entry_node with | Some s -> {n = [s]; label = Sequential} :: nodes | None -> nodes in
+        let temp_nodes = match dag_scc.entry_node with | Some s -> {n = s.n; label = Sequential} :: nodes | None -> nodes in
         let updated_edges = List.map (
           fun e -> 
           let src = List.find (fun n -> all_in_list_a_in_b e.dag_src.n n.n) temp_nodes in
@@ -970,9 +1004,12 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
   let generate_task0 = 
     let body = match dag_scc.entry_node with 
     | Some entry ->
+      let entry_stmts = ref [] in
+      List.iter (fun {l=_; n=_;src = p} -> match p with | Some s -> entry_stmts:= !entry_stmts @ [s] | None -> ()) entry.n;
+      !entry_stmts @
       List.fold_left 
       (fun b e -> 
-      if compare_dag_nodes {n=[entry];label =Sequential} e.dag_src then begin
+      if compare_dag_nodes entry e.dag_src then begin
         let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
         let i = find_taskID_from_node dag_scc elem in 
         b @ [no_loc (SendDep(i, [(* TODO: actual variables? *)])) ; no_loc (SendEOP i)]
@@ -981,6 +1018,7 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       ) [] dag_scc.edges
     | None -> []
     in 
+    let body = remove_duplicate body in
     {id = 0; deps_in = []; deps_out = []; body = no_loc body; label= Dswp_task.Sequential }
   in 
   let rec generate_tasks_from_dag dag_scc (block: block node) : dswp_task list =
@@ -993,9 +1031,10 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
-  let tasks = generate_tasks_from_dag dag_scc block in
+  let tasks = (generate_task0) :: generate_tasks_from_dag dag_scc block in
   let tasks = fill_task_dependency dag_scc (List.map (fun t -> (t.id, t)) tasks) in
-  (generate_task0) :: tasks
+  (* (generate_task0) :: tasks *)
+  tasks
 
 let thread_partitioning dag_scc pdg (threads: int list) body =
   debug_print (lazy "Merging DAG_scc:\n");
