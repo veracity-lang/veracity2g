@@ -1000,13 +1000,13 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
   in
   List.map (fun t -> update_sendDep_of_task t) out_tasks
 
-let generate_tasks dag_scc (block: block node) : dswp_task list =
-  let generate_task0 = 
-    let body = match dag_scc.entry_node with 
+let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
+  let generate_init_task : init_task = 
+    let decls, body = match dag_scc.entry_node with 
     | Some entry ->
       let entry_stmts = ref [] in
       List.iter (fun {l=_; n=_;src = p} -> match p with | Some s -> entry_stmts:= !entry_stmts @ [s] | None -> ()) entry.n;
-      !entry_stmts @
+      !entry_stmts,
       List.fold_left 
       (fun b e -> 
       if compare_dag_nodes entry e.dag_src then begin
@@ -1016,10 +1016,10 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       end
       else b
       ) [] dag_scc.edges
-    | None -> []
+    | None -> [], []
     in 
     let body = remove_duplicate body in
-    {id = 0; deps_in = []; deps_out = []; body = no_loc body; label= Dswp_task.Sequential }
+    {decls = no_loc decls ; jobs = body; label= Dswp_task.Doall }
   in 
   let rec generate_tasks_from_dag dag_scc (block: block node) : dswp_task list =
     match dag_scc.nodes with 
@@ -1031,10 +1031,11 @@ let generate_tasks dag_scc (block: block node) : dswp_task list =
       let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
-  let tasks = (generate_task0) :: generate_tasks_from_dag dag_scc block in
-  let tasks = fill_task_dependency dag_scc (List.map (fun t -> (t.id, t)) tasks) in
-  (* (generate_task0) :: tasks *)
-  tasks
+  let tasks = generate_tasks_from_dag dag_scc block in
+  let init_task = generate_init_task in 
+  let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
+  let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
+  init_task, tasks
 
 let thread_partitioning dag_scc pdg (threads: int list) body =
   debug_print (lazy "Merging DAG_scc:\n");
@@ -1045,11 +1046,12 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
-  let tasks = generate_tasks merged_dag body in 
+  let init_task, tasks = generate_tasks merged_dag body in 
   if !Util.debug then begin
+    Printf.printf "Init Task -> \n %s \n %s \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map AstPP.string_of_stmt init_task.jobs));
     List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstPP.string_of_block t.body)) tasks;
     List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks end;
-  tasks
+  init_task, tasks
 
 
 
@@ -1072,7 +1074,7 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   debug_print (lazy "DAG_SCCs:\n");
   print_dag_debug dag_scc;
   print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
-  let tasks = thread_partitioning dag_scc pdg [] body in 
+  let init_task, tasks = thread_partitioning dag_scc pdg [] body in 
   debug_print (lazy (Printf.sprintf "gen_tasks called with %d globals\n" (List.length !decl_vars)));
   if !codegen then begin
     Codegen_c.gen_tasks (!decl_vars) tasks;

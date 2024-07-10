@@ -24,6 +24,12 @@ type dswp_task = {
   label: exe_label;
 }
 
+type init_task = {
+  decls: block node;
+  jobs: stmt node list;
+  label: exe_label;
+}
+
 let str_of_vars_list (vlist : (ty * id) list) : string  = 
   (String.concat ";" (List.map (fun (t,i) -> 
        Printf.sprintf "%s %s" (AstPP.string_of_ty t) i
