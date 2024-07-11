@@ -26,7 +26,7 @@ type dswp_task = {
 
 type init_task = {
   decls: block node;
-  jobs: stmt node list;
+  jobs: dswp_taskid list;
   label: exe_label;
 }
 

@@ -1054,19 +1054,11 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
       if compare_dag_nodes entry e.dag_src then begin
         let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
         let i = List.hd (find_taskIDs_from_node_list !dag_scc elem) in 
-        b @ [no_loc (SendDep(i, [(* TODO: actual variables? *)])) ; no_loc (SendEOP i)]
+        b @ [i] 
       end
       else b
       ) [] !dag_scc.edges
       in
-      (* let senddep_list = List.sort (
-        fun x y -> 
-        match x.elt, y.elt with
-        | SendDep (i1,_), SendDep (i2,_) 
-        | SendEOP i1, SendEOP i2
-        | SendDep (i1,_), SendEOP i2
-        | SendEOP i1, SendDep (i2,_) -> Int.compare i1 i2
-      ) senddep_list in *)
       !entry_stmts, senddep_list
     | None -> [], []
     in 
@@ -1102,7 +1094,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let init_task, tasks = generate_tasks merged_dag body in 
   if !Util.debug then begin
-    Printf.printf "Init Task -> \n %s \n %s \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map AstPP.string_of_stmt init_task.jobs));
+    Printf.printf "Init Task -> \n %s \n [%s] \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map Int.to_string init_task.jobs));
     List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstPP.string_of_block t.body)) tasks;
     List.iter (fun t -> Printf.printf "%s \n" (str_of_task t)) tasks end;
   init_task, tasks
