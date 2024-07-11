@@ -763,7 +763,7 @@ and interp_block (env : env) (block : block node) : env * value option =
 (* PS-DSWP Execution Mode *)
 
 (* A queue of all things that must be joined before we exit. *)
-and job_queue = Queue.create ()
+and job_queue = Queue.create () (* TODO: Protect with mutex *)
 and run_job jb = 
     let (env',v) = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body in
     v
@@ -803,11 +803,27 @@ and join_all_task tid =
   debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
   Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
 
-and init_job job = failwith "Not Implemented"
+and init_job task_id env = 
+  let task = load_task_def task_id in
+  
+  (* Wait for all the dependencies of task *)
+  (* First wait for EOP *)
+  List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
 
+  let jobs = Queue.to_seq job_queue |> List.of_seq in
+  
+  (* Now get all the data dependencies *)
+  let env' = List.fold_left (fun env dep -> senddep_extend_env env (make_job_vals (List.find (fun (j, _) -> j.tid = dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst) dep.vars)) env task.deps_in in
+  
+  (* Now start the job *)
+  new_job {tid = task_id; env = env'}
+  
 and scheduler init_task env : value option =
   let env', _ = interp_block env init_task.decls in
-  List.iter init_job init_task.jobs;
+  
+  (* Start initial tasks. *)
+  Domainslib.Task.run !pool (fun () -> 
+    List.iter (fun job -> Domainslib.Task.async !pool (fun () -> init_job job env')) init_task.jobs);
   Domainslib.Task.run !pool join_all
 
 (* List of things that have sendEOP'd *)
@@ -825,6 +841,14 @@ and bind_formals formals body env : (string * tyval) list list =
      [List.combine formals (List.map (fun var -> interp_exp env var |> snd |> fun v -> (type_of_value v, ref v)) vars)]
     | stmts -> List.iter (compose Lazy.from_val AstML.string_of_stmt |> compose debug_print) stmts; failwith "Expected formals, but did not find singleton, labeled block."
   end
+and wait_eop task_id =
+  let eop_list = ref [] in
+  eop_list := Mutex.protect eop_mutex (fun () -> !eop_tasks);
+  while not (List.mem task_id !eop_list) do
+      Unix.sleepf 0.01;
+      Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
+  done
+  
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
        1a - If it doesn't commute, then wait for EOP and for all of them to join.
@@ -848,16 +872,8 @@ and send_dep calling_tid tid env vals =
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
   
-  (* Get list of things that EOP'd *)
-  let eop_list = ref [] in
-  eop_list := Mutex.protect eop_mutex (fun () -> !eop_tasks);
   (* Wait for everything we need to EOP to EOP. *)
-  while List.exists (fun dep -> not (List.mem dep.pred_task !eop_list)) deps do
-      (* TODO: We do polling.
-             Just kill execution here and try again later with the remaining dep list (fold?) *)
-      Unix.sleepf 0.01;
-      Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
-  done;
+  List.iter (fun dep -> wait_eop dep.pred_task) deps;
   
   (* Now for each job, if we're dependent on it, wait for it. *)
   let find_dep tid = List.find_opt (function {pred_task;_} -> pred_task = tid) deps in
