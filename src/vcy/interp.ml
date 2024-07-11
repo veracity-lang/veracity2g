@@ -763,10 +763,11 @@ and interp_block (env : env) (block : block node) : env * value option =
 (* PS-DSWP Execution Mode *)
 
 (* A queue of all things that must be joined before we exit. *)
-and job_queue = Queue.create () (* TODO: Protect with mutex *)
+and jobs_mutex = Mutex.create ()
+and job_queue = Queue.create ()
+and all_jobs = ref []
 and run_job jb = 
-    let (env',v) = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body in
-    v
+    interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
   List.fold_left (fun acc (varty,varid) ->
@@ -777,10 +778,14 @@ and make_job_vals env deps =
       end          
    ) [] deps
 (* Interpreter calls this function at each SendDep to create a new job *)
+and add_job j promise =
+  Mutex.protect jobs_mutex (fun () ->
+    Queue.add (j, promise) job_queue;
+    all_jobs := (j, promise) :: !all_jobs)
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
   let promise = Domainslib.Task.async !pool (fun () -> run_job j) in
-  Queue.add (j, promise) job_queue
+  add_job j promise
 
 and task_defs = ref []
 and pool = ref (Domainslib.Task.setup_pool ~num_domains:pool_size ())
@@ -792,13 +797,13 @@ and load_task_def (taskid:int) : dswp_task =
 and join_all () = 
   let ret_value = ref None in
   while not (Queue.is_empty job_queue) do
-    begin match Domainslib.Task.await !pool (Queue.take job_queue |> snd) with
+    begin match Domainslib.Task.await !pool (Mutex.protect jobs_mutex (fun () -> Queue.take job_queue) |> snd) |> snd with
       | Some v -> if Option.is_none !ret_value then ret_value := (Some v)
       | _ -> () end
   done;
   !ret_value
 and join_all_task tid =
-  Queue.to_seq job_queue |>
+  Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue) |>
   Seq.filter (fun (j, _) -> j.tid == tid) |> fun q ->
   debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
   Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
@@ -810,7 +815,7 @@ and init_job task_id env =
   (* First wait for EOP *)
   List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
 
-  let jobs = Queue.to_seq job_queue |> List.of_seq in
+  let jobs = !all_jobs in
   
   (* Now get all the data dependencies *)
   let env' = List.fold_left (fun env dep -> senddep_extend_env env (make_job_vals (List.find (fun (j, _) -> j.tid = dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst) dep.vars)) env task.deps_in in
@@ -823,14 +828,12 @@ and scheduler init_task env : value option =
   
   (* Start initial tasks. *)
   Domainslib.Task.run !pool (fun () -> 
-    List.iter (fun job -> Domainslib.Task.async !pool (fun () -> init_job job env')) init_task.jobs);
+    List.iter (flip init_job env') init_task.jobs);
   Domainslib.Task.run !pool join_all
 
 (* List of things that have sendEOP'd *)
 and eop_tasks = ref []
 and eop_mutex = Mutex.create()
-(* Outer executing environment *)
-and env0 = ref None
 and bind_formals formals body env : (string * tyval) list list =
   match formals with
   | [] -> [[]]
@@ -1581,7 +1584,7 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
   match (if !dswp_mode
-    then interp_tasks env !Exe_pdg.generated_decl_vars !(Option.get !Exe_pdg.generated_init_tasks) !Exe_pdg.generated_tasks
+    then interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks
     else interp_exp env e |> snd) with
   | VInt ret -> ret
   | _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)
@@ -1592,7 +1595,7 @@ let interp_prog_time (prog : prog) (argv : string array) : float =
   let env, e = prepare_prog prog argv in
   Vcylib.suppress_print := true;
   if !dswp_mode then
-    let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks in
+    let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks in
     dt
   else
     let dt, _ = time_exec @@ fun () -> interp_exp env e in
