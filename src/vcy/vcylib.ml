@@ -707,7 +707,13 @@ let lib_mutex : method_library =
     ; func = begin function
       | env, [VInt index] ->
         begin match List.assoc_opt index !mutexes with
-        | None -> raise @@ ValueFailure ("unknown mutex " ^ Int64.to_string index, Range.norange)
+        | None -> 
+            debug_print (lazy (Printf.sprintf "Warning: mutex %d not initialized. Auto-intializing.\n" (Int64.to_int index)));
+            let m = Mutex.create () in
+            mutexes := (index, m) :: !mutexes;
+            Mutex.lock m;
+            env, VVoid
+            (* TODO previously: raise @@ ValueFailure ("unknown mutex " ^ Int64.to_string index, Range.norange) *)
         | Some m ->
           Mutex.lock m;
           env, VVoid
