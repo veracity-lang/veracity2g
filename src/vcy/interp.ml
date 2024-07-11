@@ -802,11 +802,12 @@ and join_all_task tid =
   Seq.filter (fun (j, _) -> j.tid == tid) |> fun q ->
   debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
   Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
-  
-and scheduler env : value option =
-  env0 := Some env;
-  (* Domainslib.Task.run !pool (fun () -> run_job {tid = 0; env}) *)
-  new_job {tid = 0; env};
+
+and init_job job = failwith "Not Implemented"
+
+and scheduler init_task env : value option =
+  let env', _ = interp_block env init_task.decls in
+  List.iter init_job init_task.jobs;
   Domainslib.Task.run !pool join_all
 
 (* List of things that have sendEOP'd *)
@@ -1549,13 +1550,13 @@ let prepare_prog (prog : prog) (argv : string array) =
     let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
     env, e
 
-let interp_tasks env0 decls tasks : value =
+let interp_tasks env0 decls init_task tasks : value =
   set_task_def tasks;
   (* create a job for each task with no deps_in -- REMOVED, just start job 0 in scheduler. *)
   (* let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs
     |> List.map (fun task -> {tid=task.id; env=env0}) in *)
   (* start the scheduler *)
-  scheduler env0 |> flatten_value_option
+  scheduler init_task env0 |> flatten_value_option
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
@@ -1564,7 +1565,7 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
   match (if !dswp_mode
-    then interp_tasks env !Exe_pdg.generated_decl_vars !Exe_pdg.generated_tasks
+    then interp_tasks env !Exe_pdg.generated_decl_vars !(Option.get !Exe_pdg.generated_init_tasks) !Exe_pdg.generated_tasks
     else interp_exp env e |> snd) with
   | VInt ret -> ret
   | _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)

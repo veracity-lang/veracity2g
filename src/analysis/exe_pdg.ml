@@ -5,6 +5,7 @@ open Range
 open Util
 open Dswp_task
 
+let generated_init_task = ref None
 let generated_tasks = ref []
 let generated_decl_vars = ref []
 let codegen = ref false
@@ -1125,5 +1126,6 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   if !codegen then begin
     Codegen_c.gen_tasks (!decl_vars) tasks;
     Codegen_c.print_tasks tasks "/tmp/tasks.dot" end;
+  generated_init_task := Some init_task;
   generated_tasks := tasks;
   generated_decl_vars := !decl_vars;
