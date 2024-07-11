@@ -477,19 +477,28 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
 let find_neighbors pdg node : pdg_node list = 
   List.fold_left (fun neighbors e -> if compare_nodes e.src node then neighbors @ [e.dst] else neighbors) [] pdg.edges
 
+let is_separate_node (node: pdg_node) : bool =
+  match node.src with
+  | Some{elt=(SBlock _)} -> true
+  | _ -> false
+
 let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
-  visited := List.remove_assoc curr !visited @ [(curr, true)]; 
-  let neighbors = find_neighbors pdg curr in 
-  List.fold_left (fun r n -> if not (List.assoc n !visited) then r @ (dfs_util pdg n visited) else r) [curr] neighbors
+  visited := List.remove_assoc curr !visited @ [(curr, true)];
+  let neighbors = find_neighbors pdg curr in
+  curr :: List.flatten (List.map (fun n -> if not (List.assoc n !visited) && not (is_separate_node n) then dfs_util pdg n visited else []) neighbors)
 
 let transpose pdg : exe_pdg =
   {pdg with edges = List.map (fun {src=s; dst=d; dep=dp; loop_carried=l} -> {src=d; dst=s; dep=dp; loop_carried=l}) pdg.edges}
 
 let rec fill_order pdg (curr: pdg_node) (visited: visited ref) stack =
-  visited := List.remove_assoc curr !visited @ [(curr, true)]; 
-  let neighbors = find_neighbors pdg curr in 
-  List.iter (fun n -> if not (List.assoc n !visited) then fill_order pdg n visited stack) neighbors;
-  Stack.push curr stack
+  if not (List.assoc curr !visited) then begin
+    visited := List.remove_assoc curr !visited @ [(curr, true)];
+    if not (is_separate_node curr) then begin
+      let neighbors = find_neighbors pdg curr in
+      List.iter (fun n -> fill_order pdg n visited stack) neighbors;
+    end;
+    Stack.push curr stack
+  end
 
 let find_sccs pdg : pdg_node list list =
   let stack = Stack.create () in
@@ -502,10 +511,16 @@ let find_sccs pdg : pdg_node list list =
   let sccs = ref [] in 
   while not (Stack.is_empty stack) do
     let s = Stack.pop stack in
-    if not (List. assoc s !visited) then begin
-      sccs := !sccs @ [dfs_util reversed_pdg s visited];
-    end
+    if not (List.assoc s !visited) then
+      if is_separate_node s then
+        sccs := !sccs @ [[s]]  (* Place commute fragment nodes in their own SCC *)
+      else
+        sccs := !sccs @ [dfs_util reversed_pdg s visited]
   done;
+
+  let find_min li = List.fold_left (fun acc {l=(_,p,_)} -> Int.min acc (Range.line_of_pos p)) Int.max_int li in
+  sccs := List.sort (fun n1 n2 -> Int.compare (find_min n1) (find_min n2)) !sccs;
+
   !sccs
 
 let print_sccs (sccs: pdg_node list list) =
@@ -871,13 +886,38 @@ let incr_uid (ctr: int ref) =
   ctr := !ctr + 1;
   !ctr
 
-let find_taskID_from_node dag_scc elem : int = 
-  let tmp = ref 0 in 
-  List.iteri (fun i n -> if (List.exists (fun s -> String.equal (List.hd elem) (Range.string_of_range_nofn s.l)) n.n) then tmp := i + 1 ) dag_scc.nodes;
-  !tmp
+
+let find_taskIDs_from_node_list dag_scc elemList: int list =
+  let find_taskID_from_node dag_scc elem : int = 
+    let tmp = ref 0 in 
+    List.iteri (fun i n -> if (List.exists (fun s -> String.equal elem (Range.string_of_range_nofn s.l)) n.n) then tmp := i + 1 ) dag_scc.nodes;
+    !tmp
+  in
+  List.map (find_taskID_from_node dag_scc) elemList
 
 let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   let sendDep_exists = ref [] in 
+  let remove_and_find_nodes dag new_block old_block =
+    List.filter (fun s -> not (List.mem s new_block)) old_block.elt
+    |> List.map (fun s ->
+      let removed_loc = Range.string_of_range_nofn s.loc in
+      let [tid] = find_taskIDs_from_node_list dag [removed_loc] in
+      (s.loc, tid)
+    )
+  in 
+  let augment_block new_block removed_nodes =
+    let augmented_block =
+      List.fold_left (fun acc (l, task_id) ->
+        sendDep_exists := task_id :: !sendDep_exists;
+        acc @ [{ elt = SendDep (task_id, []); loc = l }]
+      ) new_block removed_nodes
+    in
+    List.sort (fun s1 s2 ->
+      let (_, p1, _) = s1.loc in
+      let (_, p2, _) = s2.loc in
+      Int.compare (Range.line_of_pos p1) (Range.line_of_pos p2)
+    ) augmented_block
+  in
   let rec transform_block dag_scc_node (block: block node) : block * bool =
     let stmt_exist stmt node = 
       List.exists (fun s -> String.equal (Range.string_of_range s.l) (Range.string_of_range stmt.loc)) node.n
@@ -887,46 +927,46 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
       | stmt::tl ->
         begin match stmt.elt with
         | If (e, b1, b2) ->
-          let new_b1, f1 = (transform_block dag_scc_node b1) in 
-          let new_b2, f2 = (transform_block dag_scc_node b2) in 
-          if stmt_exist stmt dag_scc_node
-          then begin
-            let new_b1 = if not f1 then begin
-              let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b1)) b1.elt) 
-              in
-              let tid = find_taskID_from_node dag removed in 
-              sendDep_exists := tid :: !sendDep_exists;
-              new_b1 @ [no_loc @@ SendDep (tid, [])] end else new_b1 in
-            let new_b2 = if not f2 then begin 
-              let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_b2)) b2.elt) 
-              in
-              let tid = find_taskID_from_node dag removed in 
-              sendDep_exists := tid :: !sendDep_exists; 
-              new_b2 @ [no_loc @@ SendDep (tid, [])] end else new_b2 in
-            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
-            (node_up stmt (If(e, node_up b1 new_b1, node_up b2 new_b2))) :: rest , true && f
+          let new_b1, f1 = transform_block dag_scc_node b1 in
+          let new_b2, f2 = transform_block dag_scc_node b2 in
+          if stmt_exist stmt dag_scc_node then begin
+            let updated_b1 =
+              if not f1 then 
+                remove_and_find_nodes dag new_b1 b1
+                |> augment_block new_b1
+              else 
+                new_b1 
+            in
+            let updated_b2 =
+              if not f2 then 
+                remove_and_find_nodes dag new_b2 b2
+                |> augment_block new_b2
+              else 
+                new_b2 
+            in
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            (node_up stmt (If (e, node_up b1 updated_b1, node_up b2 updated_b2))) :: rest, true && f
+          end else begin
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            new_b1 @ new_b2 @ rest, false && f
           end
-          else begin
-            let rest, f = (transform_block dag_scc_node (no_loc tl)) in
-            new_b1 @ new_b2 @ rest , false && f
+        | While (e, b) ->
+          let new_body, f = transform_block dag_scc_node b in
+          if stmt_exist stmt dag_scc_node then begin
+            let updated_body = 
+              if not f then 
+                remove_and_find_nodes dag new_body b
+                |> augment_block new_body
+              else 
+                new_body 
+            in
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            (node_up stmt (While (e, node_up b updated_body))) :: rest, true && f
+          end else begin
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            new_body @ rest, false && f
           end
-        | While (e,b) -> 
-          let new_body, f = (transform_block dag_scc_node b) in 
-          if stmt_exist stmt dag_scc_node
-          then begin
-            let new_body = if not f then begin 
-              let removed = List.map (fun s -> Range.string_of_range_nofn s.loc) (List.filter (fun s -> not (List.mem s new_body)) b.elt) 
-              in
-              let tid = find_taskID_from_node dag removed in 
-              sendDep_exists := tid :: !sendDep_exists;
-              new_body @ [no_loc @@ SendDep (tid, [])] end else new_body in
-            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
-            (node_up stmt (While(e, node_up b new_body))) :: rest , true && f
-          end 
-          else begin 
-            let rest, f = (transform_block dag_scc_node (node_up block tl)) in 
-            new_body @ rest , false && f
-          end
+
         (* | For (v,e,s,_) -> EFor (v,e,s) *)
         | s -> 
           if stmt_exist stmt dag_scc_node 
@@ -1001,32 +1041,46 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
   List.map (fun t -> update_sendDep_of_task t) out_tasks
 
 let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
+  let dag_scc = ref dag_scc in 
   let generate_init_task : init_task = 
-    let decls, body = match dag_scc.entry_node with 
+    let decls, body = match !dag_scc.entry_node with 
     | Some entry ->
       let entry_stmts = ref [] in
       List.iter (fun {l=_; n=_;src = p} -> match p with | Some s -> entry_stmts:= !entry_stmts @ [s] | None -> ()) entry.n;
-      !entry_stmts,
+
+      let senddep_list = 
       List.fold_left 
       (fun b e -> 
       if compare_dag_nodes entry e.dag_src then begin
         let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
-        let i = find_taskID_from_node dag_scc elem in 
+        let i = List.hd (find_taskIDs_from_node_list !dag_scc elem) in 
         b @ [no_loc (SendDep(i, [(* TODO: actual variables? *)])) ; no_loc (SendEOP i)]
       end
       else b
-      ) [] dag_scc.edges
+      ) [] !dag_scc.edges
+      in
+      (* let senddep_list = List.sort (
+        fun x y -> 
+        match x.elt, y.elt with
+        | SendDep (i1,_), SendDep (i2,_) 
+        | SendEOP i1, SendEOP i2
+        | SendDep (i1,_), SendEOP i2
+        | SendEOP i1, SendDep (i2,_) -> Int.compare i1 i2
+      ) senddep_list in *)
+      !entry_stmts, senddep_list
     | None -> [], []
     in 
     let body = remove_duplicate body in
     {decls = no_loc decls ; jobs = body; label= Dswp_task.Doall }
   in 
+  let dag_scc = !dag_scc in 
+  let temp_dag = dag_scc in 
   let rec generate_tasks_from_dag dag_scc (block: block node) : dswp_task list =
     match dag_scc.nodes with 
     | [] -> []
     | node::tl -> 
       let taskID = incr_uid ctr in 
-      let body = reconstructAST dag_scc node block taskID in
+      let body = reconstructAST temp_dag node block taskID in
       let label = match node.label with | Doall -> Dswp_task.Doall | Sequential -> Dswp_task.Sequential in 
       let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
