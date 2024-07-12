@@ -809,9 +809,12 @@ and join_all_task tid =
   Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
 
 and init_job task_id env = 
+  debug_print (lazy (Printf.sprintf "Initializing job with tid=%d\n" task_id));
+
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
+  List.iter (fun dep -> Printf.printf "Line 817, tid=%d\n" dep.pred_task) task.deps_in;
   (* First wait for EOP *)
   List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
 
@@ -828,7 +831,8 @@ and scheduler init_task env : value option =
   
   (* Start initial tasks. *)
   Domainslib.Task.run !pool (fun () -> 
-    List.iter (flip init_job env') init_task.jobs);
+    let init_jobs = List.map (fun job -> Domainslib.Task.async !pool (fun () -> init_job job env')) init_task.jobs in
+    List.iter (Domainslib.Task.await !pool) init_jobs |> ignore);
   Domainslib.Task.run !pool join_all
 
 (* List of things that have sendEOP'd *)
