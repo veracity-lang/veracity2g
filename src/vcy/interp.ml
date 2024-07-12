@@ -689,6 +689,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     env, None
   | GCommute(_) -> failwith "gcommute in interp_stmt."
   | Require(_) -> failwith "require in interp_stmt."
+  | _ -> failwith "interp_stmt: Not Implemented."
 
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -755,7 +756,8 @@ and interp_block (env : env) (block : block node) : env * value option =
     then pop_block_from_callstack env
     (* If a return occurred, don't pop anything *)
     else env
-  in env, ret
+  in 
+  env, ret
 
 (* let schedule_task tsk () *)
 
@@ -785,7 +787,8 @@ and add_job j promise =
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
   let promise = Domainslib.Task.async !pool (fun () -> run_job j) in
-  add_job j promise
+  add_job j promise;
+  debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
 and task_defs = ref []
 and pool = ref (Domainslib.Task.setup_pool ~num_domains:pool_size ())
@@ -814,17 +817,26 @@ and init_job task_id env =
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
-  List.iter (fun dep -> Printf.printf "Line 817, tid=%d\n" dep.pred_task) task.deps_in;
+  (* List.iter (fun dep -> (debug_print (lazy Printf.sprintf "Line 817, tid=%d\n" dep.pred_task))) task.deps_in; *)
   (* First wait for EOP *)
   List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
 
   let jobs = !all_jobs in
   
   (* Now get all the data dependencies *)
-  let env' = List.fold_left (fun env dep -> senddep_extend_env env (make_job_vals (List.find (fun (j, _) -> j.tid = dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst) dep.vars)) env task.deps_in in
+  let env' = List.fold_left (
+    fun env dep -> senddep_extend_env env 
+      (make_job_vals 
+        (try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst 
+        with Not_found -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task))
+       dep.vars)
+    ) env task.deps_in in
   
   (* Now start the job *)
-  new_job {tid = task_id; env = env'}
+  new_job {tid = task_id; env = env'};
+  
+  (* Mark self as EOP *)
+  Mutex.protect eop_mutex (fun () -> eop_tasks := task_id :: !eop_tasks);
   
 and scheduler init_task env : value option =
   let env', _ = interp_block env init_task.decls in
@@ -832,11 +844,11 @@ and scheduler init_task env : value option =
   (* Start initial tasks. *)
   Domainslib.Task.run !pool (fun () -> 
     let init_jobs = List.map (fun job -> Domainslib.Task.async !pool (fun () -> init_job job env')) init_task.jobs in
-    List.iter (Domainslib.Task.await !pool) init_jobs |> ignore);
+    List.iter (Domainslib.Task.await !pool) init_jobs);
   Domainslib.Task.run !pool join_all
 
 (* List of things that have sendEOP'd *)
-and eop_tasks = ref []
+and eop_tasks : int list ref = ref []
 and eop_mutex = Mutex.create()
 and bind_formals formals body env : (string * tyval) list list =
   match formals with

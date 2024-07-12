@@ -19,6 +19,7 @@ int main(int argc, string[] argv) {
 
     mutex_init(0);
     while(i < 100) {
+        print("Line 22\n");
         pqFlag[i] = new bool[100];
         pIds[i] = i;
         pValue[i] = i;
@@ -27,6 +28,7 @@ int main(int argc, string[] argv) {
     }
 
     while(p < pSize){
+        print("Line 31\n");
         id = pIds[p];
         if(!visited[id % 100]){
             visited[id % 100] = true;
