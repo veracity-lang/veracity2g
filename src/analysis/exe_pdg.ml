@@ -896,8 +896,10 @@ let find_taskIDs_from_node_list dag_scc elemList: int list =
   in
   List.map (find_taskID_from_node dag_scc) elemList
 
+let sendDep_exists = ref []
+
 let reconstructAST dag dag_scc_node (block: block node) taskID : block =
-  let sendDep_exists = ref [] in 
+  let sendDeps = ref [] in
   let remove_and_find_nodes dag new_block old_block =
     List.filter (fun s -> not (List.mem s new_block)) old_block.elt
     |> List.map (fun s ->
@@ -909,7 +911,8 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   let augment_block new_block removed_nodes =
     let augmented_block =
       List.fold_left (fun acc (l, task_id) ->
-        sendDep_exists := task_id :: !sendDep_exists;
+        if not (List.mem task_id !sendDeps) then
+          sendDeps := task_id :: !sendDeps;
         acc @ [{ elt = SendDep (task_id, []); loc = l }]
       ) new_block removed_nodes
     in
@@ -984,7 +987,8 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
     res
   in
   let b = fst (transform_block dag_scc_node block) in 
-  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b !sendDep_exists
+  sendDep_exists := !sendDep_exists @ !sendDeps;
+  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b !sendDeps
   
 
 let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) = 
@@ -1043,7 +1047,7 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
 
 let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let dag_scc = ref dag_scc in 
-  let generate_init_task : init_task = 
+  let generate_init_task () : init_task = 
     let decls, body = match !dag_scc.entry_node with 
     | Some entry ->
       let entry_stmts = ref [] in
@@ -1054,8 +1058,11 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
       (fun b e -> 
       if compare_dag_nodes entry e.dag_src then begin
         let elem = List.map (fun s -> Range.string_of_range_nofn s.l) e.dag_dst.n in
-        let i = List.hd (find_taskIDs_from_node_list !dag_scc elem) in 
-        b @ [i] 
+        let i = List.hd (find_taskIDs_from_node_list !dag_scc elem) in
+        if List.mem i !sendDep_exists then 
+          b 
+        else
+          b @ [i] 
       end
       else b
       ) [] !dag_scc.edges
@@ -1079,7 +1086,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
   let tasks = generate_tasks_from_dag dag_scc block in
-  let init_task = generate_init_task in 
+  let init_task = generate_init_task () in 
   let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
   init_task, tasks
