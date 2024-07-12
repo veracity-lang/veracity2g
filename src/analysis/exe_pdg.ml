@@ -988,7 +988,7 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   in
   let b = fst (transform_block dag_scc_node block) in 
   sendDep_exists := !sendDep_exists @ !sendDeps;
-  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b !sendDeps
+  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b (List.rev !sendDeps)
   
 
 let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) = 
