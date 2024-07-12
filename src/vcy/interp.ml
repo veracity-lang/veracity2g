@@ -736,7 +736,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | Stmt s -> interp_stmt env s 
   | _ -> failwith "not implemented" *)
 
-and interp_block (env : env) (block : block node) : env * value option =
+and interp_block ?(new_scope = true) (env : env) (block : block node) : env * value option =
   let stmts = ref block.elt in
   let env = ref (push_block_to_callstk env) in
   let ret = ref None in
@@ -751,7 +751,7 @@ and interp_block (env : env) (block : block node) : env * value option =
   let env = !env in
   let ret = !ret in
   let env =
-    if ret = None
+    if ret = None && new_scope
     (* If block returned nothing, pop a block level *)
     then pop_block_from_callstack env
     (* If a return occurred, don't pop anything *)
@@ -817,7 +817,6 @@ and init_job task_id env =
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
-  (* List.iter (fun dep -> (debug_print (lazy Printf.sprintf "Line 817, tid=%d\n" dep.pred_task))) task.deps_in; *)
   (* First wait for EOP *)
   List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
 
@@ -839,7 +838,7 @@ and init_job task_id env =
   Mutex.protect eop_mutex (fun () -> eop_tasks := task_id :: !eop_tasks);
   
 and scheduler init_task env : value option =
-  let env', _ = interp_block env init_task.decls in
+  let env', _ = interp_block ~new_scope:false env init_task.decls in
   
   (* Start initial tasks. *)
   Domainslib.Task.run !pool (fun () -> 
