@@ -911,9 +911,11 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   let augment_block new_block removed_nodes =
     let augmented_block =
       List.fold_left (fun acc (l, task_id) ->
-        if not (List.mem task_id !sendDeps) then
+        if not (List.mem task_id !sendDeps) then begin
           sendDeps := task_id :: !sendDeps;
-        acc @ [{ elt = SendDep (task_id, []); loc = l }]
+          acc @ [{ elt = SendDep (task_id, []); loc = l }]
+        end 
+        else acc
       ) new_block removed_nodes
     in
     List.sort (fun s1 s2 ->
