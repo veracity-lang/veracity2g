@@ -568,17 +568,26 @@ and interp_global_commute (env: env) : (group_commute node * bool) list =
   (interp_group_commute g.group_commute)
   
 and senddep_extend_env env (vals: (ty * id * value) list) : env =
+  (* Treat new task as a new block in call stack. *)
+  senddep_extend_env_inner {env with l = ([] :: List.hd env.l ) :: List.tl env.l} vals
+and senddep_extend_env_inner env vals =
   match vals with 
   | [] -> env 
   | (t,i,v)::rest ->
       (* This is like Decl statements *)
       (* Add ID to environment - most recent call in callstack, innermost block *)
-      let stk = List.hd env.l in
-      let blk = List.hd stk in
-      let blk = (i, (t, ref v)) :: blk in
-      let stk = blk :: List.tl stk in
-      let env' = {env with l=(stk :: List.tl env.l)} in
-      senddep_extend_env env' rest
+      if List.mem_assoc i env.g.globals then begin
+        debug_print (lazy (Printf.sprintf "Dep is global; not creating new reference: %s = %s\n" i (AstML.string_of_value v)));
+        senddep_extend_env_inner env rest
+      end else begin
+        debug_print (lazy (Printf.sprintf "Dep sent: %s = %s\n" i (AstML.string_of_value v)));
+        let stk = List.hd env.l in
+        let blk = List.hd stk in
+        let blk = (i, (t, ref v)) :: blk in
+        let stk = blk :: List.tl stk in
+        let env' = {env with l=(stk :: List.tl env.l)} in
+        senddep_extend_env_inner env' rest
+      end
 
 
 
@@ -786,7 +795,7 @@ and add_job j promise =
     all_jobs := (j, promise) :: !all_jobs)
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
-  let promise = Domainslib.Task.async !pool (fun () -> run_job j) in
+  let promise = Domainslib.Task.async !pool (fun () -> run_job j |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
   add_job j promise;
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
@@ -818,7 +827,7 @@ and init_job task_id env =
   
   (* Wait for all the dependencies of task *)
   (* First wait for EOP *)
-  List.iter (fun dep -> wait_eop dep.pred_task) task.deps_in;
+  List.iter (fun dep -> wait_eop dep.pred_task; join_all_task dep.pred_task) task.deps_in;
 
   let jobs = !all_jobs in
   

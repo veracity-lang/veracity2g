@@ -27,6 +27,8 @@ let rec repeat f n = if n <= 0 then () else (f (); repeat f (n - 1))
 
 let const c f = c
 
+let seq a b = b
+
 let null = function
   | [] -> true
   | _ -> false
