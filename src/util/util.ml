@@ -8,6 +8,8 @@ let debug = ref false
 let debug_print (s : string lazy_t) =
   if !debug then (print_string (Lazy.force s); flush stdout)
 
+let debug_trunc (s : string) = if String.length s > 256 then String.sub s 0 241 ^ "... [truncated]" else s
+
 let sp = Printf.sprintf
 
 let servois2_synth_option = ref Servois2.Synth.default_synth_options

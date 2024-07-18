@@ -577,10 +577,10 @@ and senddep_extend_env_inner env vals =
       (* This is like Decl statements *)
       (* Add ID to environment - most recent call in callstack, innermost block *)
       if List.mem_assoc i env.g.globals then begin
-        debug_print (lazy (Printf.sprintf "Dep is global; not creating new reference: %s = %s\n" i (AstML.string_of_value v)));
+        debug_print (lazy (Printf.sprintf "Dep is global; not creating new reference: %s = %s\n" i (AstML.string_of_value v |> debug_trunc)));
         senddep_extend_env_inner env rest
       end else begin
-        debug_print (lazy (Printf.sprintf "Dep sent: %s = %s\n" i (AstML.string_of_value v)));
+        debug_print (lazy (Printf.sprintf "Dep sent: %s = %s\n" i (AstML.string_of_value v |> debug_trunc)));
         let stk = List.hd env.l in
         let blk = List.hd stk in
         let blk = (i, (t, ref v)) :: blk in
@@ -882,11 +882,12 @@ and wait_eop task_id =
       Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
   done
 and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condition = cond; _} lenv renv lbody rbody =
-  debug_print (lazy ("Interpreting commutativity condition...\n"));
-  let res = begin match cond with
-  | Some phi -> interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi
-  | None -> false end in
-  debug_print (lazy (Printf.sprintf "Result: %b\n" res)); res
+  match cond with
+  | Some phi ->
+      debug_print (lazy ("Interpreting commutativity condition...\n"));
+      let res = interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi in
+      debug_print (lazy (Printf.sprintf "Result: %b\n" res)); res
+  | None -> false
 and wait_deps env deps self_body =
   (* Wait for everything we need to EOP to EOP. *)
   List.iter (fun dep -> wait_eop dep.pred_task) deps;
