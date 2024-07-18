@@ -826,18 +826,24 @@ and init_job task_id env =
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
-  (* First wait for EOP *)
-  List.iter (fun dep -> wait_eop dep.pred_task; join_all_task dep.pred_task) task.deps_in;
-
-  let jobs = !all_jobs in
+  wait_deps env task.deps_in task.body;
+  
+  let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
   
   (* Now get all the data dependencies *)
   let env' = List.fold_left (
-    fun env dep -> senddep_extend_env env 
+    fun env dep -> 
+      let (j, p) = try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs
+        with Not_found -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task)
+      in
+      if not (interp_phi_two dep.commute_cond env j.env task.body (load_task_def j.tid).body)
+      (* if it commutes, we don't need to wait *) then begin
+    senddep_extend_env env 
       (make_job_vals 
         (try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst 
         with Not_found -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task))
-       dep.vars)
+       dep.vars) end
+       else env
     ) env task.deps_in in
   
   (* Now start the job *)
@@ -875,6 +881,26 @@ and wait_eop task_id =
       Unix.sleepf 0.01;
       Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
   done
+and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condition = cond; _} lenv renv lbody rbody =
+  debug_print (lazy ("Interpreting commutativity condition...\n"));
+  let res = begin match cond with
+  | Some phi -> interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi
+  | None -> false end in
+  debug_print (lazy (Printf.sprintf "Result: %b\n" res)); res
+and wait_deps env deps self_body =
+  (* Wait for everything we need to EOP to EOP. *)
+  List.iter (fun dep -> wait_eop dep.pred_task) deps;
+  
+  (* For each job, if we're dependent on it, wait for it. *)
+  let find_dep tid = List.find_opt (function {pred_task;_} -> pred_task = tid) deps in
+  
+  Mutex.protect jobs_mutex (fun () -> !all_jobs) |>
+  List.iter (fun (j, promise) -> match find_dep j.tid with
+    | Some {commute_cond = cond; _}
+      when not (interp_phi_two cond env j.env self_body (load_task_def j.tid).body) -> Domainslib.Task.await !pool promise |> ignore
+    | Some _ -> Domainslib.Task.await !pool promise |> ignore
+    | _ -> ()
+  )
   
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
@@ -899,21 +925,8 @@ and send_dep calling_tid tid env vals =
   in
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
   
-  (* Wait for everything we need to EOP to EOP. *)
-  List.iter (fun dep -> wait_eop dep.pred_task) deps;
-  
-  (* Now for each job, if we're dependent on it, wait for it. *)
-  let find_dep tid = List.find_opt (function {pred_task;_} -> pred_task = tid) deps in
-  
-  Queue.to_seq job_queue |>
-  Seq.iter (fun (j, promise) -> match find_dep j.tid with
-    | Some {commute_cond = {my_task_formals=formals; other_task_formals=formals'; condition = Some phi}; _} 
-      when not (interp_phi {env' with l = (bind_formals formals task.body env' @ bind_formals formals' (load_task_def j.tid).body j.env) :: []}
-        phi) -> Domainslib.Task.await !pool promise |> ignore
-    | Some _ -> Domainslib.Task.await !pool promise |> ignore
-    | _ -> ()
-  );
-  
+  (* Wait on dependencies to finish executing. *)
+  wait_deps env' deps task.body;
   
   (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)

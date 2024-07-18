@@ -36,6 +36,7 @@ int main(int argc, string[] argv) {
     /* https://docs.soliditylang.org/en/latest/solidity-by-example.html */
    vote1(vote1_voterID,vote1_proposal):{
         r_vote1 = 0;
+        busy_wait(scalingfactor);
         int weight = ht_get(voter_weight,vote1_voterID);
         if (weight != 0) {
             r_vote1 = -1;
@@ -66,6 +67,7 @@ int main(int argc, string[] argv) {
 
   vote2(vote2_voterID,vote2_proposal):{
         r_vote2 = 0;
+        busy_wait(scalingfactor);
         int weight = ht_get(voter_weight,vote2_voterID);
         if (weight != 0) {
             r_vote2 = -1;
@@ -83,6 +85,7 @@ int main(int argc, string[] argv) {
     }
   vote3(vote3_voterID,vote3_proposal):{
         r_vote3 = 0;
+        busy_wait(scalingfactor);
         int weight = ht_get(voter_weight,vote3_voterID);
         if (weight != 0) {
             r_vote3 = -1;
@@ -100,6 +103,7 @@ int main(int argc, string[] argv) {
     }
   vote4(vote4_voterID,vote4_proposal):{
         r_vote4 = 0;
+        busy_wait(scalingfactor);
         int weight = ht_get(voter_weight,vote4_voterID);
         if (weight != 0) {
             r_vote4 = -1;
