@@ -225,7 +225,7 @@ let has_data_dep src dst : bool * (ty * string) list * int =
       if List.mem_assoc head list2 then begin
         let val2 = List.assoc head list2 in 
         begin match val1, val2 with 
-        | 0, 1 | 1, 1  -> true, head :: vars, src_to_dst
+        | 0, 1 -> true, head :: vars, src_to_dst
         | 1, 0 -> true, head :: vars, dst_to_src
         | _, _ -> false, vars, src_to_dst
         end
@@ -1134,7 +1134,7 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   debug_print (lazy (Printf.sprintf "gen_tasks called with %d globals\n" (List.length !decl_vars)));
   if !codegen then begin
     Codegen_c.gen_tasks (!decl_vars) tasks;
-    Codegen_c.print_tasks tasks "/tmp/tasks.dot" end;
+    Codegen_c.print_tasks init_task tasks "/tmp/tasks.dot" end;
   generated_init_task := Some init_task;
   generated_tasks := tasks;
   generated_decl_vars := !decl_vars;

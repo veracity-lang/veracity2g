@@ -108,7 +108,7 @@ and gen_senddep tsk other_id =
           ""
         ])
   with 
-    Not_found -> failwith "gen_senddep: didn't find the other task"
+    Not_found -> failwith ("gen_senddep: didn't find the other task id:" ^ (Int.to_string other_id))
 
 and gen_stmtnode tsk x = gen_stmt tsk x.elt
 and gen_block tsk b = let indent_pre = !indent in 
@@ -261,7 +261,7 @@ let dot_of_task_body tsk : string =
     (String.sub es 0 300)^"...TRUNC ("^(string_of_int (String.length es))^" chars)"
   else es 
 
-let print_tasks tlist fn : unit = 
+let print_tasks init_task tlist fn : unit = 
   let oc = open_out fn in
   output_string oc (String.concat "\n" [
     "digraph G {";
@@ -270,8 +270,9 @@ let print_tasks tlist fn : unit =
     "  node [shape=box, style=\"filled\", fontname=\"Courier\", margin=0.05]";
     "  edge [arrowhead=vee, arrowsize=1, fontname=\"Courier\"]";
     (* Nodes *)
-    List.fold_left (fun acc tsk -> acc ^ "\"" ^ (string_of_int tsk.id)
-    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(dot_of_task_body tsk)^"\"];\n") "" tlist;
+    (* "\"0" "\"[label=\"Init Task: "^(dot_of_task_body {id =0; body=init_task.decls; deps_in=[]; deps_out=[]; label=init_task.label})^"\"];\n "^(List.fold_left (fun acc j -> acc ^ "," ^ (Int.to_string j)) "" init_task.jobs)^" \n" ^ *)
+    (List.fold_left (fun acc tsk -> acc ^ "\"" ^ (string_of_int tsk.id)
+    ^ "\" [label=\"Task "^(string_of_int tsk.id)^": "^(dot_of_task_body tsk)^"\"];\n") "" tlist);
     (* edges *)
     List.fold_left (fun acc tsk -> acc ^ 
         (List.fold_left (fun acc' din -> acc'^(edge_of_dep tsk.id din false)) "" tsk.deps_in)
