@@ -872,7 +872,7 @@ and bind_formals formals body env : (string * tyval) list list =
      (* List.iter (fun s -> print_string(s ^ "\n")) formals;
      List.iter (fun var -> interp_exp env var |> snd |> AstML.string_of_value |> print_string ) vars; *)
      [List.combine formals (List.map (fun var -> interp_exp env var |> snd |> fun v -> (type_of_value v, ref v)) vars)]
-    | stmts -> List.iter (compose Lazy.from_val AstML.string_of_stmt |> compose debug_print) stmts; failwith "Expected formals, but did not find singleton, labeled block."
+    | stmts -> debug_print (lazy "Expected formals, but did not find singleton, labeled block.\n"); List.iter (compose Lazy.from_val AstML.string_of_stmt |> compose debug_print) stmts; failwith "Expected formals, but did not find singleton, labeled block."
   end
 and wait_eop task_id =
   let eop_list = ref [] in

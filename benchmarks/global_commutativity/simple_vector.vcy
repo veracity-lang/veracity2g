@@ -1,6 +1,4 @@
-commutativity {
-    {f1(c)}, {f2(c)}: (true)
-}
+
 
 int[] x = new int[1000];
 int[] y = new int[1000];
