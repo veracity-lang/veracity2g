@@ -34,8 +34,8 @@ n_values = [
     1e3, 2e3, 5e3,
     1e4, 2e4, 5e4,
     1e5, 2e5, 5e5,
-    1e6, 2e6, 5e6
-    # 1e7, 2e7, 5e7,
+    1e6, 2e6, 5e6,
+    1e7, 2e7 #, 5e7,
     # 1e8
 ]
 
@@ -52,6 +52,8 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/simple_vector.vcy", lambda n : [str(n)])
     ,
     ("benchmarks/global_commutativity/ps-dswp2.vcy", lambda n : [str(n)])
+    ,
+    ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)])
     # ,
     # ("benchmarks/global_commutativity/commset.vcy", lambda n : [str(n)])
 ]

@@ -18,7 +18,7 @@ let force_infer = ref false
 
 let dswp_mode = ref false
 
-let pool_size = 4
+let pool_size = 8
 
 let flatten_value_option v = match v with
   | Some v -> v
@@ -850,7 +850,9 @@ and init_job task_id env =
   new_job {tid = task_id; env = env'};
   
   (* Mark self as EOP *)
-  Mutex.protect eop_mutex (fun () -> eop_tasks := task_id :: !eop_tasks);
+  Mutex.protect eop_mutex (fun () ->
+    debug_print (lazy (Printf.sprintf "EOP: %d\n" task_id));
+    eop_tasks := task_id :: !eop_tasks);
   
 and scheduler init_task env : value option =
   let env', _ = interp_block ~new_scope:false env init_task.decls in
@@ -884,9 +886,7 @@ and wait_eop task_id =
 and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condition = cond; _} lenv renv lbody rbody =
   match cond with
   | Some phi ->
-      debug_print (lazy ("Interpreting commutativity condition...\n"));
-      let res = interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi in
-      debug_print (lazy (Printf.sprintf "Result: %b\n" res)); res
+      interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi
   | None -> false
 and wait_deps env deps self_body =
   (* Wait for everything we need to EOP to EOP. *)
@@ -899,7 +899,7 @@ and wait_deps env deps self_body =
   List.iter (fun (j, promise) -> match find_dep j.tid with
     | Some {commute_cond = cond; _}
       when not (interp_phi_two cond env j.env self_body (load_task_def j.tid).body) -> Domainslib.Task.await !pool promise |> ignore
-    | Some _ -> Domainslib.Task.await !pool promise |> ignore
+    | Some _ -> ()
     | _ -> ()
   )
   
