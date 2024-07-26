@@ -6,19 +6,19 @@ int main(int argc, string[] argv) {
     int i = 1;
     string[] digest = new string[16];
     string s = "";
-    string filename = "";
-    int i_1 = 1;
-    int i_2 = 1;
-    in_channel c = open_read(argv[0]);
 
     while (i < argc){
         f1(i):{
-            filename = argv[i];
-            c = open_read(filename);
+            string filename = argv[i];
+            in_channel c = open_read(filename);
             s = read_line(c);
-        
-            digest[i] = string_of_int(md5_lower(s));
-        
+            int j = 0;
+            string temp = "";
+            while (j < 1000) { /* Artificially increase workload by 1000x */
+                temp = string_of_int(md5_lower(s));
+                j = j+1;
+            }
+            digest[i] = temp;
             print(digest[i]);
             print("\n");
         
