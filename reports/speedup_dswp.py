@@ -47,15 +47,22 @@ def mean(values):
 def geo_mean(values):
     return functools.reduce(lambda x,y: x * y, values, 1) ** (1 / len(values))
 
+def prep_commset(n):
+    with open("a.txt", "w") as f:
+        f.write("A"*n)
+    with open("b.txt", "w") as f:
+        f.write("B"*n)
+    return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt")]
+
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    ("benchmarks/global_commutativity/simple_vector.vcy", lambda n : [str(n)])
-    ,
-    ("benchmarks/global_commutativity/ps-dswp2.vcy", lambda n : [str(n)])
-    ,
-    ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)])
+    # ("benchmarks/global_commutativity/simple_vector.vcy", lambda n : [str(n)])
     # ,
-    # ("benchmarks/global_commutativity/commset.vcy", lambda n : [str(n)])
+    # ("benchmarks/global_commutativity/ps-dswp2.vcy", lambda n : [str(n)])
+    # ,
+    # ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)])
+    # ,
+    ("benchmarks/global_commutativity/commset.vcy", prep_commset)
 ]
     
 
