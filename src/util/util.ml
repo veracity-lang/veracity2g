@@ -223,4 +223,4 @@ let dot_escape s =
 let rec apply_pairs f lst =
   match lst with
   | [] -> ()
-  | x::xs -> List.iter (fun y -> f x y) xs; apply_pairs f xs
+  | x::xs -> List.iter (fun y -> f x y) lst; apply_pairs f xs

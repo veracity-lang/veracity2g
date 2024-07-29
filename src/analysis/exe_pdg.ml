@@ -676,7 +676,7 @@ let coalesce_sccs (pdg: exe_pdg) (sccs: pdg_node list list) : dag_scc =
   let is_scc (n1: pdg_node) (n2: pdg_node) : bool =
     List.exists (fun scc -> find_node_scc n1 scc && find_node_scc n2 scc) sccs 
   in
-  let filtered_edges = List.filter (fun {src= s; dst= d; _} -> not (is_scc s d)) pdg.edges in 
+  let filtered_edges = List.filter (fun {src= s; dst= d; _} -> not (is_scc s d) || (compare_nodes s d)) pdg.edges in 
   let edges = List.map (
     fun {src= s; dst= d; dep=dp; loop_carried =l} -> 
     {dag_src= find_dag_node s; dag_dst= find_dag_node d; dep=dp; loop_carried=l}
