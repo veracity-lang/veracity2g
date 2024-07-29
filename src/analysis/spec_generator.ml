@@ -18,6 +18,7 @@ let variable_ctr_list = (Hashtbl.create 50)
 let realWorld_vars = ["realWorld_data"; "realWorld_linenum"; "realWorld_opened"]
 
 let pre = ref (EConst (CBool true))
+let smt_fn_list = ref []
 
 let sexp_of_sexp_list = function
   | [e] -> e
@@ -251,6 +252,17 @@ let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int
   Hashtbl.iter (fun id -> fun index -> temp := !temp @ [(id, !index)] ) htbl;
   ! temp
  
+
+let ty_of_exp e : ty = 
+  match e.elt with
+  | CNull t -> t
+  | CBool _ -> TBool
+  | CInt _ -> TInt
+  | CStr _ -> TStr
+  | Id i -> snd (fst (List.find (fun ((id,t), _) -> String.equal i id) !gstates))
+  | CArr (t,_) -> TArr t
+  | _ -> failwith "undefined exp"
+
 let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist = 
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
@@ -298,7 +310,15 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
       terms_list := !terms_list @ t;
       rtn, List.concat args_binds @ binds
-      
+    
+    | Call (MethodL (id, {pc=None; ret_ty; _}), el) -> 
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
+      let args_types = List.map (fun e -> sty_of_ty (ty_of_exp e)) el in 
+      let smt_fn = { name = id ; args= args_types; ret = sty_of_ty ret_ty} in
+      if not (List.mem smt_fn !smt_fn_list) then
+        smt_fn_list := !smt_fn_list @ [smt_fn];
+
+      EFunc(id, args_rtn), List.concat args_binds
     | Call (MethodM (id, {rty=rty; _}), el) ->
       let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
 
@@ -518,7 +538,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let preamble = generate_spec_preamble genv in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = pre; postcond = post; state = state; methods= methods; smt_fns = []} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = !smt_fn_list} in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 

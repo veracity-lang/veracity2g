@@ -28,6 +28,7 @@ let lib_string : method_library =
       | env, [VStr v] -> env, VInt (Int64.of_int @@ String.length v)
       | _ -> raise @@ TypeFailure ("length_of_string arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ; "string_of_int",
@@ -36,6 +37,7 @@ let lib_string : method_library =
       | env, [VInt v] -> env, VStr (Int64.to_string v)
       | _ -> raise @@ TypeFailure ("string_of_int arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "string_of_bool",
@@ -45,6 +47,7 @@ let lib_string : method_library =
         env, if v then VStr "true" else VStr "false"
       | _ -> raise @@ TypeFailure ("string_of_bool arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "int_of_string",
@@ -54,6 +57,7 @@ let lib_string : method_library =
         env, VInt (Int64.of_string s)
       | _ -> raise @@ TypeFailure ("int_of_string arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ; "md5_lower", 
@@ -65,6 +69,7 @@ let lib_string : method_library =
             Int64.of_string ("0x" ^ String.sub s (l - 16) 16))
       | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ; "md5_upper", 
@@ -76,6 +81,7 @@ let lib_string : method_library =
             Int64.of_string ("0x" ^ String.sub s 0 (min (l - 16) 16)))
       | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -92,6 +98,7 @@ let lib_counter : method_library =
           env, VVoid
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_incr",
@@ -106,6 +113,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_incr arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_decr",
@@ -120,6 +128,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_decr arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_read",
@@ -133,6 +142,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_read arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -152,6 +162,7 @@ let lib_array : method_library =
         in env, VStr s
       | _ -> raise @@ TypeFailure ("string_of_array arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "array_of_string",
@@ -162,6 +173,7 @@ let lib_array : method_library =
         env, VArr (TInt, Array.init (String.length s) f)
       | _ -> raise @@ TypeFailure ("array_of_string arguments", Range.norange)
       end
+    ; ret_ty = TArr TInt
     ; pc = None
     }
   ; "length_of_array",
@@ -171,6 +183,7 @@ let lib_array : method_library =
         env, VInt (Array.length a |> Int64.of_int)
       | _ -> raise @@ TypeFailure ("length_of_array arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -184,6 +197,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("debug_display arguments", Range.norange) 
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "debug_value",
@@ -194,6 +208,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("debug_value arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "busy_wait",
@@ -207,6 +222,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("busy_wait arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "random",
@@ -219,6 +235,7 @@ let lib_debug : method_library =
         env, VInt d
       | _ -> raise @@ TypeFailure ("random arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -246,6 +263,7 @@ let lib_hashtable : method_library =
         env, VInt (Int64.of_int size)
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = Some (fun [@warning "-8"]
       (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), []) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
@@ -280,6 +298,7 @@ let lib_hashtable : method_library =
         env, VBool mem
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
+    ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
       (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), [k]) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
@@ -326,6 +345,7 @@ let lib_hashtable : method_library =
           env, VBool res
       | _ -> raise @@ TypeFailure ("hashtable put arguments", Range.norange)
       end
+    ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
       (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k;v]) ->
       let ht0, ht1   = mangle_servois_id_pair ht mangle in
@@ -398,6 +418,7 @@ let lib_hashtable : method_library =
         end
       | _ -> raise @@ TypeFailure ("hashtable get arguments", Range.norange)
       end
+    ; ret_ty = TVoid (* TODO: revise *)
     ; pc = Some (fun [@warning "-8"]
       (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k]) ->
       let ht0, ht1     = mangle_servois_id_pair ht mangle in
@@ -469,6 +490,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("print arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "read_stdin",
@@ -478,6 +500,7 @@ let lib_io : method_library =
         env, VStr (read_line ())
       | _ -> raise @@ TypeFailure ("read_stdin arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "open_read",
@@ -488,6 +511,7 @@ let lib_io : method_library =
         env, VChanR (s, chan, in_channel_length chan)
       | _ -> raise @@ TypeFailure ("open_read arguments", Range.norange)
       end
+    ; ret_ty = TChanR
     ; pc = open_spec
     }
   ; "open_write",
@@ -497,6 +521,7 @@ let lib_io : method_library =
         env, VChanW (s, open_out s)
       | _ -> raise @@ TypeFailure ("open_write arguments", Range.norange)
       end
+    ; ret_ty = TChanW
     ; pc = open_spec
     }
   ; "close", 
@@ -510,6 +535,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("close arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETChannel chan, []) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
@@ -540,6 +566,7 @@ let lib_io : method_library =
         env, VStr (input_line chan)
       | _ -> raise @@ TypeFailure ("read_line arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETChannel chan, []) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
@@ -570,6 +597,7 @@ let lib_io : method_library =
         env, VBool (pos_in chan < len)
       | _ -> raise @@ TypeFailure ("has_line arguments", Range.norange)
       end
+    ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETChannel chan, []) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
@@ -598,6 +626,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("write arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETChannel chan, [line]) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
@@ -631,6 +660,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("lseek arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETChannel chan, [i]) ->
       let c0, c1 = mangle_servois_id_pair chan mangle in
@@ -663,6 +693,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("cp arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = Some (fun [@warning "-8"]
       (mangle, rw_mangle, ETStr from_fname, [to_fname]) ->
       let f0, f1 = mangle_servois_id_pair from_fname mangle in
@@ -700,6 +731,7 @@ let lib_mutex : method_library =
           env, VVoid
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "mutex_lock",
@@ -720,6 +752,7 @@ let lib_mutex : method_library =
         end
       | _ -> raise @@ TypeFailure ("mutex_lock arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "mutex_unlock",
@@ -734,6 +767,7 @@ let lib_mutex : method_library =
         end
       | _ -> raise @@ TypeFailure ("mutex_unlock arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ]

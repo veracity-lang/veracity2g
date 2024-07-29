@@ -180,6 +180,7 @@ and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tm
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
+  ; ret_ty : ty
   ; pc : (int * int * ety * sexp list -> post_condition) option
   }
 

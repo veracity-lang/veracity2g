@@ -6,10 +6,13 @@ int main(int argc, string[] argv) {
     int i = 1;
     string[] digest = new string[16];
     string s = "";
+    int i_1 = 0;
+    int i_2 = 0;
+    string filename = "";
 
     while (i < argc){
         f1(i):{
-            string filename = argv[i];
+            filename = argv[i];
             in_channel c = open_read(filename);
             s = read_line(c);
             int j = 0;
