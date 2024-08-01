@@ -970,11 +970,14 @@ let send_dep tfrom tto vals =
 
 (* Globals are relative to the blocks *)
 let infer_phi (g : global_env) (var : commute_variant) (bl : block node list) (globals : ty bindlist) pre post : exp node =
+
+  Printf.printf "infer_phi: global variables: ";
+  List.iter (fun (id ,(ty, _)) -> Printf.printf "(%s : %s) " id (Ast_print.AstML.string_of_ty ty)) g.globals;
+  Printf.printf "\n";
   let e = Analyze.phi_of_blocks g var bl globals pre post in
   no_loc e
 
 let labeled_blocks = ref []
-let global_defs = ref []
 
 let find_blocks_by_label labels = 
   let blks = ref [] in
@@ -984,7 +987,7 @@ let find_blocks_by_label labels =
     in blks := !blks @ [bl]) ls) labels;
   !blks
 
-let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
+let infer_phis_of_global_commutativity (g : global_env) : group_commute node list = 
   (* Find the index of the first occurrence of x in list l *)
   let rec find_index x l =
     let rec aux x l idx =
@@ -1059,7 +1062,7 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
     | [] -> [] 
     | gc::tl -> 
       let labels, phi = gc.elt in 
-      let blks = ref [] in
+      let blks , locals = ref [] , ref [] in
       List.iter (
         fun ls -> 
           List.iter (
@@ -1080,7 +1083,7 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
       let phi' =
         let infer () =
         (* apply_pairs (fun b1 b2 -> infer_phi g CommuteVarPar (b1@b2) defs None None) !blks  *)
-        let phi' = infer_phi g CommuteVarPar !blks defs None None in
+        let phi' = infer_phi g CommuteVarPar !blks [] None None in
           if !emit_inferred_phis then
             begin if !emit_quiet
             then Printf.printf "%s\n"
@@ -1103,7 +1106,6 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
 
 
 let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block node) : block node =
-  global_defs := remove_duplicate (defs @ !global_defs);
   if body.elt = [] then node_up body [] else
   let h,t = List.hd body.elt, node_app List.tl body in
   match h.elt with
@@ -1197,10 +1199,10 @@ let infer_phis_of_prog (g : global_env) : global_env =
     }
   in
   let m = List.map map_method g.methods in
-  let gc = infer_phis_of_global_commutativity g !global_defs in
+  let gc = infer_phis_of_global_commutativity g in
   { g with methods = m; group_commute = gc }
 
-let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : unit = 
+let verify_phis_of_global_commutativity (g : global_env) : unit = 
   let rec interp_group_commute (gc: group_commute node list) : unit = 
     begin match gc with 
     | [] -> () 
@@ -1212,7 +1214,7 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
         if !print_cond then 
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g CommuteVarPar blks defs None None with
+        begin match Analyze.verify_of_block e g CommuteVarPar blks [] None None with
         | Some b, compl -> 
           let compl_str = 
             match compl with 
@@ -1248,7 +1250,6 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
 
 
 let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block node) : block node =
-  global_defs := remove_duplicate (defs @ !global_defs);
   if body.elt = [] then node_up body [] else
   let h,t = List.hd body.elt, node_app List.tl body in
   match h.elt with
@@ -1382,7 +1383,7 @@ let verify_phis_of_prog (g : global_env) : global_env =
     }
   in
   let m = List.map map_method g.methods in
-  verify_phis_of_global_commutativity g !global_defs;
+  verify_phis_of_global_commutativity g;
   { g with methods = m }
 (* TODO: The above is mostly copy pasted from infer. Could just be a _ -> () pass of the AST instead of typed as a transformation. *)
 

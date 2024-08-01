@@ -20,6 +20,22 @@ let realWorld_vars = ["realWorld_data"; "realWorld_linenum"; "realWorld_opened"]
 let pre = ref (EConst (CBool true))
 let smt_fn_list = ref []
 
+let generate_embedding_map (vars : ty bindlist) : embedding_map =
+  let f (id, t) : ety =
+    match t with
+    | TInt -> ETInt id
+    | TBool -> ETBool id
+    | TStr -> ETStr id
+    | TArr t -> ETArr (id, sty_of_ty t)
+    | THashTable (tyk, tyv) ->
+      ETHashTable
+        ( sty_of_ty tyk, sty_of_ty tyv, 
+          { ht = id ; keys = id ^ "_keys"; size = id ^ "_size" })
+    | TChanR | TChanW -> ETChannel id
+    | _ -> raise @@ NotImplemented "Unsupported type embedding"
+  in
+  List.map (fun v -> v, f v) vars
+
 let sexp_of_sexp_list = function
   | [e] -> e
   | es -> ELop(And, es)
@@ -87,7 +103,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         begin match List.find_opt (fun ((v,_),_) -> (compare v id) == 0 ) !gstates with
           | Some ((id, typ),ety) ->
           terms := !terms @ [(EVar (Var id), typ)]; (EVar (Var id), typ)
-          | None -> (EVar (Var id), TInt)
+          | None -> Printf.printf "Not found in gstates: %s\n" id; (EVar (Var id), TInt)
           (* terms := !terms @ [(id, TInt)]; (id, TInt) *)
         end
       (* | CArr (ty,exps) -> ("CARR",ty) *)
@@ -222,7 +238,7 @@ let get_postconditions () : sexp =
                 if List.mem key realWorld_vars then exp_list := !exp_list @ [final_mangle_id !value key]
                 else
                 match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
-                | None -> print_string key; print_newline (); raise Not_found
+                | None -> (); (* If something in the hash table is not in gstates, assume it was local. *)
                 | Some ((id,ty),ety) ->
                   let final = match ty with 
                   | THashTable (_,_) ->
@@ -253,29 +269,29 @@ let make_temp_value_of_htbl (htbl : (string, int ref) Hashtbl.t) : (string * int
   ! temp
  
 
-let ty_of_exp e : ty = 
+let ty_of_exp e locals : ty = 
   match e.elt with
   | CNull t -> t
   | CBool _ -> TBool
   | CInt _ -> TInt
   | CStr _ -> TStr
-  | Id i -> snd (fst (List.find (fun ((id,t), _) -> String.equal i id) !gstates))
+  | Id i -> snd (fst (List.find (fun ((id,t), _) -> String.equal i id) (generate_embedding_map locals @ !gstates)))
   | CArr (t,_) -> TArr t
   | _ -> failwith "undefined exp"
 
-let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) : sexp * sexp Smt.bindlist = 
+let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (string, int ref) Hashtbl.t) locals : sexp * sexp Smt.bindlist = 
     match e.elt with
     | CBool b -> Smt.EConst (CBool b), []
     | CInt i -> Smt.EConst (CInt (Int64.to_int i)), []
     | CStr str -> Smt.EConst (CString str), []
     | Id id -> EVar (Var (set_variable_id id side vctrs indexed)), []
     | Index (e1,e2) when side == 1 -> 
-        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs in
-        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
+        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs locals in
+        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs locals in
         EFunc ("select", [rtn1; rtn2]), binds1 @ binds2
     | Bop (op, e1, e2) ->
-        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs in
-        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs in
+        let rtn1, binds1 = exp_to_smt_exp e1 side ~indexed vctrs locals in
+        let rtn2, binds2 = exp_to_smt_exp e2 side ~indexed vctrs locals in
 
         begin match op with
         | Sub | Mul | Mod | Div | Eq | Lt | Gt | Lte | Gte -> 
@@ -287,16 +303,16 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
         | _ -> failwith @@ sp "undefined op: %s" @@ AstML.string_of_binop op
         end
     | Uop (op, e) -> 
-        let rtn, binds = exp_to_smt_exp e side ~indexed vctrs in
+        let rtn, binds = exp_to_smt_exp e side ~indexed vctrs locals in
 
         EUop (uop_to_servoisUop op, rtn), binds
 
     | Call (MethodL (id, {pc=Some pc;_}), el) -> 
-      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs locals) el in
 
       let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var" in
       let dst_id = remove_index (id_value) in
-      let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
+      let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) (generate_embedding_map locals @ !gstates) in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
       let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
@@ -312,19 +328,19 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       rtn, List.concat args_binds @ binds
     
     | Call (MethodL (id, {pc=None; ret_ty; _}), el) -> 
-      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
-      let args_types = List.map (fun e -> sty_of_ty (ty_of_exp e)) el in 
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs locals) el in
+      let args_types = List.map (fun e -> sty_of_ty (ty_of_exp e locals)) el in 
       let smt_fn = { name = id ; args= args_types; ret = sty_of_ty ret_ty} in
       if not (List.mem smt_fn !smt_fn_list) then
         smt_fn_list := !smt_fn_list @ [smt_fn];
 
       EFunc(id, args_rtn), List.concat args_binds
     | Call (MethodM (id, {rty=rty; _}), el) ->
-      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
+      let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs locals) el in
 
       EFunc(id, args_rtn), List.concat args_binds
     | Ternary(i, t, e) ->
-        let f x = exp_to_smt_exp x side ~indexed vctrs in
+        let f x = exp_to_smt_exp x side ~indexed vctrs locals in
         let i', i_binds = f i in
         let t', t_binds = f t in
         let e', e_binds = f e in
@@ -338,68 +354,72 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
     | [] -> Fun.id
     | exp -> fun (e) -> ELet(exp, e)
   in
-  let rec compile_block_to_smt (b: block) (vctrs : (string, int ref) Hashtbl.t) : sexp =
+  let rec compile_block_to_smt (b: block) (vctrs : (string, int ref) Hashtbl.t) locals : sexp =
     match b with
       | [] -> get_postconditions ()
       | stmt :: tl ->   
         begin match stmt.elt with
         | Assn ({elt = Index (name_exp,index_exp); loc = _},exp) ->
-          let name_exp_smt, _ = exp_to_smt_exp name_exp right vctrs  in
-          let index_exp_smt, _ = exp_to_smt_exp index_exp right vctrs  in
-          let exp_smt, _ = exp_to_smt_exp exp right vctrs  in
-          let path_name_exp_smt, _ = match exp_to_smt_exp name_exp left vctrs with
+          let name_exp_smt, _ = exp_to_smt_exp name_exp right vctrs locals in
+          let index_exp_smt, _ = exp_to_smt_exp index_exp right vctrs locals in
+          let exp_smt, _ = exp_to_smt_exp exp right vctrs locals in
+          let path_name_exp_smt, _ = match exp_to_smt_exp name_exp left vctrs locals with
                                   | Smt.EVar v, b -> v ,b
                                   | _, _ -> failwith "left of assignment should be variable"  in
 
           let store_smt = Smt.EFunc ("store", [name_exp_smt; index_exp_smt; exp_smt]) in
-          ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
+          ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs locals)
         
         | Assn (exp, {elt = Call (MethodL (id, {pc=Some pc;_}), el) as calle; loc = l}) ->
-          let e_rtn, e_binds = exp_to_smt_exp {elt= calle;loc=l} right vctrs  in
-          let path_smt, _ = begin match exp_to_smt_exp exp left vctrs with
+          let e_rtn, e_binds = exp_to_smt_exp {elt= calle;loc=l} right vctrs locals in
+          let path_smt, _ = begin match exp_to_smt_exp exp left vctrs locals with
                           | EVar e, b -> e, b
                           | _, _ -> failwith "left of assignment should be variable"
                           end
           in
 
-          bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
+          bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs locals)
 
         | Assn (path, e) ->
-          let e_rtn, e_binds = exp_to_smt_exp e right vctrs in 
+          let e_rtn, e_binds = exp_to_smt_exp e right vctrs locals in 
 
-          let path_smt, _ = begin match exp_to_smt_exp path left vctrs with
+          let path_smt, _ = begin match exp_to_smt_exp path left vctrs locals with
                           | EVar e, b -> e, b
                           | _, _ -> failwith "left of assignment should be variable"
                           end
           in
           
-          bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs)
+          bind e_binds @@ ELet ([(path_smt, e_rtn)], compile_block_to_smt tl vctrs locals)
 
         | Decl (id, (ty, expn)) -> 
-          let e_rtn, e_binds = exp_to_smt_exp expn right vctrs in
+          let e_rtn, e_binds = exp_to_smt_exp expn right vctrs locals in
+          
+          let temp_vctrs = make_temp_value_of_htbl vctrs in
+          let t = compile_block_to_smt tl vctrs ((id, ty):: locals) in
+          let vctrs = reset_to_local_variable_ctrs temp_vctrs vctrs in
         
-          bind e_binds @@ ELet ([(Var id, e_rtn)], compile_block_to_smt tl vctrs)
+          bind e_binds @@ ELet ([(Var id, e_rtn)], t)
 
         | If (exn, bln1, bln2) ->  
           (* requires := !requires ^ ("(" ^ (exp_to_smt_exp exn 0)^ ")"); *)
-          let str_exp, str_exp_binds = (exp_to_smt_exp exn right vctrs) in
+          let str_exp, str_exp_binds = (exp_to_smt_exp exn right vctrs locals) in
           
           let temp_vctrs = make_temp_value_of_htbl vctrs in
-          let t = compile_block_to_smt (bln1.elt @ tl) vctrs in
+          let t = compile_block_to_smt (bln1.elt @ tl) vctrs locals in
           let vctrs = reset_to_local_variable_ctrs temp_vctrs vctrs in
-          let e = compile_block_to_smt (bln2.elt @ tl) vctrs in
+          let e = compile_block_to_smt (bln2.elt @ tl) vctrs locals in
           bind str_exp_binds @@ EITE(str_exp, t, e)
 
           (* | Ret _ ->
           get_postconditions ()  *)
           
         | SCall (MethodL (id, {pc=Some pc;_}), el) ->
-          let args = List.map (fun exp -> exp_to_smt_exp exp right vctrs) el in
+          let args = List.map (fun exp -> exp_to_smt_exp exp right vctrs locals) el in
           let args_rtn, args_binds = List.split args in
       
           let id_value = match (List.hd args_rtn) with | Smt.EVar (Var v) -> v | _ -> failwith "non string var 342" in
           let dst_id = remove_index (id_value) in
-          let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
+          let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) (generate_embedding_map locals @ !gstates) in 
 
           let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
           let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
@@ -413,30 +433,29 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           else () end;
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
-          bind binds @@ compile_block_to_smt tl vctrs
+          bind binds @@ compile_block_to_smt tl vctrs locals
 
         | Commute (_, _, blks) -> 
-          (* List.map (fun {elt=bl; _} -> compile_block_to_smt bl ) blks *)
           let comm_blk = List.map (fun {elt=bl; _} -> bl ) blks in
-          compile_block_to_smt (List.concat comm_blk) vctrs; 
+          compile_block_to_smt (List.concat comm_blk) vctrs locals; 
           
         | Assume(e) ->
-          let exp_smt,_ = exp_to_smt_exp e right vctrs  in
-          ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
+          let exp_smt,_ = exp_to_smt_exp e right vctrs locals in
+          ELop(And, [exp_smt; compile_block_to_smt tl vctrs locals])
 
         | Havoc(id) ->
-          let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
+          let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs locals with EVar id -> id | _ -> failwith "havoc" in
           let havoc_id = id^"_havoc" in 
-          let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs in 
+          let exp_smt, _ = exp_to_smt_exp (no_loc @@ Id havoc_id) right vctrs locals in 
 
-          EExists([(Var havoc_id, TInt (* TODO: make type dynamic *))], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs))
+          EExists([(Var havoc_id, TInt (* TODO: make type dynamic *))], ELet([new_id, exp_smt], compile_block_to_smt tl vctrs locals))
 
         | Require(e) ->
-          let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs in
+          let exp_smt,_ = exp_to_smt_exp e right ~indexed:false vctrs locals in
           pre := exp_smt;
-          compile_block_to_smt tl vctrs;
+          compile_block_to_smt tl vctrs locals;
 
-        | _ -> compile_block_to_smt tl vctrs
+        | _ -> compile_block_to_smt tl vctrs locals
         end
   in
   let ety_init_list = ref [] in 
@@ -460,7 +479,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           Hashtbl.add variable_ctr_list id (ref 1) else
           Hashtbl.replace variable_ctr_list id (ref 1) (* TODO: Don't need to set existing member to 1 in else case? *)
   ) realWorld_vars;
-  let res = compile_block_to_smt b local_variable_ctr_list in
+  let res = compile_block_to_smt b local_variable_ctr_list [] in
   if (List.length !ety_init_list == 0) then
     res, local_variable_ctr_list
   else
@@ -469,10 +488,10 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
 let generate_spec_pre_post_condition pre post =
   let vctrs = variable_ctr_list in
   match pre, post with 
-  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
+  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs []),(fst @@ exp_to_smt_exp post right vctrs [])
   | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
-  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
-  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
+  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs [])
+  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs []),(Smt.EConst (CBool true))
   
 
 let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =

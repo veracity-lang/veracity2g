@@ -1,5 +1,6 @@
 open Ast
 open Util
+open Spec_generator
 
 let rec assoc_servois_ty (id : id) : embedding_map -> ty binding =
   function
@@ -14,22 +15,6 @@ let rec assoc_servois_ty (id : id) : embedding_map -> ty binding =
     | ETChannel i when id = i -> v
     | _ -> assoc_servois_ty id t
     end
-
-let generate_embedding_map (vars : ty bindlist) : embedding_map =
-  let f (id, t) : ety =
-    match t with
-    | TInt -> ETInt id
-    | TBool -> ETBool id
-    | TStr -> ETStr id
-    | TArr t -> ETArr (id, sty_of_ty t)
-    | THashTable (tyk, tyv) ->
-      ETHashTable
-        ( sty_of_ty tyk, sty_of_ty tyv, 
-          { ht = id ; keys = id ^ "_keys"; size = id ^ "_size" })
-    | TChanR | TChanW -> ETChannel id
-    | _ -> raise @@ NotImplemented "Unsupported type embedding"
-  in
-  List.map (fun v -> v, f v) vars
 
 
 let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
@@ -126,6 +111,6 @@ let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list
 let verify_of_block e genv _ blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
-  let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
+  let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list []) in
   Servois2.Verify.verify spec m1 m2 cond,
   Servois2.Verify.verify ~options:{Servois2.Verify.default_verify_options with ncom = true} spec m1 m2 (EUop(Not, cond))
