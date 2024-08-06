@@ -18,11 +18,11 @@ plt.figure(figsize=(12, 8))
 for column in columns:
     plt.plot(log_N, data[column], label=column, marker='o')
 
+# plt.yscale('linear')
+# plt.yscale('log')
 
-plt.yscale('log')
-
-plt.xlabel('log(N)')
-plt.ylabel('Values')
+plt.xlabel('computation size')
+plt.ylabel('parallel-to-sequential speedup')
 plt.legend()
 plt.grid(True)
 
