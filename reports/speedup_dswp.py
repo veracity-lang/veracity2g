@@ -66,7 +66,11 @@ benchmarks : List[Benchmark] = [
     # ,
     # ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)])
     # ,
-    ("benchmarks/global_commutativity/commset.vcy", prep_commset)
+    # ("benchmarks/global_commutativity/commset.vcy", prep_commset)
+    # ,
+    ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)])
+    ,
+    ("benchmarks/global_commutativity/simple-io.vcy", lambda n : [str(n)])
 ]
     
 
