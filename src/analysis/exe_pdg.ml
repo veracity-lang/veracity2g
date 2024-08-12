@@ -1090,6 +1090,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let tasks = generate_tasks_from_dag dag_scc block in
   let init_task = generate_init_task () in 
   let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
+  let new_edges = List.filter (fun {dag_dst= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
   init_task, tasks
 

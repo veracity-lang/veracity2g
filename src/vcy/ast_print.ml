@@ -486,7 +486,7 @@ module AstML = struct
     raise @@ NotImplemented "string_of_tmethod"
 
   let string_of_method_variant (mv : method_variant) : string =
-    raise @@ NotImplemented "string_of_method_variant"
+   "" (* TODO: implement this *)
 
   let rec string_of_exp_aux (e: exp) : string =
     begin match e with 
@@ -666,7 +666,7 @@ module AstML = struct
     | VChanR (s, _, _) -> "read_channel(" ^ s ^ ")"
     | VChanW (s, _)    -> "write_channel(" ^ s ^ ")"
 
-    | VHashTable _ -> raise @@ NotImplemented "string_of_value VHashTable"
+    | VHashTable _ -> "string_of_value VHashTable" (* TODO: implement this *)
 
     | VStruct (id,vs) ->
       List.map (fun (i,v) -> sp " %s = %s" i (string_of_value !v)) vs |>
