@@ -1,0 +1,71 @@
+commutativity {
+    {f1(tbl,x,y)}, {f2(tbl,z,y)}: (tbl[z] == tbl[x] && !(z == x) || z == x);
+    {f2(tbl,z,y)}, {f3(tbl,z,y)}: (!(ht_size(tbl) > 0) && !(0 == z) || 0 == z);
+    {f4(files,i_1)}, {f5(files,i_2)}: (files[i_2] == files[i_1]);
+    {f4(files,i_1)}, {f6(files,i_3)}: (!(i_3 == i_1))
+} 
+
+int main(int argc, string[] argv) {
+	hashtable[int,int] tbl = new hashtable[int,int];
+	int n = int_of_string(argv[1]);
+	int x = 2;
+	int y = 5;
+	int z = 0;
+    int f = 1;
+    int g = 0;
+    int i = 0;
+    int i_1 = 3;
+    int i_2 = 3;
+    int i_3 = 4;
+
+    int[] files = new int[10];
+
+	
+    while(i < 10) {
+        files[i] = i;
+        i = i + 1;
+    }
+
+    tbl[x] = 12;
+	tbl[z] = 12;
+	
+    f1(tbl,x,y):{ 
+        busy_wait(n);
+        if(ht_mem(tbl, x)) { 
+            y = ht_get(tbl, x);
+        }
+    }
+    f2(tbl,z,y): {
+        y = ht_get(tbl, z);
+        busy_wait(n);
+    }
+	f3(tbl,z,y): { 	
+        busy_wait(n);
+        if(ht_size(tbl) > 0) { 
+            y = y + z;
+        }
+	}
+    i = 3;
+    f4(files,i):{ 
+        busy_wait(n);
+        f = files[i];
+        f = f + 5;
+        files[i] = f;
+    }
+    i = 3;
+    f5(files,i):{ 
+        f = files[i];
+        f = f + 5;
+        files[i] = f;
+        busy_wait(n);
+    }
+    i = 4;
+    f6(files,i):{ 
+        g = files[i];
+        g = g + 5;
+        files[i] = g;
+        busy_wait(n);
+    }
+
+	return 0;
+}
