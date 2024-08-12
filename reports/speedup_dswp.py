@@ -35,7 +35,7 @@ n_values = [
     1e4, 2e4, 5e4,
     1e5, 2e5, 5e5,
     1e6, 2e6, 5e6,
-    1e7, 2e7 #, 5e7,
+    # 1e7, 2e7 #, 5e7,
     # 1e8
 ]
 
@@ -58,6 +58,15 @@ def prep_commset(n):
         f.write("D"*(n))
     return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
 
+def prep_simpleio(n):
+    with open("a.txt", "w") as f:
+        f.write("A")
+    with open("b.txt", "w") as f:
+        f.write("B"*(n))
+    with open("d.txt", "w") as f:
+        f.write("D"*(n))
+    return [os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
+
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
     # ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)])
@@ -68,9 +77,9 @@ benchmarks : List[Benchmark] = [
     # ,
     # ("benchmarks/global_commutativity/commset.vcy", prep_commset)
     # ,
-    ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)])
-    ,
-    ("benchmarks/global_commutativity/simple-io.vcy", lambda n : [str(n)])
+    # ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)])
+    # ,
+    ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio)
 ]
     
 

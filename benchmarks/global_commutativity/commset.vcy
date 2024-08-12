@@ -13,19 +13,20 @@ int main(int argc, string[] argv) {
     while (i < argc){
         f1(i):{
             filename = argv[i];
-            in_channel c = open_read(filename);
-            s = read_line(c);
-            int j = 0;
-            string temp = "";
-            while (j < 1000) { /* Artificially increase workload by 1000x */
-                temp = string_of_int(md5_lower(s));
+            while (j < 10) { /* Artificially increase workload by 10x */
                 j = j+1;
+                
+                in_channel c = open_read(filename);
+                s = read_line(c);
+                int j = 0;
+                string temp = "";
+                temp = string_of_int(md5_lower(s));
+            
+                close(c);
             }
             digest[i] = temp;
             print(digest[i]);
             print("\n");
-        
-            close(c);
         }
         i = i + 1;
     }
