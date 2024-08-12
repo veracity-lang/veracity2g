@@ -60,9 +60,9 @@ def prep_commset(n):
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    # ("benchmarks/global_commutativity/simple_vector.vcy", lambda n : [str(n)])
+    # ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)])
     # ,
-    # ("benchmarks/global_commutativity/ps-dswp2.vcy", lambda n : [str(n)])
+    # ("benchmarks/global_commutativity/2d-array.vcy", lambda n : [str(n)])
     # ,
     # ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)])
     # ,
