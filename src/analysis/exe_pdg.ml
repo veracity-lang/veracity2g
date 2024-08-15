@@ -264,7 +264,7 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
           | None -> [] 
           | Some a -> List.map (function | {elt=Id s; _} -> s | _ -> failwith "Non-ids used for formal parameters in gcommute condition.") a
         in
-        apply_pairs (
+        apply_distinct_pairs (
           fun x y -> 
             if (check_label l1 x && check_label l2 y) then 
               res := ((Some cond), find_label_args l1 x, find_label_args l2 y)

@@ -224,3 +224,8 @@ let rec apply_pairs f lst =
   match lst with
   | [] -> ()
   | x::xs -> List.iter (fun y -> f x y) lst; apply_pairs f xs
+
+let rec apply_distinct_pairs f lst =
+  match lst with
+  | [] -> ()
+  | x::xs -> List.iter (fun y -> f x y) xs; apply_distinct_pairs f xs
