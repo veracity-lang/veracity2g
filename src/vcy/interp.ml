@@ -5,6 +5,7 @@ open Util
 open Vcylib
 open Analyze
 open Dswp_task
+open Option
 
 (*** INTERP MANAGEMENT ***)
 
@@ -18,7 +19,7 @@ let force_infer = ref false
 
 let dswp_mode = ref false
 
-let pool_size = 8
+let pool_size = ref 8
 
 let flatten_value_option v = match v with
   | Some v -> v
@@ -689,7 +690,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | SendDep(task_id, var_id_list) -> 
     (* Tell the scheduler to do it *)
     let job_vals = make_job_vals env var_id_list in
-    send_dep (Option.get env.tid) task_id env job_vals;
+    send_dep (get env.tid) task_id env job_vals;
     
     (* now just return the unmodified environment *)
     env, None
@@ -698,7 +699,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     env, None
   | GCommute(_) -> failwith "gcommute in interp_stmt."
   | Require(_) -> failwith "require in interp_stmt."
-  | _ -> failwith "interp_stmt: Not Implemented."
+(*  | _ -> failwith "interp_stmt: Not Implemented." *)
 
        (* | SBlock (bl, b) ->
     begin match bl with 
@@ -795,12 +796,12 @@ and add_job j promise =
     all_jobs := (j, promise) :: !all_jobs)
 and new_job j = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
-  let promise = Domainslib.Task.async !pool (fun () -> run_job j |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
+  let promise = Domainslib.Task.async (get !pool) (fun () -> run_job j |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
   add_job j promise;
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
 and task_defs = ref []
-and pool = ref (Domainslib.Task.setup_pool ~num_domains:pool_size ())
+and pool : Domainslib.Task.pool option ref = ref None
 and set_task_def tlist = task_defs := tlist
 and load_task_def (taskid:int) : dswp_task = 
   try List.find (fun t -> t.id == taskid) !task_defs
@@ -809,8 +810,8 @@ and load_task_def (taskid:int) : dswp_task =
 and join_all () = 
   let ret_value = ref None in
   while not (Queue.is_empty job_queue) do
-    begin match Domainslib.Task.await !pool (Mutex.protect jobs_mutex (fun () -> Queue.take job_queue) |> snd) |> snd with
-      | Some v -> if Option.is_none !ret_value then ret_value := (Some v)
+    begin match Domainslib.Task.await (get !pool) (Mutex.protect jobs_mutex (fun () -> Queue.take job_queue) |> snd) |> snd with
+      | Some v -> if is_none !ret_value then ret_value := (Some v)
       | _ -> () end
   done;
   !ret_value
@@ -818,7 +819,7 @@ and join_all_task tid =
   Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue) |>
   Seq.filter (fun (j, _) -> j.tid == tid) |> fun q ->
   debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
-  Seq.iter (fun (_, promise) -> Domainslib.Task.await !pool promise |> ignore) q
+  Seq.iter (fun (_, promise) -> Domainslib.Task.await (get !pool) promise |> ignore) q
 
 and init_job task_id env = 
   debug_print (lazy (Printf.sprintf "Initializing job with tid=%d\n" task_id));
@@ -840,7 +841,7 @@ and init_job task_id env =
       (* if it commutes, we don't need to wait *) then begin
     senddep_extend_env env 
       (make_job_vals 
-        (try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> snd |> Domainslib.Task.await !pool |> fst 
+        (try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> snd |> Domainslib.Task.await (get !pool) |> fst 
         with Not_found -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task))
        dep.vars) end
        else env
@@ -858,10 +859,10 @@ and scheduler init_task env : value option =
   let env', _ = interp_block ~new_scope:false env init_task.decls in
   
   (* Start initial tasks. *)
-  Domainslib.Task.run !pool (fun () -> 
-    let init_jobs = List.map (fun job -> Domainslib.Task.async !pool (fun () -> init_job job env')) init_task.jobs in
-    List.iter (Domainslib.Task.await !pool) init_jobs);
-  Domainslib.Task.run !pool join_all
+  Domainslib.Task.run (get !pool) (fun () -> 
+    let init_jobs = List.map (fun job -> Domainslib.Task.async (get !pool) (fun () -> init_job job env')) init_task.jobs in
+    List.iter (Domainslib.Task.await (get !pool)) init_jobs);
+  Domainslib.Task.run (get !pool) join_all
 
 (* List of things that have sendEOP'd *)
 and eop_tasks : int list ref = ref []
@@ -898,7 +899,7 @@ and wait_deps env deps self_body =
   Mutex.protect jobs_mutex (fun () -> !all_jobs) |>
   List.iter (fun (j, promise) -> match find_dep j.tid with
     | Some {commute_cond = cond; _}
-      when not (interp_phi_two cond env j.env self_body (load_task_def j.tid).body) -> Domainslib.Task.await !pool promise |> ignore
+      when not (interp_phi_two cond env j.env self_body (load_task_def j.tid).body) -> Domainslib.Task.await (get !pool) promise |> ignore
     | Some _ -> ()
     | _ -> ()
   )
@@ -1573,8 +1574,8 @@ let initialize_env (prog : prog) (infer_phis : bool) =
     else g
   in
   (* let gc_list = interp_global_commute g in  *)
-  if !dswp_mode then 
-     List.iter (fun m -> match m with | (Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l}) -> Exe_pdg.ps_dswp body l args g globals | _ -> ()) prog;
+  if !dswp_mode then
+    List.iter (fun m -> match m with | (Gmdecl {elt = {pure;mrtyp;mname;args;body}; loc = l}) -> Exe_pdg.ps_dswp body l args g globals | _ -> ()) prog;
 
   (* EK TODO - complain if more than 1 method declaraiton in SWP mode *)
 
@@ -1622,7 +1623,10 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
   let env, e = prepare_prog prog argv in
   (* Evaluate main function invocation *)
   match (if !dswp_mode
-    then interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks
+    then begin
+      pool := Domainslib.Task.setup_pool ~num_domains:!pool_size () |> some;
+      interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks
+      end
     else interp_exp env e |> snd) with
   | VInt ret -> ret
   | _ -> raise @@ TypeFailure (main_method_name ^ " function did not return int", Range.norange)

@@ -144,9 +144,10 @@ module RunInterp : Runner = struct
     ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, "Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
-    ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
-    ; "--dswp", Arg.Set dswp_mode, "Enable PS-DSWP Interpretation"
+    ; "--prover", Arg.Set_string prover_name, " <name> Use a particular prover (default: CVC4)"
+    ; "--timeout", Arg.Float (fun f -> timeout := Some f), " <name> Set timeout for servois2 queries"
+    ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
+    ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
     ] |>
     Arg.align
 
