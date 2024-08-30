@@ -707,6 +707,9 @@ let rec all_in_list_a_in_b list_a list_b =
     else
       false
 
+let is_return_node (node : dag_node) =
+  List.exists (fun {l=loc;n=_;src = Some s} -> match s.elt with | Ret _ -> true | _ -> false) node.n
+
 (* Function to merge doall blocks greedily *)
 let merge_doall_blocks dag_scc (pdg: exe_pdg) =
   let find_reachable_blocks block dag_scc visited =
@@ -734,9 +737,6 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
       ) dag_scc.edges in 
     let reachable_from_block1 = find_reachable_blocks block1 dag_scc (ref []) in
     let reachable_from_block2 = find_reachable_blocks block2 dag_scc (ref []) in
-    (* not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block2) dag_scc.edges) reachable_from_block1) &&
-    not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block1) dag_scc.edges) reachable_from_block2) &&
-    not (List.exists (fun e -> e.loop_carried) dag_scc.edges) *)
     let a = not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block2) dag_scc.edges) reachable_from_block1) in
     let b = not (List.exists (fun b -> List.exists (fun e -> compare_dag_nodes e.dag_src b && compare_dag_nodes e.dag_dst block1) dag_scc.edges) reachable_from_block2) in
     (* let d = not (has_loop_carried block1.n pdg) in
@@ -752,7 +752,9 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
       ||
       match e.dep with | Commute _ -> true | _ -> false
       ) dag_scc.edges) in
-    a && b&& d && c && (block1.label == Doall && block2.label = Doall)
+    a && b&& d && c && (block1.label == Doall && block2.label = Doall) 
+    && not (is_return_node block1)
+    && not (is_return_node block2)
   in
   let rec merge_blocks block dag_scc visited =
     if List.mem block !visited then
@@ -839,6 +841,8 @@ let merge_sequential_blocks dag_scc =
       && all_in_list_a_in_b e.dag_dst.n block1.n
       ) dag_scc.edges
     && (block1.label == Sequential && block2.label = Sequential)
+    && not (is_return_node block1)
+    && not (is_return_node block2)
   in
   let rec merge_blocks block dag_scc visited =
     if List.mem block !visited then
@@ -932,6 +936,22 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
       | [] -> [] , true
       | stmt::tl ->
         begin match stmt.elt with
+        (* | If (e, b, {elt = []; loc = l}) -> 
+          let new_b, new_f = transform_block dag_scc_node b in
+          if stmt_exist stmt dag_scc_node then begin
+            let updated_b =
+              if not new_f then 
+                remove_and_find_nodes dag new_b b
+                |> augment_block new_b
+              else 
+                new_b 
+            in
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            (node_up stmt (If (e, node_up b updated_b, {elt = []; loc = l}))) :: rest, true && f
+          end else begin
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            new_b @ rest, false && f
+          end *)
         | If (e, b1, b2) ->
           let new_b1, f1 = transform_block dag_scc_node b1 in
           let new_b2, f2 = transform_block dag_scc_node b2 in
@@ -988,9 +1008,9 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
     in 
     res
   in
-  let b = fst (transform_block dag_scc_node block) in 
+  let bl = fst (transform_block dag_scc_node block) in 
   sendDep_exists := !sendDep_exists @ !sendDeps;
-  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) b (List.rev !sendDeps)
+  List.fold_left (fun b i -> b @ [no_loc (SendEOP i)]) bl (List.rev !sendDeps)
   
 
 let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) = 
