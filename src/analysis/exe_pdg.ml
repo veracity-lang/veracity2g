@@ -178,7 +178,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
         decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
-    | SBlock (bl,body) -> find_block_vars body.elt
+    | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt
     | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
     | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue
