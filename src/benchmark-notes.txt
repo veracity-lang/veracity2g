@@ -1,0 +1,5 @@
+simple-vector: dswp returns 0 because the return task does not have z as a dependecy so it runs immediately.
+2d-array: works properly
+vote-run: works properly
+commset: works properly
+multi-blocks: works properly (after the change to scheduler init_jobs join_all)

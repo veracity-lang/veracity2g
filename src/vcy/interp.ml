@@ -778,7 +778,8 @@ and interp_block ?(new_scope = true) (env : env) (block : block node) : env * va
 and jobs_mutex = Mutex.create ()
 and job_queue = Queue.create ()
 and all_jobs = ref []
-and run_job jb = 
+and run_job jb deps = 
+    wait_deps jb.env deps (load_task_def jb.tid).body;
     interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
@@ -794,9 +795,9 @@ and add_job j promise =
   Mutex.protect jobs_mutex (fun () ->
     Queue.add (j, promise) job_queue;
     all_jobs := (j, promise) :: !all_jobs)
-and new_job j = 
+and new_job j deps = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
-  let promise = Domainslib.Task.async (get !pool) (fun () -> run_job j |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
+  let promise = Domainslib.Task.async (get !pool) (fun () -> run_job j deps |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
   add_job j promise;
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
@@ -827,6 +828,7 @@ and init_job task_id env =
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
+  (* This must be done outside of new_job as we grab the resulting state immediately. *)
   wait_deps env task.deps_in task.body;
   
   let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
@@ -848,7 +850,7 @@ and init_job task_id env =
     ) env task.deps_in in
   
   (* Now start the job *)
-  new_job {tid = task_id; env = env'};
+  new_job {tid = task_id; env = env'} [];
   
   (* Mark self as EOP *)
   Mutex.protect eop_mutex (fun () ->
@@ -861,8 +863,8 @@ and scheduler init_task env : value option =
   (* Start initial tasks. *)
   Domainslib.Task.run (get !pool) (fun () -> 
     let init_jobs = List.map (fun job -> Domainslib.Task.async (get !pool) (fun () -> init_job job env')) init_task.jobs in
-    List.iter (Domainslib.Task.await (get !pool)) init_jobs);
-  Domainslib.Task.run (get !pool) join_all
+    List.iter (Domainslib.Task.await (get !pool)) init_jobs;
+    join_all ())
 
 (* List of things that have sendEOP'd *)
 and eop_tasks : int list ref = ref []
@@ -928,12 +930,14 @@ and send_dep calling_tid tid env vals =
   (* debug_print (lazy (Printf.sprintf "send_dep: %d dependencies\n" (List.length deps))); *)
   
   (* Wait on dependencies to finish executing. *)
-  wait_deps env' deps task.body;
+  (* wait_deps env' deps task.body; 
+    This is now handled during job creation.
+  *)
   
   (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
   new_job {tid; 
-    env = env'}
+    env = env'} deps
 
 (* Draft of new scheduler that accumulates dependencies *)
 (*
@@ -1637,8 +1641,11 @@ let interp_prog_time (prog : prog) (argv : string array) : float =
   let env, e = prepare_prog prog argv in
   Vcylib.suppress_print := true;
   if !dswp_mode then
-    let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks in
-    dt
+    begin
+      pool := Domainslib.Task.setup_pool ~num_domains:!pool_size () |> some;
+      let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks in
+      dt
+    end
   else
     let dt, _ = time_exec @@ fun () -> interp_exp env e in
     dt
