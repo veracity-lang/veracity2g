@@ -12,6 +12,8 @@ int main(int argc, string[] argv) {
 
     while (i < argc){
         f1(i):{
+            int j = 0;
+            string temp = "";
             filename = argv[i];
             while (j < 10) { /* Artificially increase workload by 10x */
                 j = j+1;
@@ -19,7 +21,6 @@ int main(int argc, string[] argv) {
                 in_channel c = open_read(filename);
                 s = read_line(c);
                 int j = 0;
-                string temp = "";
                 temp = string_of_int(md5_lower(s));
             
                 close(c);
