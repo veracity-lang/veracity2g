@@ -21,6 +21,8 @@ for column in columns:
 # plt.yscale('linear')
 # plt.yscale('log')
 
+plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
+
 plt.xlabel('computation size')
 plt.ylabel('parallel-to-sequential speedup')
 plt.legend()
