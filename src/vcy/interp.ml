@@ -829,7 +829,7 @@ and init_job task_id env =
   
   (* Wait for all the dependencies of task *)
   (* This must be done outside of new_job as we grab the resulting state immediately. *)
-  wait_deps env task.deps_in task.body;
+  wait_deps_nonempty env task.deps_in task.body;
   
   let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
   
@@ -881,7 +881,7 @@ and bind_formals formals body env : (string * tyval) list list =
   end
 and wait_eop task_id =
   let eop_list = ref [] in
-  eop_list := Mutex.protect eop_mutex (fun () -> !eop_tasks);
+  Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks);
   while not (List.mem task_id !eop_list) do
       Unix.sleepf 0.01;
       Mutex.protect eop_mutex (fun () -> eop_list := !eop_tasks)
@@ -906,6 +906,17 @@ and wait_deps env deps self_body =
     | Some _ -> ()
     | _ -> ()
   )
+and wait_deps_nonempty env deps self_body =
+  (* for each dependency, wait for a finished job that matches it. *)
+  List.iter (fun {pred_task;_} ->
+    let jobs_list = ref [] in
+    Mutex.protect jobs_mutex (fun () -> jobs_list := !all_jobs);
+    while not (List.exists (fun (j, _) -> j.tid = pred_task) !jobs_list) do
+      Unix.sleepf 0.01;
+      Mutex.protect jobs_mutex (fun () -> jobs_list := !all_jobs);
+    done;
+    Domainslib.Task.await (get !pool) (List.find (fun (j, _) -> j.tid = pred_task) !jobs_list |> snd) |> ignore
+  ) deps
   
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
