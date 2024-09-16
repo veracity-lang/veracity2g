@@ -906,6 +906,8 @@ and wait_deps env deps self_body =
     | Some _ -> ()
     | _ -> ()
   )
+(* Should all waits be nonempty? But there may be legitimate paths where dependencies don't execute? *)
+(* Also, non-empty waits don't check commutativity (for now) TODO. *)
 and wait_deps_nonempty env deps self_body =
   (* for each dependency, wait for a finished job that matches it. *)
   List.iter (fun {pred_task;_} ->
