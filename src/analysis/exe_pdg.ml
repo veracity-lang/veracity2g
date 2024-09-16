@@ -1115,6 +1115,33 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
   init_task, tasks
 
+let rec find_ancestors ancestors visited edges src_node =
+  List.fold_left (fun acc edge ->
+    if edge.dag_dst = src_node && not (List.mem edge.dag_src acc) then
+      if not (List.mem edge.dag_src visited) then
+        find_ancestors (edge.dag_src :: acc) (edge.dag_src :: visited) edges edge.dag_src
+      else
+        acc
+    else
+      acc
+  ) ancestors edges
+
+(* use empty data dependency edges intead of using SendEOP *)
+let add_empty_data_dep_edges dag_scc =
+  let new_edges = ref dag_scc.edges in
+  List.iter (fun edge ->
+    match edge.dep with
+    | DataDep _ -> 
+        let ancestors = find_ancestors [] [] dag_scc.edges edge.dag_src in
+        List.iter (fun ancestor ->
+          if ancestor <> edge.dag_src then
+            let new_edge = { dag_src = ancestor; dag_dst = edge.dag_dst; dep = (DataDep []); loop_carried = false } in
+            new_edges := new_edge :: !new_edges 
+        ) ancestors
+    | _ -> ()
+  ) dag_scc.edges;
+  { dag_scc with edges = !new_edges }
+
 let thread_partitioning dag_scc pdg (threads: int list) body =
   debug_print (lazy "Merging DAG_scc:\n");
   let merged_dag = merge_doall_blocks dag_scc pdg in
@@ -1124,7 +1151,10 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
-  let init_task, tasks = generate_tasks merged_dag body in 
+  let merged_dag_with_added_deps = add_empty_data_dep_edges merged_dag in
+  debug_print (lazy "add empty data dependency edges:\n");
+  print_dag_debug merged_dag;
+  let init_task, tasks = generate_tasks merged_dag_with_added_deps body in 
   if !Util.debug then begin
     Printf.printf "Init Task -> \n %s \n [%s] \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map Int.to_string init_task.jobs));
     List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstPP.string_of_block t.body)) tasks;
