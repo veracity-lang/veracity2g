@@ -893,7 +893,8 @@ and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condit
   | None -> false
 and wait_deps env deps self_body =
   (* Wait for everything we need to EOP to EOP. *)
-  List.iter (fun dep -> wait_eop dep.pred_task) deps;
+  (* As per discussion, forego EOP waiting. *)
+  (* List.iter (fun dep -> wait_eop dep.pred_task) deps; *)
   
   (* For each job, if we're dependent on it, wait for it. *)
   let find_dep tid = List.find_opt (function {pred_task;_} -> pred_task = tid) deps in
