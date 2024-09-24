@@ -12,3 +12,11 @@ simple-vector: seems to work
 vote-run: seems to work
 commset: seems to work
 multi-blocks: seems to work most times. Got this once: An error occurred: Invalid_argument("index out of bounds")
+
+
+after adding topological waiting
+simple-vector: works
+2d-array: works
+vote-run: works
+commset: does not reach scheduler
+multi-blocks: works
