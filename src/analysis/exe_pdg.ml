@@ -1027,19 +1027,36 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
     let dst_taskID = find_taskID e.dag_dst in 
     match e.dep with
     | DataDep vars -> 
-      let src_task = List.assoc src_taskID !res in 
-      let dst_task = List.assoc dst_taskID !res in
-      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}} :: src_task.deps_out}) in
-      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}} :: dst_task.deps_in}) in 
-      res := new_src_task :: new_dst_task ::
-      List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
+      let src_task = List.assoc src_taskID !res in
+      if src_taskID = dst_taskID then begin
+        let updated_task = (src_taskID, 
+          {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out;
+                         deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_in}) in
+        res := updated_task :: List.remove_assoc src_taskID !res
+      end
+      else begin
+        let dst_task = List.assoc dst_taskID !res in
+        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out}) in
+        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: dst_task.deps_in}) in
+        res := new_src_task :: new_dst_task :: 
+        List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res)
+      end
     | Commute (c, args1, args2) ->
-      let src_task = List.assoc src_taskID !res in 
-      let dst_task = List.assoc dst_taskID !res in
-      let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out}) in
-      let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: dst_task.deps_in}) in 
-      res := new_src_task :: new_dst_task ::
-      List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
+      let src_task = List.assoc src_taskID !res in
+      if src_taskID = dst_taskID then begin
+        let updated_task = (src_taskID,
+          {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out;
+                         deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: src_task.deps_in}) in
+        res := updated_task :: List.remove_assoc src_taskID !res
+      end
+      else begin
+        (* When src_taskID and dst_taskID are different, update both tasks *)
+        let dst_task = List.assoc dst_taskID !res in
+        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out}) in
+        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: dst_task.deps_in}) in
+        res := new_src_task :: new_dst_task ::
+        List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
+      end
     | _ ->()
   ) dag.edges;
 
@@ -1109,6 +1126,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
   let tasks = generate_tasks_from_dag dag_scc block in
+  Printf.printf "--> %d\n" (List.length tasks);
   let init_task = generate_init_task () in 
   let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
   let new_edges = List.filter (fun {dag_dst= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
