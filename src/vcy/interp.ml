@@ -874,10 +874,11 @@ and scheduler init_task env : value option =
 and eop_tasks : int list ref = ref []
 and eop_mutex = Mutex.create()
 and topsort_tasks_order = ref None
+and remove_self_loops_deps_in t = List.filter (fun dep -> not (dep.pred_task = t.id)) t.deps_in
 and make_topsort_tasks () =
   (* Just use Kahn's algorithm *)
   let res = ref [] in
-  let top = ref (List.filter (fun t -> List.is_empty t.deps_in) !task_defs) in
+  let top = ref (List.filter (fun t -> List.is_empty (remove_self_loops_deps_in t)) !task_defs) in
   while not (List.is_empty !top) do
     let (n :: top') = !top in
     top := top';
@@ -890,7 +891,7 @@ and make_topsort_tasks () =
     (* for each dep out, check that all its deps_in are in res *)
     List.iter (fun {pred_task;_} -> 
       let t = load_task_def pred_task in
-      if List.for_all (fun t' -> List.mem t'.pred_task !res) t.deps_in
+      if List.for_all (fun t' -> List.mem t'.pred_task !res) t.deps_in && not (List.mem t.id !res) (* Disallow revisiting of self-cycles; when we top sort the graph we pretend these don't exist *)
       then top := t :: !top; (* this will end up exploring in dfs order. as long as it's in top order it doesn't matter though *)
     ) n.deps_out
   done;
