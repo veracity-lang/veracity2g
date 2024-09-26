@@ -779,7 +779,7 @@ and jobs_mutex = Mutex.create ()
 and job_queue = Queue.create ()
 and all_jobs = ref []
 and run_job jb deps = 
-    wait_deps jb.env deps (load_task_def jb.tid).body;
+    if not (List.is_empty deps) then wait_deps jb deps (load_task_def jb.tid).body;
     interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
@@ -816,20 +816,17 @@ and join_all () =
       | _ -> () end
   done;
   !ret_value
-and join_all_task tid =
-  Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue) |>
-  Seq.filter (fun (j, _) -> j.tid == tid) |> fun q ->
-  debug_print (lazy (Printf.sprintf "Waiting to join task %d: %d tasks\n" tid (Seq.length q)));
-  Seq.iter (fun (_, promise) -> Domainslib.Task.await (get !pool) promise |> ignore) q
 
-and init_job task_id env = 
+and init_job task_id (env : env) = 
+  let env = {env with tid = Some task_id} in
+
   debug_print (lazy (Printf.sprintf "Initializing job with tid=%d\n" task_id));
 
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
   (* This must be done outside of new_job as we grab the resulting state immediately. *)
-  wait_deps env task.deps_in task.body;
+  wait_deps {tid = task_id; env} task.deps_in task.body;
   
   debug_print (lazy (Printf.sprintf "Task %d done waiting.\n" task_id));
   
@@ -919,12 +916,12 @@ and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condit
   | Some phi ->
       interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi
   | None -> false
-and wait_deps env deps self_body =
+and wait_deps j deps self_body =
   (* Wait for everything we need to EOP to EOP. *)
   (* As per discussion, forego EOP waiting. *)
   (* List.iter (fun dep -> wait_eop dep.pred_task) deps; *)
   
-  debug_print (lazy ("Unsorted deps: " ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps ^ "\n"));
+  debug_print (lazy (Printf.sprintf "%d's unsorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps ^ "\n"));
   
   (* topologically sort the dependencies *)
   let deps' = 
@@ -932,19 +929,21 @@ and wait_deps env deps self_body =
     List.fast_sort (fun x y -> List.assoc x.pred_task order_index - List.assoc y.pred_task order_index) deps
   in
   
-  debug_print (lazy ("Unsorted deps: " ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps' ^ "\n"));
+  debug_print (lazy (Printf.sprintf "%d's sorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps' ^ "\n"));
   
   (* For each dependency in order, wait on all jobs we're dependent on. *)
   List.iter (fun d ->
     let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
-    (* Get the jobs corrisponding to this dependency *)
-    let jobs_to_wait = List.filter (fun (j, _) -> j.tid = d.pred_task) jobs in
-    List.iter (fun (j, promise) -> match d with
+    (* Get the jobs corresponding to this dependency *)
+    let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task && not (j' == j)) jobs in
+    List.iter (fun (j', promise) -> match d with
       | {commute_cond = cond; _}
-        when not (interp_phi_two cond env j.env self_body (load_task_def j.tid).body) -> Domainslib.Task.await (get !pool) promise |> ignore
-      | _ -> ()
+        when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
+          debug_print (lazy (Printf.sprintf "Commute condition not met. Waiting on job %d.\n" j.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore
+      | _ -> debug_print (lazy ("Commute condition met. Skipping.\n"))
     ) jobs_to_wait
-  ) deps'
+  ) deps';
 
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
@@ -958,6 +957,7 @@ and send_dep calling_tid tid env vals =
   debug_print (lazy (Printf.sprintf "send_dep called for tid=%d\n" tid));
   
   let env' = senddep_extend_env env vals in
+  let env' = {env' with tid = Some tid} in
   
   (* 1 *)
   let task = load_task_def tid in
