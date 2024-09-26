@@ -1029,76 +1029,74 @@ let find_blocks_by_label labels =
     in blks := !blks @ [bl]) ls) labels;
   !blks
 
-let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
-  (* Find the index of the first occurrence of x in list l *)
-  let rec find_index x l =
-    let rec aux x l idx =
-      match l with
-      | [] -> -1 (* x not found *)
-      | h :: t -> if h.elt = x.elt then idx else aux x t (idx + 1)
-    in
-    aux x l 0
+(* Find the index of the first occurrence of x in list l *)
+let rec find_index x l =
+  let rec aux x l idx =
+    match l with
+    | [] -> -1 (* x not found *)
+    | h :: t -> if h.elt = x.elt then idx else aux x t (idx + 1)
   in
-  let find_corresponding a b s =
-    let idx = find_index s b in
-    if idx == -1 then None
-    else Some (List.nth a idx)
-    
-  in
-  let rec substitute_vars_exp (args_in: exp node list) (args_out: exp node list) exp = 
-    let e = match exp.elt with 
-    | CStr _ | Id _ -> find_corresponding args_in args_out exp
-    | Index (e1, e2) -> Some (node_up exp (Index (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)))
-    | Bop (op, e1, e2) -> Some (node_up exp @@ Bop (op, substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2))
-    | Uop (op, e) -> Some (node_up exp @@ Uop (op, substitute_vars_exp args_in args_out e))
-    | CallRaw (id, el) -> Some (node_up exp @@ CallRaw (id, List.map (substitute_vars_exp args_in args_out) el))
-    | Call (method_variant, el) -> Some (node_up exp @@ Call (method_variant, List.map (substitute_vars_exp args_in args_out) el))
-    | CNull _ | CBool _ | CInt _ -> None
-    | _ -> None
-    (* 
-    | CArr of ty * exp node list
-    | NewArr of ty * exp node
-    | NewHashTable of hashtable_variant * ty * ty
-    | Ternary of exp node * exp node * exp node
-    | CStruct of id * exp node bindlist
-    | Proj of exp node * id
-     *)
-    in 
-    match e with
-    | None -> exp 
-    | Some ex -> ex
-    
-  in
-  let rec substitute_vars_block (args_in: exp node list) (args_out: exp node list) block = 
-    match block with 
-    | [] -> block
-    | s::tl -> 
-    let s' = begin match s.elt with 
-    | Assn (e1,e2) -> Assn (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)
-    | If (e,b1,b2) -> If (substitute_vars_exp args_in args_out e, node_up b1 @@ substitute_vars_block args_in args_out b1.elt, node_up b2 @@ substitute_vars_block args_in args_out b2.elt)
-    | Ret (Some e) -> Ret (Some (substitute_vars_exp args_in args_out e))
-    | Decl (id, (ty, e)) -> Decl (id,(ty,substitute_vars_exp args_in args_out e))
-    | SCallRaw (id, el) -> SCallRaw (id, List.map (substitute_vars_exp args_in args_out) el)
-    | SCall (method_variant, el) -> SCall (method_variant, List.map (substitute_vars_exp args_in args_out) el)
-    (* 
-    
-    | For of vdecl list * exp node option * stmt node option * block node
-    | While of exp node * block node
-    | Raise of exp node
-    | Commute of commute_variant * commute_condition * block node list
-    | Assert of exp node
-    | Assume of exp node
-    | Havoc of id
-    | Require of exp node
-    | SBlock of blocklabel option * block node
-    | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
-    | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
-    | SendEOP of int *)
-    | _ -> s.elt
-    end 
-    in (node_up s s') :: substitute_vars_block args_in args_out tl
-  in
+  aux x l 0
 
+let find_corresponding a b s =
+  let idx = find_index s b in
+  if idx == -1 then None
+  else Some (List.nth a idx)
+    
+
+let rec substitute_vars_exp (args_in: exp node list) (args_out: exp node list) exp = 
+  let e = match exp.elt with 
+  | CStr _ | Id _ -> find_corresponding args_in args_out exp
+  | Index (e1, e2) -> Some (node_up exp (Index (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)))
+  | Bop (op, e1, e2) -> Some (node_up exp @@ Bop (op, substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2))
+  | Uop (op, e) -> Some (node_up exp @@ Uop (op, substitute_vars_exp args_in args_out e))
+  | CallRaw (id, el) -> Some (node_up exp @@ CallRaw (id, List.map (substitute_vars_exp args_in args_out) el))
+  | Call (method_variant, el) -> Some (node_up exp @@ Call (method_variant, List.map (substitute_vars_exp args_in args_out) el))
+  | CNull _ | CBool _ | CInt _ -> None
+  | _ -> None
+  (* 
+  | CArr of ty * exp node list
+  | NewArr of ty * exp node
+  | NewHashTable of hashtable_variant * ty * ty
+  | Ternary of exp node * exp node * exp node
+  | CStruct of id * exp node bindlist
+  | Proj of exp node * id
+    *)
+  in 
+  match e with
+  | None -> exp 
+  | Some ex -> ex
+    
+let rec substitute_vars_block (args_in: exp node list) (args_out: exp node list) block = 
+  match block with 
+  | [] -> block
+  | s::tl -> 
+  let s' = begin match s.elt with 
+  | Assn (e1,e2) -> Assn (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)
+  | If (e,b1,b2) -> If (substitute_vars_exp args_in args_out e, node_up b1 @@ substitute_vars_block args_in args_out b1.elt, node_up b2 @@ substitute_vars_block args_in args_out b2.elt)
+  | Ret (Some e) -> Ret (Some (substitute_vars_exp args_in args_out e))
+  | Decl (id, (ty, e)) -> Decl (id,(ty,substitute_vars_exp args_in args_out e))
+  | SCallRaw (id, el) -> SCallRaw (id, List.map (substitute_vars_exp args_in args_out) el)
+  | SCall (method_variant, el) -> SCall (method_variant, List.map (substitute_vars_exp args_in args_out) el)
+  (* 
+  
+  | For of vdecl list * exp node option * stmt node option * block node
+  | While of exp node * block node
+  | Raise of exp node
+  | Commute of commute_variant * commute_condition * block node list
+  | Assert of exp node
+  | Assume of exp node
+  | Havoc of id
+  | Require of exp node
+  | SBlock of blocklabel option * block node
+  | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
+  | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
+  | SendEOP of int *)
+  | _ -> s.elt
+  end 
+  in (node_up s s') :: substitute_vars_block args_in args_out tl
+  
+let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
   let rec interp_group_commute (gc: group_commute node list) : group_commute node list = 
     begin match gc with 
     | [] -> [] 
@@ -1251,13 +1249,26 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
     | [] -> () 
     | gc::tl -> 
       let labels, phi = gc.elt in 
-      let blks = find_blocks_by_label labels in
+      let blks = ref [] in
+      List.iter (
+        fun ls -> 
+          List.iter (
+            fun (id, args) ->
+            let {elt=SBlock(Some(i,args'),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in
+            let bl' = match args, args' with 
+            | Some a, Some a' -> 
+            node_up bl (substitute_vars_block a a' bl.elt)
+            | _, _ -> bl
+            in 
+            blks := !blks @ [bl']
+          ) ls
+      ) labels;
       begin match phi with
       | PhiExp e ->
         if !print_cond then 
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g CommuteVarPar blks defs None None with
+        begin match Analyze.verify_of_block e g CommuteVarPar !blks defs None None with
         | Some b, compl -> 
           let compl_str = 
             match compl with 
