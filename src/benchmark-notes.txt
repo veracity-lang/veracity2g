@@ -18,5 +18,5 @@ after adding topological waiting
 simple-vector: works
 2d-array: works
 vote-run: works
-commset: does not reach scheduler
-multi-blocks: works
+commset: works
+multi-blocks: sometimes works (index out of bounds)
