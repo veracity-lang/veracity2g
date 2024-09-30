@@ -17,6 +17,7 @@ let suppress_print = ref false
 
 let counters : (int64 * Concurrent_counter.t) list ref = ref []
 
+let mutexes_mutex = Mutex.create ()
 let mutexes : (int64 * Mutex.t) list ref = ref []
 
 type method_library = lib_method bindlist
@@ -724,11 +725,12 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt v] ->
+        Mutex.protect mutexes_mutex begin fun () ->
         if List.mem_assoc v !mutexes
         then raise @@ ValueFailure ("mutex " ^ Int64.to_string v ^ " already exists", Range.norange)
         else
           mutexes := (v, Mutex.create ()) :: !mutexes;
-          env, VVoid
+          env, VVoid end
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
     ; ret_ty = TVoid
@@ -738,15 +740,18 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt index] ->
+        Mutex.lock mutexes_mutex;
         begin match List.assoc_opt index !mutexes with
         | None -> 
             debug_print (lazy (Printf.sprintf "Warning: mutex %d not initialized. Auto-intializing.\n" (Int64.to_int index)));
             let m = Mutex.create () in
             mutexes := (index, m) :: !mutexes;
+            Mutex.unlock mutexes_mutex;
             Mutex.lock m;
             env, VVoid
             (* TODO previously: raise @@ ValueFailure ("unknown mutex " ^ Int64.to_string index, Range.norange) *)
         | Some m ->
+          Mutex.unlock mutexes_mutex;
           Mutex.lock m;
           env, VVoid
         end

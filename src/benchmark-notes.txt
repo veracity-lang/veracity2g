@@ -15,7 +15,7 @@ multi-blocks: seems to work most times. Got this once: An error occurred: Invali
 
 
 after adding topological waiting
-simple-vector: works
+simple-vector: works (very infrequent "Mutex.unlock: Operation not permitted"?)
 2d-array: works
 vote-run: works
 commset: works
