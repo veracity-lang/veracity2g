@@ -29,5 +29,5 @@ plt.legend()
 plt.grid(True)
 
 
-plt.savefig('out-dswp/output_plot.png')
+plt.savefig('out-dswp/speedup-plot.png')
 
