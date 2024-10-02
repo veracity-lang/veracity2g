@@ -833,16 +833,16 @@ and init_job task_id (env : env) =
   (* Now get all the data dependencies *)
   let env' = List.fold_left (
     fun env dep ->
-      let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
-      let (j, p) = try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs
-        with Not_found -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task)
+      let jobs = Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue) in
+      let (j, p) = try Seq.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> Option.get
+        with Invalid_argument _ -> failwith (Printf.sprintf "Task id not found: %d" dep.pred_task)
       in
       if not (interp_phi_two dep.commute_cond env j.env task.body (load_task_def j.tid).body)
       (* if it commutes, we don't need to wait *) then begin
     senddep_extend_env env 
       (make_job_vals 
-        (try List.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> snd |> Domainslib.Task.await (get !pool) |> fst 
-        with Not_found -> failwith "Unexpected error in init_job.")
+        (try Seq.find (fun (j, _) -> j.tid == dep.pred_task) jobs |> Option.get |> snd |> Domainslib.Task.await (get !pool) |> fst 
+        with Invalid_argument _ -> failwith "Unexpected error in init_job.")
        dep.vars) end
        else env
     ) env task.deps_in in
