@@ -149,6 +149,10 @@ let find_node (s: stmt node) pdg : pdg_node =
         fun {l=loc;_} -> String.equal (Range.string_of_range loc) (Range.string_of_range sl) 
     ) pdg.nodes
 
+let compare_nodes n1 n2 = 
+  String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
+
+
 let rvalue = 1
 let lvalue = 0
 let decl_vars = ref []
@@ -216,36 +220,84 @@ and find_exp_vars exp : (ty * string) list =
 let src_to_dst = 1
 let dst_to_src = 0
 
-let has_data_dep src dst : bool * (ty * string) list * int =
+let has_data_dep src dst : bool * (ty * string) list * (ty * string) list =
   let list1 = find_stmt_vars src.n in 
   let list2 = find_stmt_vars dst.n in 
-  let rec has_common_element list1 list2 vars : bool * (ty * string) list * int = 
+  let rec values_for_key_pair key lst =
+  match lst with
+  | [] -> []
+  | (k, v) :: tl ->
+      if k = key then 
+        v :: values_for_key_pair key tl
+      else 
+        values_for_key_pair key tl
+  in
+
+  let dep = ref false in
+  let std_vars = ref [] in 
+  let dts_vars = ref [] in
+
+  (* Function to check for common elements with specific value patterns *)
+  let rec has_common_element list1 list2 : bool = 
     match list1 with
-    | [] -> false, vars, src_to_dst 
+    | [] -> !dep
     | (head, val1) :: tail ->
       if List.mem_assoc head list2 then begin
-        let val2 = List.assoc head list2 in 
-        begin match val1, val2 with 
-        | 0, 1 -> true, head :: vars, src_to_dst
-        | 1, 0 -> true, head :: vars, dst_to_src
-        | _, _ -> false, vars, src_to_dst
-        end
-      end
-      else
-        has_common_element tail list2 vars
-  in let (flag,vars,side) = has_common_element list1 list2 [] in 
-  flag, List.map (fun (t, id) -> match find_global_by_name_opt id with | Some (Gvdecl d) -> (d.elt.ty, id) | _ -> (t,id)) vars, side
-
+        let val2 = values_for_key_pair head list2 in 
+        let rec check_val2 val2_list =
+          match val2_list with 
+          | [] -> !dep
+          | val2 :: rest -> 
+            begin match val1, val2 with 
+            | 0, 1 -> 
+              if not (List.mem head !std_vars) then begin
+                std_vars := head :: !std_vars;
+                dep := true
+              end;
+              check_val2 rest
+            | 1, 0 -> 
+              if not (List.mem head !dts_vars) then begin
+                dts_vars := head :: !dts_vars;
+                dep := true
+              end;
+              check_val2 rest
+            | _, _ -> check_val2 rest
+            end
+        in
+        let res1 = check_val2 val2 in
+        let res2 = has_common_element tail list2 in 
+        res1 || res2
+      end else
+        has_common_element tail list2
+  in let flag = has_common_element list1 list2 in 
+  flag,
+  List.map (
+    fun (t, id) -> 
+    match find_global_by_name_opt id with 
+    | Some (Gvdecl d) -> (d.elt.ty, id)
+    | _ -> (t,id)
+  ) !std_vars,
+  List.map (
+    fun (t, id) -> 
+    match find_global_by_name_opt id with 
+    | Some (Gvdecl d) -> (d.elt.ty, id)
+    | _ -> (t,id)
+  ) !dts_vars
 
 let add_dataDep_edges pdg = 
   let p = ref pdg in 
+
+  let deps_equal deps1 deps2 =
+    List.length deps1 = List.length deps2 && 
+    List.for_all (fun d -> List.mem d deps2) deps1
+  in 
   apply_pairs (fun x y -> 
-    let dep, vars, dir = has_data_dep x y in 
+    let dep, std_deps, dts_deps = has_data_dep x y in 
     if dep then begin
-      if dir == 1 then 
-        p := add_edge !p x y (DataDep vars)
-      else 
-        p := add_edge !p y x (DataDep vars)
+      if (not (List.is_empty std_deps)) && (not (compare_nodes x y) || not (deps_equal std_deps dts_deps)) then
+        p := add_edge !p x y (DataDep std_deps);
+      if (not (List.is_empty dts_deps)) && (not (compare_nodes x y) || not (deps_equal std_deps dts_deps)) then
+        p := add_edge !p y x (DataDep dts_deps);
     end
   ) pdg.nodes;
   !p
@@ -301,9 +353,6 @@ let rec mark_visited n visited =
       (node, true) :: rest
     else
       (node, false) :: mark_visited n rest
-
-let compare_nodes n1 n2 = 
-  String.equal (Range.string_of_range n1.l) (Range.string_of_range n2.l)
 
 (* Function to check if a control dependence is loop-carried *)
 (* let is_control_dependence_loop_carried (edge: pdg_edge) pdg =
@@ -1152,9 +1201,13 @@ let add_empty_data_dep_edges dag_scc =
     | DataDep _ -> 
         let ancestors = find_ancestors [] [] dag_scc.edges edge.dag_src in
         List.iter (fun ancestor ->
-          if ancestor <> edge.dag_src then
+          if not (compare_dag_nodes ancestor edge.dag_src) then begin
             let new_edge = { dag_src = ancestor; dag_dst = edge.dag_dst; dep = (DataDep []); loop_carried = false } in
-            new_edges := new_edge :: !new_edges 
+            if not (List.mem new_edge !new_edges) && not (List.exists (fun e -> compare_dag_nodes e.dag_src new_edge.dag_src && compare_dag_nodes e.dag_dst new_edge.dag_dst && match e.dep with | DataDep _ -> true | _ -> false) !new_edges) then
+              new_edges := new_edge :: !new_edges
+            else
+             ()
+          end 
         ) ancestors
     | _ -> ()
   ) dag_scc.edges;
@@ -1172,6 +1225,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   let merged_dag_with_added_deps = add_empty_data_dep_edges merged_dag in
   debug_print (lazy "add empty data dependency edges:\n");
   print_dag_debug merged_dag;
+  print_dag merged_dag_with_added_deps "/tmp/merged-dag-scc2.dot" dag_pdgnode_to_string;
   let init_task, tasks = generate_tasks merged_dag_with_added_deps body in 
   if !Util.debug then begin
     Printf.printf "Init Task -> \n %s \n [%s] \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map Int.to_string init_task.jobs));
