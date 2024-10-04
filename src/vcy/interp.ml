@@ -893,7 +893,7 @@ and make_topsort_tasks () =
     ) n.deps_out
   done;
   topsort_tasks_order := Some (List.rev !res |> List.mapi (fun i e -> (e, i)));
-  debug_print (lazy (Printf.sprintf "Topsort order: " ^ List.iter (fun (e, i) -> Printf.printf "(%d, %d), " e i) (get !topsort_tasks_order) ^ "\n"));
+  debug_print (lazy (List.fold_left (fun acc (e, i) -> acc ^ Printf.sprintf "(%d, %d), " e i) "Topsort order: " (get !topsort_tasks_order) ^ "\n"));
   
 and bind_formals formals body env : (string * tyval) list list =
   match formals with
