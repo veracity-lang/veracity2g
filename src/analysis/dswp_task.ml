@@ -10,6 +10,7 @@ type commute_condition = {
 (* t_i can depend on a list of variables written by some predecessor t_j *)
 type dependency = {
   pred_task: dswp_taskid;
+  make_new_job: bool;
   vars: (ty * id) list;
   commute_cond : commute_condition
 }
@@ -42,9 +43,9 @@ let str_of_task_deps deplist =
   "{"
   ^(String.concat " AND " (List.map (fun dep ->
     match dep.commute_cond.condition with 
-    | None -> Printf.sprintf "from %d: %s" dep.pred_task (str_of_vars_list dep.vars)
+    | None -> Printf.sprintf "from %d [new job: %b]: %s" dep.pred_task dep.make_new_job (str_of_vars_list dep.vars)
     | Some c -> 
-     Printf.sprintf "from %d: %s / commute_cond: [%s],[%s] => %s" dep.pred_task (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (String.concat "," dep.commute_cond.my_task_formals)(String.concat "," dep.commute_cond.other_task_formals) (AstPP.string_of_exp c)
+     Printf.sprintf "from %d [new job: %b]: %s / commute_cond: [%s],[%s] => %s" dep.pred_task dep.make_new_job (if not (Util.null dep.vars) then (str_of_vars_list dep.vars) else "[]") (String.concat "," dep.commute_cond.my_task_formals)(String.concat "," dep.commute_cond.other_task_formals) (AstPP.string_of_exp c)
   ) deplist))
   ^"}"
 
@@ -86,7 +87,7 @@ task3:
     body="q=p->inner_list; .."}
 *)
 
-let mk_int_dep pred_id var_id = {pred_task=pred_id; vars=[(TInt,var_id)]; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}}
+let mk_int_dep pred_id var_id = {pred_task=pred_id; make_new_job=false; vars=[(TInt,var_id)]; commute_cond = {my_task_formals =[]; other_task_formals=[];condition=None}}
 
 let example_var_decls () =
   [

@@ -951,6 +951,8 @@ let find_taskIDs_from_node_list dag_scc elemList: int list =
   List.map (find_taskID_from_node dag_scc) elemList
 
 let sendDep_exists = ref []
+let make_new_job_out = ref []
+let make_new_job_in = ref []
 
 let reconstructAST dag dag_scc_node (block: block node) taskID : block =
   let sendDeps = ref [] in
@@ -967,6 +969,8 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
       List.fold_left (fun acc (l, task_id) ->
         if not (List.mem task_id !sendDeps) then begin
           sendDeps := task_id :: !sendDeps;
+          make_new_job_in := task_id :: !make_new_job_in;
+          make_new_job_out := taskID :: !make_new_job_out;
           acc @ [{ elt = SendDep (task_id, []); loc = l }]
         end 
         else acc
@@ -1079,14 +1083,14 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
       let src_task = List.assoc src_taskID !res in
       if src_taskID = dst_taskID then begin
         let updated_task = (src_taskID, 
-          {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out;
-                         deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_in}) in
+          {src_task with deps_out = {pred_task= dst_taskID; make_new_job=if List.mem dst_taskID !make_new_job_in && List.mem src_taskID !make_new_job_out then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out;
+                         deps_in = {pred_task= src_taskID; make_new_job=if List.mem src_taskID !make_new_job_out && List.mem dst_taskID !make_new_job_in then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_in}) in
         res := updated_task :: List.remove_assoc src_taskID !res
       end
       else begin
         let dst_task = List.assoc dst_taskID !res in
-        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out}) in
-        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: dst_task.deps_in}) in
+        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; make_new_job= if List.mem dst_taskID !make_new_job_in && List.mem src_taskID !make_new_job_out then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out}) in
+        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; make_new_job= if List.mem src_taskID !make_new_job_out && List.mem dst_taskID !make_new_job_in then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: dst_task.deps_in}) in
         res := new_src_task :: new_dst_task :: 
         List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res)
       end
@@ -1094,15 +1098,15 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
       let src_task = List.assoc src_taskID !res in
       if src_taskID = dst_taskID then begin
         let updated_task = (src_taskID,
-          {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out;
-                         deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: src_task.deps_in}) in
+          {src_task with deps_out = {pred_task= dst_taskID; make_new_job = false; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out;
+                         deps_in = {pred_task= src_taskID; make_new_job = false; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: src_task.deps_in}) in
         res := updated_task :: List.remove_assoc src_taskID !res
       end
       else begin
         (* When src_taskID and dst_taskID are different, update both tasks *)
         let dst_task = List.assoc dst_taskID !res in
-        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out}) in
-        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: dst_task.deps_in}) in
+        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; make_new_job = false; vars = []; commute_cond = {my_task_formals =args1; other_task_formals= args2; condition=Some c}} :: src_task.deps_out}) in
+        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; make_new_job = false; vars = []; commute_cond = {my_task_formals =args2; other_task_formals= args1; condition=Some c}} :: dst_task.deps_in}) in
         res := new_src_task :: new_dst_task ::
         List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res) 
       end
