@@ -778,8 +778,8 @@ and interp_block ?(new_scope = true) (env : env) (block : block node) : env * va
 and jobs_mutex = Mutex.create ()
 and job_queue = Queue.create ()
 and all_jobs = ref []
-and run_job jb deps = 
-    if not (List.is_empty deps) then wait_deps jb deps (load_task_def jb.tid).body;
+and run_job jb initial_waits deps = 
+    wait_deps jb initial_waits deps (load_task_def jb.tid).body;
     interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
@@ -793,13 +793,21 @@ and make_job_vals env deps =
 (* Interpreter calls this function at each SendDep to create a new job *)
 and add_job j promise =
   Mutex.protect jobs_mutex (fun () ->
+    debug_print (lazy (sp "Adding job with tid=%d.\n" j.tid));
     Queue.add (j, promise) job_queue;
     all_jobs := (j, promise) :: !all_jobs)
 and new_job ?(wait_on_init = false) j deps = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
+  let deps' = topsort_deps deps in
+  let initial_waits = if List.is_empty deps' then []
+    else begin
+      let jobs = Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue |> List.of_seq) in
+      List.map (fun dep -> List.filter_map (function | ({tid;_}, _) as j -> if tid = dep.pred_task then Some (j, dep) else None) jobs) (List.hd deps') |> List.concat
+    end in
+  let deps'' = if List.is_empty deps' then [] else List.concat (List.tl deps') in
   let promise = Domainslib.Task.async (get !pool) (fun () -> 
     if wait_on_init then Mutex.protect init_mutex (const ());
-    run_job j deps |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
+    run_job j initial_waits deps'' |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
   add_job j promise;
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
@@ -869,19 +877,16 @@ and scheduler init_task env : value option =
   let env', _ = interp_block ~new_scope:false env init_task.decls in
   
   (* Start initial tasks. *)
-  (* Note these must be started in topological order so they properly wait on their dependencies. *)
-  make_topsort_tasks ();
   Domainslib.Task.run (get !pool) (fun () ->
-    let order_index = get !topsort_tasks_order in
-    let init_jobs = List.fast_sort (fun x y -> List.assoc x order_index - List.assoc y order_index) init_task.jobs in
     Mutex.lock init_mutex;
-    List.iter (flip init_job env') init_jobs;
+    List.iter (flip init_job env') init_task.jobs;
     Mutex.unlock init_mutex;
     join_all ())
 
 (* List of things that have sendEOP'd *)
 and eop_tasks : int list ref = ref []
 and eop_mutex = Mutex.create()
+(*
 and topsort_tasks_order = ref None
 and make_topsort_tasks () =
   (* Just use Kahn's algorithm *)
@@ -910,7 +915,36 @@ and make_topsort_tasks () =
   done;
   topsort_tasks_order := Some (List.rev !res |> List.mapi (fun i e -> (e, i)));
   debug_print (lazy (List.fold_left (fun acc (e, i) -> acc ^ Printf.sprintf "(%d, %d), " e i) "Topsort order: " (get !topsort_tasks_order) ^ "\n"));
+*)
+and topsort_memo = ref []
+and topsort_deps deps =
+  (* return deps as a list of lists where the first list has no incoming dependencies, 2nd has only from the 1st, etc *)
+  (* There may be a smarter way to do this but since we only have <10 tasks, I'm going to brute force + memoize. *)
   
+  match List.assoc_opt deps !topsort_memo with
+  | Some res -> res
+  | None -> begin
+      let get_pred_task = function {pred_task; _} -> pred_task in
+      let remaining = ref deps in
+      let dep_tasks = List.map get_pred_task deps in
+      let seen : dependency list ref = ref [] in
+      let res = ref [] in
+      while List.is_empty !remaining |> not do
+        let (level, others) = List.partition (fun dep ->
+          (* Get all the dependencies whose pred_task has
+             incoming spawning tasks from deps be only from seen tasks *)
+          let t = load_task_def dep.pred_task in
+          List.filter (fun dep' -> dep'.make_new_job && List.mem dep'.pred_task dep_tasks) t.deps_in |>
+          List.for_all (fun dep' -> List.mem dep'.pred_task (List.map get_pred_task !seen))) !remaining in
+          res := level :: !res;
+          seen := level @ !seen;
+          remaining := others;
+      done;
+      let res' = List.rev !res in
+      topsort_memo := (deps, res') :: !topsort_memo;
+      res'
+  end
+
 and bind_formals formals body env : (string * tyval) list list =
   match formals with
   | [] -> [[]]
@@ -933,34 +967,47 @@ and interp_phi_two {my_task_formals=formals; other_task_formals=formals'; condit
   | Some phi ->
       interp_phi {lenv with l = (bind_formals formals lbody lenv @ bind_formals formals' rbody renv) :: []} phi
   | None -> false
-and wait_deps j deps self_body =
+and wait_deps j init_waits deps self_body =
   (* Wait for everything we need to EOP to EOP. *)
   (* As per discussion, forego EOP waiting. *)
   (* List.iter (fun dep -> wait_eop dep.pred_task) deps; *)
   
-  debug_print (lazy (Printf.sprintf "%d's unsorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps ^ "\n"));
+  (* debug_print (lazy (Printf.sprintf "%d's unsorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps ^ "\n")); *)
   
   (* topologically sort the dependencies *)
+  (* This should already be done by this point *)
+  (*
   let deps' = 
     let order_index = get !topsort_tasks_order in
     List.fast_sort (fun x y -> List.assoc x.pred_task order_index - List.assoc y.pred_task order_index) deps
   in
+  *)
   
-  debug_print (lazy (Printf.sprintf "%d's sorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps' ^ "\n"));
+  (* debug_print (lazy (Printf.sprintf "%d's sorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps' ^ "\n")); *)
+  
+  debug_print (lazy (Printf.sprintf "%d's deps: (jobs with tid: %s) (tasks: %s)\n"
+    (Option.value j.env.tid ~default:(-1)) 
+    (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " (fst e |> fst).tid) "" init_waits)
+    (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps)));
+  
+  let wait_job (j', promise) = function
+      | {commute_cond = cond; _}
+        when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
+          debug_print (lazy (Printf.sprintf "Commute condition not met. Waiting on job %d.\n" j.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore
+      | _ -> debug_print (lazy ("Commute condition met. Skipping.\n"))
+  in
+  
+  (* wait on every initial job *)
+  List.iter (uncurry wait_job) init_waits;
   
   (* For each dependency in order, wait on all jobs we're dependent on. *)
   List.iter (fun d ->
     let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
     (* Get the jobs corresponding to this dependency *)
     let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task && not (j' == j)) jobs in
-    List.iter (fun (j', promise) -> match d with
-      | {commute_cond = cond; _}
-        when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
-          debug_print (lazy (Printf.sprintf "Commute condition not met. Waiting on job %d.\n" j.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore
-      | _ -> debug_print (lazy ("Commute condition met. Skipping.\n"))
-    ) jobs_to_wait
-  ) deps';
+    List.iter (flip wait_job d) jobs_to_wait
+  ) deps;
 
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
