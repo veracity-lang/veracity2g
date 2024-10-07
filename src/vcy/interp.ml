@@ -802,7 +802,7 @@ and new_job ?(wait_on_init = false) j deps =
   let initial_waits = if List.is_empty deps' then []
     else begin
       let jobs = Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue |> List.of_seq) in
-      List.map (fun dep -> List.filter_map (function | ({tid;_}, _) as j -> if tid = dep.pred_task then Some (j, dep) else None) jobs) (List.hd deps') |> List.concat
+      List.map (fun dep -> List.filter_map (function | ({tid;_}, _) as j -> if tid = dep.pred_task then Some (j, dep) else None) jobs) (List.hd deps' |> List.sort_uniq (fun a b -> b.pred_task - a.pred_task)) |> List.concat
     end in
   let deps'' = if List.is_empty deps' then [] else List.concat (List.tl deps') in
   let promise = Domainslib.Task.async (get !pool) (fun () -> 
