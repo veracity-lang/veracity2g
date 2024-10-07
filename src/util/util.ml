@@ -25,6 +25,8 @@ let flip f x y = f y x
 
 let compose f g x = f (g x)
 
+let ap f x = f x
+
 let rec repeat f n = if n <= 0 then () else (f (); repeat f (n - 1))
 
 let const c f = c

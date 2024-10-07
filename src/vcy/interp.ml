@@ -795,9 +795,11 @@ and add_job j promise =
   Mutex.protect jobs_mutex (fun () ->
     Queue.add (j, promise) job_queue;
     all_jobs := (j, promise) :: !all_jobs)
-and new_job j deps = 
+and new_job ?(wait_on_init = false) j deps = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
-  let promise = Domainslib.Task.async (get !pool) (fun () -> run_job j deps |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
+  let promise = Domainslib.Task.async (get !pool) (fun () -> 
+    if wait_on_init then Mutex.protect init_mutex (const ());
+    run_job j deps |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
   add_job j promise;
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
@@ -820,17 +822,19 @@ and join_all () =
 and init_job task_id (env : env) = 
   let env = {env with tid = Some task_id} in
 
-  debug_print (lazy (Printf.sprintf "Initializing job with tid=%d\n" task_id));
+  (* debug_print (lazy (Printf.sprintf "Initializing job with tid=%d\n" task_id)); *)
 
   let task = load_task_def task_id in
   
   (* Wait for all the dependencies of task *)
   (* This must be done outside of new_job as we grab the resulting state immediately. *)
-  wait_deps {tid = task_id; env} task.deps_in task.body;
+  (* wait_deps {tid = task_id; env} task.deps_in task.body;
   
-  debug_print (lazy (Printf.sprintf "Task %d done waiting.\n" task_id));
+  debug_print (lazy (Printf.sprintf "Task %d done waiting.\n" task_id)); *)
   
   (* Now get all the data dependencies *)
+  
+  (*
   let env' = List.fold_left (
     fun env dep ->
       let jobs = Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue) in
@@ -846,15 +850,21 @@ and init_job task_id (env : env) =
        dep.vars) end
        else env
     ) env task.deps_in in
+  *)
+  (* above isn't necessary since globals are references? TODO: verify this *)
+  let env' = env in
   
   (* Now start the job *)
-  new_job {tid = task_id; env = env'} [];
+  new_job {tid = task_id; env = env'} task.deps_in ~wait_on_init:true;
   
   (* Mark self as EOP *)
+  (*
   Mutex.protect eop_mutex (fun () ->
     debug_print (lazy (Printf.sprintf "EOP: %d\n" task_id));
     eop_tasks := task_id :: !eop_tasks);
+  *)
   
+and init_mutex = Mutex.create ()
 and scheduler init_task env : value option =
   let env', _ = interp_block ~new_scope:false env init_task.decls in
   
@@ -863,19 +873,21 @@ and scheduler init_task env : value option =
   make_topsort_tasks ();
   Domainslib.Task.run (get !pool) (fun () ->
     let order_index = get !topsort_tasks_order in
-    List.fast_sort (fun x y -> List.assoc x order_index - List.assoc y order_index) init_task.jobs |>
-    List.iter (fun job -> Domainslib.Task.run (get !pool) (fun () -> init_job job env'));
+    let init_jobs = List.fast_sort (fun x y -> List.assoc x order_index - List.assoc y order_index) init_task.jobs in
+    Mutex.lock init_mutex;
+    List.iter (flip init_job env') init_jobs;
+    Mutex.unlock init_mutex;
     join_all ())
 
 (* List of things that have sendEOP'd *)
 and eop_tasks : int list ref = ref []
 and eop_mutex = Mutex.create()
 and topsort_tasks_order = ref None
-and remove_self_loops_deps_in t = List.filter (fun dep -> not (dep.pred_task = t.id)) t.deps_in
 and make_topsort_tasks () =
   (* Just use Kahn's algorithm *)
   let res = ref [] in
-  let top = ref (List.filter (fun t -> List.is_empty (remove_self_loops_deps_in t)) !task_defs) in
+  (* We filter based on the spawning graph -- namely all the edges with make_new_job = true *)
+  let top = List.filter (fun t -> not (List.exists (fun d -> d.make_new_job) t.deps_in)) !task_defs |> ref in
   while not (List.is_empty !top) do
     let (n :: top') = !top in
     top := top';
@@ -885,11 +897,15 @@ and make_topsort_tasks () =
        As implemented, this step has poor performance for large graphs or graphs with many many edges.
        But it's definitely not a bottleneck in the program. *)
        
-    (* for each dep out, check that all its deps_in are in res *)
-    List.iter (fun {pred_task;_} -> 
-      let t = load_task_def pred_task in
-      if List.for_all (fun t' -> List.mem t'.pred_task !res) t.deps_in && not (List.mem t.id !res) (* Disallow revisiting of self-cycles; when we top sort the graph we pretend these don't exist *)
-      then top := t :: !top; (* this will end up exploring in dfs order. as long as it's in top order it doesn't matter though *)
+    (* for each new_task dep out, check that all its deps_in that are make_new_job are in res
+       In practice since new_task is 1-1, this shouldn't be necessary and should never evaluate to be true,
+       but implementing it like this to play it safe. *)
+    List.iter (fun {pred_task; make_new_job;_} -> 
+      if make_new_job then begin
+        let t : dswp_task = load_task_def pred_task in
+        if List.for_all (fun t' -> List.mem t'.pred_task !res) (List.filter (fun d -> d.make_new_job) t.deps_in)
+        then top := t :: !top; (* this will end up exploring in dfs order. as long as it's in top order it doesn't matter though *)
+      end
     ) n.deps_out
   done;
   topsort_tasks_order := Some (List.rev !res |> List.mapi (fun i e -> (e, i)));
