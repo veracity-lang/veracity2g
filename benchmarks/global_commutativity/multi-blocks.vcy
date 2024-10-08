@@ -17,15 +17,16 @@ int main(int argc, string[] argv) {
     int i_1 = 3;
     int i_2 = 3;
     int i_3 = 4;
+    int j = 0;
 
     int[] files = new int[10];
 
     tbl[x] = 12;
 	tbl[z] = 12;
 	
-    while(i < 10) {
-        files[i] = i;
-        i = i + 1;
+    while(j < 10) {
+        files[j] = j;
+        j = j + 1;
     }
 	
     f1(tbl,x,y):{ 
@@ -45,7 +46,7 @@ int main(int argc, string[] argv) {
         }
 	}
     {
-    i = 3;
+    i = i_1;
     f4(files,i):{ 
         busy_wait(n);
         f = files[i];
@@ -54,7 +55,7 @@ int main(int argc, string[] argv) {
     }
     }
     {
-    i = 3;
+    i = i_2;
     f5(files,i):{ 
         f = files[i];
         f = f + 5;
@@ -63,7 +64,7 @@ int main(int argc, string[] argv) {
     }
     }
 
-    {i = 4;
+    {i = i_3;
     f6(files,i):{ 
         g = files[i];
         g = g + 5;
