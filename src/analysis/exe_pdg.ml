@@ -1188,7 +1188,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
 
 let rec find_ancestors ancestors visited edges src_node =
   List.fold_left (fun acc edge ->
-    if edge.dag_dst = src_node && not (List.mem edge.dag_src acc) then
+    if edge.dag_dst = src_node && not (List.mem edge.dag_src acc) && edge.dep == ControlDep then
       if not (List.mem edge.dag_src visited) then
         find_ancestors (edge.dag_src :: acc) (edge.dag_src :: visited) edges edge.dag_src
       else
@@ -1200,12 +1200,15 @@ let rec find_ancestors ancestors visited edges src_node =
 (* use empty data dependency edges intead of using SendEOP *)
 let add_empty_data_dep_edges dag_scc =
   let new_edges = ref dag_scc.edges in
+  let check_node_is_spawned node =
+    List.exists (fun e -> compare_dag_nodes e.dag_dst node && e.dep == ControlDep) dag_scc.edges 
+  in
   List.iter (fun edge ->
     match edge.dep with
     | DataDep _ -> 
         let ancestors = find_ancestors [] [] dag_scc.edges edge.dag_src in
         List.iter (fun ancestor ->
-          if not (compare_dag_nodes ancestor edge.dag_src) then begin
+          if (not (compare_dag_nodes ancestor edge.dag_dst)) && check_node_is_spawned edge.dag_dst && check_node_is_spawned edge.dag_src then begin
             let new_edge = { dag_src = ancestor; dag_dst = edge.dag_dst; dep = (DataDep []); loop_carried = false } in
             if not (List.mem new_edge !new_edges) && not (List.exists (fun e -> compare_dag_nodes e.dag_src new_edge.dag_src && compare_dag_nodes e.dag_dst new_edge.dag_dst && match e.dep with | DataDep _ -> true | _ -> false) !new_edges) then
               new_edges := new_edge :: !new_edges
@@ -1228,7 +1231,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
   let merged_dag_with_added_deps = add_empty_data_dep_edges merged_dag in
   debug_print (lazy "add empty data dependency edges:\n");
-  print_dag_debug merged_dag;
+  print_dag_debug merged_dag_with_added_deps;
   print_dag merged_dag_with_added_deps "/tmp/merged-dag-scc2.dot" dag_pdgnode_to_string;
   let init_task, tasks = generate_tasks merged_dag_with_added_deps body in 
   if !Util.debug then begin
