@@ -81,7 +81,7 @@ benchmarks : List[Benchmark] = [
     ,
     ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio)
     ,
-    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n // 10), "10"])
+    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 10), "10"])
 ]
     
 
