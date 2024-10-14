@@ -29,12 +29,13 @@ columns = data.columns[1:]
 
 plt.figure(figsize=(12, 8))
 for column in columns:
-    plt.plot(log_N, data[column], label=column, marker='o')
+    label = column.replace("vote-run", "vote")
+    plt.plot(log_N, data[column], label=label, marker='o')
 
 # Add horizontal line for speedup = 1
 plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
 
-plt.xlabel('computation size')
+plt.xlabel('log(computation size)')
 plt.ylabel('parallel-to-sequential speedup')
 plt.legend()
 plt.grid(True)
