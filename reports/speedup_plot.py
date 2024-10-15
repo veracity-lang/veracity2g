@@ -27,16 +27,18 @@ N = data.iloc[:, 0]
 log_N = np.log10(N)
 columns = data.columns[1:]
 
+markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'H', '+', 'x']
+
 plt.figure(figsize=(12, 8))
-for column in columns:
+for i, column in enumerate(columns):
     label = column.replace("vote-run", "vote")
-    plt.plot(log_N, data[column], label=label, marker='o')
+    plt.plot(log_N, data[column], label=label, marker=markers[i % len(markers)])
 
 # Add horizontal line for speedup = 1
 plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
 
-plt.xlabel('log(computation size)')
-plt.ylabel('parallel-to-sequential speedup')
+plt.xlabel('Log(Computation Size)')
+plt.ylabel('Parallel-to-Sequential Speedup')
 plt.legend()
 plt.grid(True)
 

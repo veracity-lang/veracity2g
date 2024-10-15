@@ -23,7 +23,7 @@ int main(int argc, string[] argv) {
     while (i < size) {
         f1(i, x, arr):{ /* will only increase arr[i] */
             busy_wait(scalingfactor); 
-            x = 2;
+            x = i;
             arr[i] = arr[i] + (x*x);
         }
 
