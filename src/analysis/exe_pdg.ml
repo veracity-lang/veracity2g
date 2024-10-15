@@ -1138,6 +1138,31 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
   in
   List.map (fun t -> update_sendDep_of_task t) out_tasks
 
+let combine_dependencies (deps: Dswp_task.dependency list) : Dswp_task.dependency list =
+  let combine_dep d1 d2 =
+    { pred_task = d1.pred_task;
+      make_new_job = d1.make_new_job || d2.make_new_job;
+      vars = d1.vars @ d2.vars;
+      commute_cond = 
+        if d1.commute_cond = d2.commute_cond then d1.commute_cond
+        else if d1.commute_cond.condition = None then d2.commute_cond
+        else if d2.commute_cond.condition = None then d1.commute_cond
+        else failwith "Conflicting commute conditions for the same pred_task"
+    }
+  in
+  let rec combine_helper sorted_deps =
+    match sorted_deps with
+    | [] | [_] -> sorted_deps
+    | d1 :: d2 :: rest ->
+        if d1.pred_task = d2.pred_task then
+          combine_helper ((combine_dep d1 d2) :: rest)
+        else
+          d1 :: combine_helper (d2 :: rest)
+  in
+  deps
+  |> List.sort (fun d1 d2 -> compare d1.pred_task d2.pred_task)
+  |> combine_helper
+
 let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let dag_scc = ref dag_scc in 
   let generate_init_task () : init_task = 
@@ -1184,6 +1209,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
   let new_edges = List.filter (fun {dag_dst= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
+  let tasks = List.map (fun t-> {t with deps_in = combine_dependencies t.deps_in; deps_out = combine_dependencies t.deps_out}) tasks in
   init_task, tasks
 
 let rec find_ancestors ancestors visited edges src_node =
