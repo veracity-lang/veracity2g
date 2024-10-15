@@ -16,7 +16,7 @@ int main(int argc, string[] argv) {
     int t = 0;
     
     while (j < 1000) {
-        arr[j] = random(0, 1000);
+        arr[j] = random(1, 1000);
         j = j + 1;
     }
 
