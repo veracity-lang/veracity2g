@@ -32,7 +32,8 @@ def create_comparison_plot(data_commute, data_no_commute, data_no_NB, benchmark,
     plt.xlabel('Log(Computation Size)', fontsize=15)
     plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
     
-    benchmark_name = benchmark.replace('vote-run', 'vote').title()
+    benchmark_name = benchmark.replace('vote-run', 'Vote').title()
+    benchmark_name = benchmark_name.replace('2D-Array', 'PS-DSWP-Array')
     plt.title(benchmark_name, fontsize=12, pad=10)
     
     plt.legend(loc='best', fontsize=14)
