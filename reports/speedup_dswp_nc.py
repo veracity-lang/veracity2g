@@ -66,9 +66,11 @@ def prep_simpleio(n):
         f.write("A")
     with open("b.txt", "w") as f:
         f.write("B"*(n))
+    with open("c.txt", "w") as f:
+        f.write("C"*(n))
     with open("d.txt", "w") as f:
         f.write("D"*(n))
-    return [os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
+    return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
