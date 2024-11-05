@@ -1,5 +1,5 @@
 commutativity{
-    {f1(fname_2)}, {f2(fname_3)} : (fname_2 != fname_3)
+    {f1(fname_1, fname_2)}, {f2(fname_3, fname_4)} : ((fname_2 != fname_3) && (fname_1 != fname_4) && (fname_2 != fname_4))
 }
 
 int main(int argc, string[] argv) {
@@ -9,25 +9,26 @@ int main(int argc, string[] argv) {
 	string fname_1 = argv[1];
 	string fname_2 = argv[2];
 	string fname_3 = argv[3];
+	string fname_4 = argv[4];
 	string temp = "";
     int j = 0;
     int k = 0;
     int z = 0;
 	
-	f1(fname_2): { 
+	f1(fname_1, fname_2): { 
         while(k < 20) {
             k = k + 1;
             cp(fname_1, fname_2);
         }
 	}
 
-	f2(fname_3): { 
+	f2(fname_3, fname_4): { 
         /* amplify problem size 10x */
         while(z < 10) {
             z = z + 1;
         
             i = open_read(fname_3);
-            o = open_write(fname_1);
+            o = open_write(fname_4);
             temp = read_line(i);
             write(o, temp);
             close(i);
