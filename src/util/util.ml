@@ -233,3 +233,9 @@ let rec apply_distinct_pairs f lst =
   match lst with
   | [] -> ()
   | x::xs -> List.iter (fun y -> f x y) xs; apply_distinct_pairs f xs
+
+let rec last_element lst =
+  match lst with
+  | [] -> None
+  | [x] -> Some x
+  | _ :: tail -> last_element tail

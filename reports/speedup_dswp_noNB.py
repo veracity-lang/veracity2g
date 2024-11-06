@@ -100,9 +100,9 @@ def replace_commutativity_predicate_in_memory(code: str) -> str:
         re.DOTALL
     )
     code_without_commutativity = re.sub(pattern_commutativity, '', code)
-    
-    pattern_label = re.compile(r'(?:\w+(?:\([^)]*\))?):\s*\{')
-    
+
+    pattern_label = re.compile(r'(\w+(?:\([^)]*\))?)\s*:\s*\{')
+
     result = ""
     pos = 0
     while True:
@@ -110,21 +110,21 @@ def replace_commutativity_predicate_in_memory(code: str) -> str:
         if not match:
             result += code_without_commutativity[pos:]
             break
-            
+
         result += code_without_commutativity[pos:match.start()]
-        
+
         open_brace_pos = match.end() - 1
         close_brace_pos = find_matching_brace(code_without_commutativity, open_brace_pos + 1)
-        
+
         if close_brace_pos == -1:
             result += code_without_commutativity[match.start():]
             break
-            
-        content = code_without_commutativity[match.end():close_brace_pos-1]
-        result += content
-        
-        pos = close_brace_pos
 
+        content = code_without_commutativity[open_brace_pos:close_brace_pos + 1]
+        result += content
+
+        pos = close_brace_pos + 1
+        
     return result
     
 

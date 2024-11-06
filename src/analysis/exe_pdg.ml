@@ -182,8 +182,8 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
         decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
-    | SBlock (Some (_, None),body) -> find_block_vars body.elt
-    | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt
+    | SBlock (Some (_, None),body) | SBlock (None, body) -> find_block_vars body.elt
+    | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt 
     | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
     | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue
@@ -502,6 +502,8 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
         let pdg = add_edge pdg src src ControlDep in
         List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg bl.elt
 
+      (* | SBlock (None, bl) ->
+        traverse_ast bl.elt pdg *)
       (* | SBlock (blocklabel, bl) -> 
         let n = stmt in 
         snd (add_node pdg n) *)
@@ -530,7 +532,7 @@ let find_neighbors pdg node : pdg_node list =
 
 let is_separate_node (node: pdg_node) : bool =
   match node.src with
-  | Some{elt=(SBlock _)} -> true
+  | Some{elt=(SBlock ((Some _), _))} -> true
   | _ -> false
 
 let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
@@ -760,6 +762,17 @@ let rec all_in_list_a_in_b list_a list_b =
 let is_return_node (node : dag_node) =
   List.exists (fun {l=loc;n=_;src = Some s} -> match s.elt with | Ret _ -> true | _ -> false) node.n
 
+let rec find_ancestors ancestors visited edges src_node =
+  List.fold_left (fun acc edge ->
+    if edge.dag_dst = src_node && not (List.mem edge.dag_src acc) && edge.dep == ControlDep then
+      if not (List.mem edge.dag_src visited) then
+        find_ancestors (edge.dag_src :: acc) (edge.dag_src :: visited) edges edge.dag_src
+      else
+        acc
+    else
+      acc
+  ) ancestors edges
+
 (* Function to merge doall blocks greedily *)
 let merge_doall_blocks dag_scc (pdg: exe_pdg) =
   let find_reachable_blocks block dag_scc visited =
@@ -779,11 +792,17 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
   let can_merge_blocks block1 block2 dag_scc =
     let c = List.exists (
       fun e -> 
-      all_in_list_a_in_b e.dag_src.n block1.n 
+      (all_in_list_a_in_b e.dag_src.n block1.n 
       && all_in_list_a_in_b e.dag_dst.n block2.n
       ||
       all_in_list_a_in_b e.dag_src.n block2.n 
-      && all_in_list_a_in_b e.dag_dst.n block1.n
+      && all_in_list_a_in_b e.dag_dst.n block1.n)
+      &&(
+        e.dep == ControlDep ||
+        let b1_ancestors = last_element (find_ancestors [] [] dag_scc.edges block1) in
+        let b2_ancestors = last_element (find_ancestors [] [] dag_scc.edges block2) in
+        match b1_ancestors, b2_ancestors with | Some b1, Some b2 -> compare_dag_nodes b1 b2 | _ ->false
+      )
       ) dag_scc.edges in 
     let reachable_from_block1 = find_reachable_blocks block1 dag_scc (ref []) in
     let reachable_from_block2 = find_reachable_blocks block2 dag_scc (ref []) in
@@ -923,7 +942,7 @@ let merge_sequential_blocks dag_scc =
           { e with dag_src = src; dag_dst = dst } ) new_edges in
         let updated_edges = remove_duplicate_edge updated_edges in 
         let updated_dag_scc = { dag_scc with nodes = nodes; edges = updated_edges } in
-        print_dag_debug updated_dag_scc;
+        (* print_dag_debug updated_dag_scc; *)
         merge_blocks merged_block updated_dag_scc visited
       end
   in
@@ -1212,17 +1231,6 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let tasks = List.map (fun t-> {t with deps_in = combine_dependencies t.deps_in; deps_out = combine_dependencies t.deps_out}) tasks in
   init_task, tasks
 
-let rec find_ancestors ancestors visited edges src_node =
-  List.fold_left (fun acc edge ->
-    if edge.dag_dst = src_node && not (List.mem edge.dag_src acc) && edge.dep == ControlDep then
-      if not (List.mem edge.dag_src visited) then
-        find_ancestors (edge.dag_src :: acc) (edge.dag_src :: visited) edges edge.dag_src
-      else
-        acc
-    else
-      acc
-  ) ancestors edges
-
 (* use empty data dependency edges intead of using SendEOP *)
 let add_empty_data_dep_edges dag_scc =
   let new_edges = ref dag_scc.edges in
@@ -1250,7 +1258,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   debug_print (lazy "Merging DAG_scc:\n");
   let merged_dag = merge_doall_blocks dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
-  (* print_dag_debug dag_scc_with_max_profile; *)
+  print_dag_debug dag_scc_with_max_profile;
   let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
