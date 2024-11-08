@@ -9,6 +9,7 @@ let generated_init_task = ref None
 let generated_tasks = ref []
 let generated_decl_vars = ref []
 let codegen = ref false
+let commutativity_spec_exist = ref false
 
 type dependency =
 | ControlDep
@@ -533,6 +534,7 @@ let find_neighbors pdg node : pdg_node list =
 let is_separate_node (node: pdg_node) : bool =
   match node.src with
   | Some{elt=(SBlock ((Some _), _))} -> true
+  | Some{elt=(SBlock (None, _))} -> if !commutativity_spec_exist then true else false
   | _ -> false
 
 let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
@@ -1283,6 +1285,8 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
     decl_vars := !decl_vars @ [decl]
   ) globals;
   m_vars := m_args;
+
+  commutativity_spec_exist := (List.length (g.group_commute) > 0);
 
   let pdg = build_pdg body.elt m_loc g.group_commute in 
   print_pdg_debug pdg;
