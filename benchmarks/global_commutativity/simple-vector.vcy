@@ -32,7 +32,7 @@ int main(int argc, string[] argv) {
     while(j < 1000) {
         sum = sum + y[j];
         j = j + 1;
-        busy_wait(scalingfactor);
+        /* busy_wait(scalingfactor); */
     }
 
     f2:{ 
