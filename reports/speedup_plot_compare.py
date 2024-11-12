@@ -1,3 +1,5 @@
+# python3 ./speedup_plot_compare.py out-dswp-arran out-dswp-nc out-dswp-noNB out-dswp-comparison-all
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -29,12 +31,15 @@ def create_comparison_plot(data_commute, data_no_commute, data_no_NB, benchmark,
     plt.axhline(y=1, color='black', linestyle='--', 
                 label='Speedup = 1', linewidth=1.6)
 
-    plt.xlabel('Log(Computation Size)', fontsize=15)
-    plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
+    # plt.xlabel('Log(Computation Size)', fontsize=12)
+    # plt.ylabel('Par-to-Seq Speedup', fontsize=12)
+
+    plt.xticks(fontsize=15)
+    plt.yticks(fontsize=15)
     
-    benchmark_name = benchmark.replace('vote-run', 'Vote').title()
-    benchmark_name = benchmark_name.replace('2D-Array', 'PS-DSWP-Array')
-    plt.title(benchmark_name, fontsize=12, pad=10)
+    # benchmark_name = benchmark.replace('vote-run', 'Vote').title()
+    # benchmark_name = benchmark_name.replace('2D-Array', 'PS-DSWP-Array')
+    # plt.title(benchmark_name, fontsize=12, pad=10)
     
     plt.legend(loc='best', fontsize=14)
     plt.grid(True, linestyle=':', alpha=0.6)
