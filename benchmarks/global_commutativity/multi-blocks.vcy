@@ -1,8 +1,15 @@
 commutativity {
     {f1(tbl,x,y)}, {f2(tbl,z,y)}: (tbl[z] == tbl[x] && !(z == x) || z == x);
     {f2(tbl,z,y)}, {f3(tbl,z,y)}: (!(ht_size(tbl) > 0) && !(0 == z) || 0 == z);
-    {f4(files,i_1)}, {f5(files,i_2)}: (files[i_2] == files[i_1]);
-    {f4(files,i_1)}, {f6(files,i_3)}: (!(i_3 == i_1))
+    {f4(files,i_1)}, {f4(files,i_2)}: (files[i_2] == files[i_1]);
+    {f4(files,i_1)}, {f6(files,i_3)}: (!(i_3 == i_1));
+    {f1(tbl,x,y)}, {f3(tbl,z,y)}: (!(ht_size(tbl) > 0) && !(0 == ht_size(tbl)) && !(0 == z) || 0 == ht_size(tbl) && !(0 == z) || 0 == z);
+    {f1(tbl,x,y)}, {f4(files,i_1)}: (true);
+    {f1(tbl,x,y)}, {f6(files,i_3)}: (true);
+    {f2(tbl,z,y)}, {f4(files,i_1)}: (true);
+    {f2(tbl,z,y)}, {f6(files,i_3)}: (true);
+    {f3(tbl,z,y)}, {f4(files,i_1)}: (true);
+    {f3(tbl,z,y)}, {f6(files,i_3)}: (true)
 } 
 
 int main(int argc, string[] argv) {
@@ -45,32 +52,20 @@ int main(int argc, string[] argv) {
             y = y + z;
         }
 	}
-    {
-    i = i_1;
+
     f4(files,i):{ 
         busy_wait(n);
         f = files[i];
         f = f + 5;
         files[i] = f;
     }
-    }
-    {
-    i = i_2;
-    f5(files,i):{ 
-        f = files[i];
-        f = f + 5;
-        files[i] = f;
-        busy_wait(n);
-    }
-    }
 
-    {i = i_3;
     f6(files,i):{ 
+        busy_wait(n);
         g = files[i];
         g = g + 5;
         files[i] = g;
-        busy_wait(n);
-    }}
+    }
 
 	return 0;
 }
