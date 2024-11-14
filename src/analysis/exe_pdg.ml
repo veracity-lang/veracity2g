@@ -1254,6 +1254,15 @@ let add_empty_data_dep_edges dag_scc =
         ) ancestors
     | _ -> ()
   ) dag_scc.edges;
+  apply_distinct_pairs (fun x y -> 
+    if !Util.manual_dependency then begin 
+      let new_edge = { dag_src = x; dag_dst = y; dep = (DataDep []); loop_carried = false } in
+        if not (List.mem new_edge !new_edges) && not (is_return_node x) && not (is_return_node y) then begin
+          new_edges := new_edge :: !new_edges
+        end
+        else ()
+    end
+  ) dag_scc.nodes;
   { dag_scc with edges = !new_edges }
 
 let thread_partitioning dag_scc pdg (threads: int list) body =

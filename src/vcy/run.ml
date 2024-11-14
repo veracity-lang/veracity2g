@@ -135,6 +135,7 @@ module RunInterp : Runner = struct
   let prover_name = ref ""
   let timeout = ref None
   let dswp_mode = ref false
+  (* let no_named_blocks = ref false *) (* TODO *)
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -148,6 +149,7 @@ module RunInterp : Runner = struct
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " <name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
+    (* ; "--no-named-blocks", Arg.Set no_named_blocks, " Deal with named blocks as the normal blocks" *)
     ] |>
     Arg.align
 
@@ -174,6 +176,13 @@ module RunInterp : Runner = struct
 
       if !dswp_mode then begin
         Interp.dswp_mode := true;
+      end;
+
+      if Util.contains_substring prog_name "simple-io" then begin 
+        Util.manual_dependency := true; (* TODO: rm later after add support for filesys deps *)
+      end
+      else begin 
+        Util.manual_dependency := false;
       end;
 
       let prog = Driver.parse_oat_file prog_name in

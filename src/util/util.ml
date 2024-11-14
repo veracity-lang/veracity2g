@@ -239,3 +239,13 @@ let rec last_element lst =
   | [] -> None
   | [x] -> Some x
   | _ :: tail -> last_element tail
+
+  let contains_substring str s =
+  try
+    let regexp = Str.regexp_string s in
+    Str.search_forward regexp str 0 >= 0
+  with
+    Not_found -> false
+
+  
+  let manual_dependency = ref false
