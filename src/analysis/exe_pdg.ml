@@ -172,7 +172,21 @@ let rec find_block_vars block : ((ty * string) * int) list =
 and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list = 
   match stmt with
   | EWhile e | EIf e | EIfElse e  -> set_vars_side (find_exp_vars e) rvalue
-  (* | EFor (vdecls, eoption, soption) ->  *)
+  | EFor (vdecls, eoption, soption) -> 
+    List.concat_map (fun v -> 
+      let id, (ty, e) = v in 
+      ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
+    ) vdecls 
+    @
+    begin match eoption with 
+    | Some e -> set_vars_side (find_exp_vars e) rvalue
+    | None -> []
+    end 
+    @
+    begin match soption with 
+    | Some s -> find_stmt_vars (EStmt s)
+    | None -> []
+    end 
   | EStmt s ->
     begin match s.elt with 
     | Assn (e1,e2) -> (set_vars_side (find_exp_vars e1) lvalue) @ (set_vars_side (find_exp_vars e2) rvalue)
@@ -186,18 +200,28 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | SBlock (Some (_, None),body) | SBlock (None, body) -> find_block_vars body.elt
     | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt 
     | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
+    | For (vdecls,eoption,soption,body) -> 
+      List.concat_map (fun v -> 
+      let id, (ty, e) = v in 
+      ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
+      ) vdecls 
+      @
+      begin match eoption with 
+      | Some e -> set_vars_side (find_exp_vars e) rvalue
+      | None -> []
+      end 
+      @
+      begin match soption with 
+      | Some s -> find_stmt_vars (EStmt s)
+      | None -> []
+      end 
+      @ find_block_vars body.elt
     | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue
     | SCall (_, el) | SCallRaw (_, el) -> (set_vars_side (List.concat_map find_exp_vars el) rvalue)
     | _ -> []
     end 
   | Entry -> []
-  | EFor(_, _, _) -> failwith "efor in find_stmt_vars."
-
-  (* 
-  | Commute of commute_variant * commute_condition * block node list
-  | Havoc of id
-  | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond *)
 
 and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
@@ -354,32 +378,6 @@ let rec mark_visited n visited =
       (node, true) :: rest
     else
       (node, false) :: mark_visited n rest
-
-(* Function to check if a control dependence is loop-carried *)
-(* let is_control_dependence_loop_carried (edge: pdg_edge) pdg =
-  let rec has_loop_backedge_to_loop_header (n1: pdg_node) (n2: pdg_node) (edge: pdg_edge) (visited: visited) =
-    let visited = mark_visited n1 visited in 
-    match edge.dep with 
-    | ControlDep -> 
-      if compare_nodes n1 n2 then true
-      else if List.assoc n2 visited then false
-      else has_loop_backedge_to_loop_header n2 visited
-    | _ -> false
-  in
-  let rec all_paths_contain_loop_backedge node1 node2 visited =
-    visited.(node1.id) <- true;
-    if node1.id = node2.id then true
-    else begin
-      match node1.control_dependence with
-      | None -> false
-      | Some pred ->
-        if visited.(pred.id) then false
-        else all_paths_contain_loop_backedge pred node2 visited
-    end
-  in
-  has_loop_backedge_to_loop_header edge.src edge.dst edge (List.map (fun v -> (v, false)) pdg.nodes) &&
-  all_paths_contain_loop_backedge n1 n2 (Array.make (Array.length nodes) false) *)
-
 
 (* Function to check if a dependence arc is loop-carried *)
 let is_loop_carried_dependence (pdg: exe_pdg) (edge: pdg_edge) =
@@ -1068,7 +1066,22 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
             new_body @ rest, false && f
           end
 
-        (* | For (v,e,s,_) -> EFor (v,e,s) *)
+        | For (v,e,s,b) -> 
+          let new_body, f = transform_block dag_scc_node b in
+          if stmt_exist stmt dag_scc_node then begin
+            let updated_body = 
+              if not f then 
+                remove_and_find_nodes dag new_body b
+                |> augment_block new_body
+              else 
+                new_body 
+            in
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            (node_up stmt (For (v, e, s, node_up b updated_body))) :: rest, true && f
+          end else begin
+            let rest, f = transform_block dag_scc_node (node_up block tl) in
+            new_body @ rest, false && f
+          end
         | s -> 
           if stmt_exist stmt dag_scc_node 
           then begin
