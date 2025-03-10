@@ -1,5 +1,5 @@
 commutativity {
-    {f1(i_1, x, arr)}, {f2(i_2, arr)}: ((i_1 != i_2) || (i_1 == i_2 && arr[i_1] > 0))
+    {f1(i_1, x)}, {f2(i_2)}: ((i_1 != i_2) || (i_1 == i_2 && arr[i_1] > 0))
 }
 
 int main(int argc, string[] argv) {
@@ -21,13 +21,13 @@ int main(int argc, string[] argv) {
     }
 
     while (i < size) {
-        f1(i, x, arr):{ /* will only increase arr[i] */
+        f1(i, x):{ /* will only increase arr[i] */
             busy_wait(scalingfactor); 
             x = i;
             arr[i] = arr[i] + (x*x);
         }
 
-        f2(i, arr):{ /* only observes if arr[i]>0 */
+        f2(i):{ /* only observes if arr[i]>0 */
             t = /*compute*/(i);
             busy_wait(scalingfactor);
             if (arr[i] > 0 && t < 0) {
