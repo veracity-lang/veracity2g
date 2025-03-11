@@ -35,7 +35,7 @@ n_values = [
     1e4, 2e4, 5e4,
     1e5, 2e5, 5e5,
     1e6, 2e6, 5e6,
-    1e7, 2e7, 5e7,
+    1e7, 2e7, # 5e7,
     # 1e8
 ]
 
@@ -71,13 +71,14 @@ def prep_simpleio(n):
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/2d-array.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/commset.vcy", prep_commset),
-    ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio),
-    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"])
+    ("benchmarks/global_commutativity/sollve_dotprod.vcy", lambda n : [str(n)])
+#    ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)]),
+#    ("benchmarks/global_commutativity/2d-array.vcy", lambda n : [str(n)]),
+#    ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)]),
+#    ("benchmarks/global_commutativity/commset.vcy", prep_commset),
+#    ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)]),
+#    ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio),
+#    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"])
 ]
     
 

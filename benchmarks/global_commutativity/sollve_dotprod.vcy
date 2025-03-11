@@ -68,6 +68,7 @@ int main(int argc, string[] argv) {
   int[] b = new int[arrSize];
   int[] c = new int[arrSize];
   int blockWork = (arrSize - 1)/numBlocks;
+  int i=0;
   g:{ /* TODO: Dependencies don't quite generate right if we don't explicitly mark this */
     for (int i = 0; i< arrSize; i = i+1;)
     {
@@ -76,16 +77,15 @@ int main(int argc, string[] argv) {
       c[i] = 0;
     }
   }
-  
-  for(int i = 0; i < numBlocks; i = i+1;)
-          {
-          f(i): {
+  i = 0;
+  while(i < numBlocks) {
+   f(i): {
             int startInd = i*blockWork;
             int endInd = (i+1)*blockWork;
             for (int j = startInd + 1; j < endInd ; j = j+1;) {
               a[j] = (b[j] + b[j-1] + b[j+1])/3; }
           }
-          }
-  
+    i = i +1;
+  }
   return a[arrSize-1];
 }
