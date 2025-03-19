@@ -1,0 +1,57 @@
+/*
+https://docs.openzeppelin.com/contracts/2.x/api/token/erc20
+*/
+commutativity {
+    {transfer(i_1,amount_1,toWhom_1)}, {transfer(i_2,amount_2,toWhom_2)}: (pendingPoolSize[i_1 * nAgents + toWhom_1] < maxSpend[i_1]);
+    {approve(i_1)}, {approve(i_2)}: (i_1 != i_2);
+    {local(i_1, j)}, {local(i_2, j)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int scalingFactor = int_of_string(argv[1]);
+    int nAgents = 1000;
+
+    int[] pendingPoolSize = new int[nAgents];
+    int[] maxSpend = new int[nAgents];
+    int[] account = new int[nAgents];
+
+    int a = int_of_string(argv[2]);
+    int b = int_of_string(argv[3]);
+    int i = 0;
+    int toWhom = 0;
+    int amount = 0;
+
+    int i_1 = 0;
+    int i_2 = 0;
+    int amount_1 = 0;
+    int amount_2 = 0;
+    int toWhom_1 = 0;
+    int toWhom_2 = 0;
+    /* Approval phase */
+    while (i<nAgents) {
+        approve(i) : {
+            maxSpend[i] = 100;
+            busy_wait(scalingFactor);
+        }
+        i = i + 1;
+    }
+
+    /* Work phase */
+    while (i<nAgents) {
+        while(j<nTxns[i]) {
+            local(i,j): {
+                busy_wait(scalingFactor);
+                amount = /*calc(i,j)*/ a;
+                toWhom = /*calc2(i,j)*/ b;
+            }
+            transfer(i,amount,toWhom) : {
+                int temp = i * nAgents + toWhom;
+                pendingPoolSize[temp] = pendingPoolSize[temp] + amount;
+                account[i] = account[i] - amount;
+                account[toWhom] = account[toWhom] + amount;
+                pendingPoolSize[temp] = pendingPoolSize[temp] - amount;
+            }
+        }
+    }
+    return 0;
+}
