@@ -1,0 +1,49 @@
+/*
+k-means:
+https://github.com/kozyraki/stamp/blob/master/kmeans/kmeans.c
+
+*/
+
+commutativity {
+   {f1(i_1)}, {f1(i_2)} : (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+
+  while(i<nloops) {
+    /* "cluster_exec" */
+    nthreads = ;
+    numObjects = ;
+    numAttributes = ;
+    out_best_nclusters = ;
+    cluster_centres = ;
+    cluster_assign = ;
+    /* ultimately calls:
+    work() in
+    https://github.com/kozyraki/stamp/blob/master/kmeans/normal.c
+    myId = thread_getId();
+    start = myId * CHUNK;
+    */
+   while(j<nThreads) {
+    work(j): {
+        myId = thread_getId();
+        calc on data[myId];
+
+        int index = indices[myId];
+
+        /* update new_centers_len */
+        mutex_lock(new_centers_len);
+        new_centers_len[index] = new_centers_len[index] + 1;
+        mutex_unlock(new_centers_len);
+        
+        /* loop over features */
+        k=0; while(k<nFeatures) {
+            mutex_lock(new_centers);
+            new_centers[k] = new_centers[k] + 1;
+            mutex_unlock(new_centers);
+        }
+    }
+   }
+  }
+  return 0;
+}
