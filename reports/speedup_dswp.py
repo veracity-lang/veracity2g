@@ -69,6 +69,12 @@ def prep_simpleio(n):
         f.write("D"*(n))
     return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
 
+
+def prep_potrace(n):
+    result = [str(n)]
+    result.extend(prep_simpleio(n))
+    return result
+
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/sollve_dotprod.vcy", lambda n : [str(n)]),
@@ -81,7 +87,8 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"]),
     ("benchmarks/global_commutativity/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
     ("benchmarks/global_commutativity/banking.vcy", lambda n : [str(n), str(1), "1000"]),
-    ("benchmarks/global_commutativity/array.vcy", lambda n : [str(n)])
+    ("benchmarks/global_commutativity/array.vcy", lambda n : [str(n)]),
+    ("benchmarks/global_commutativity/commset-potrace.vcy", prep_potrace)
 ]
     
 

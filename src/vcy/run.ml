@@ -178,7 +178,7 @@ module RunInterp : Runner = struct
         Interp.dswp_mode := true;
       end;
 
-      if Util.contains_substring prog_name "simple-io" then begin 
+      if Util.contains_substring prog_name "simple-io" || Util.contains_substring prog_name "commset-potrace" then begin 
         Util.manual_dependency := true; (* TODO: rm later after add support for filesys deps *)
       end
       else begin 

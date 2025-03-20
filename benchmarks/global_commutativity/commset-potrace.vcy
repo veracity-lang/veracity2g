@@ -13,7 +13,7 @@
 */
 
 commutativity {
-   {f1(i_1)}, {f1(i_2)} : (argv[i_2] == argv[i_1] && argv[i_2 + 1] == argv[i_1 + 1] && !(i_2 == i_1) || i_2 == i_1)
+   {f1(i_1, argv)}, {f1(i_2, argv)} : (argv[i_2] == argv[i_1] && argv[i_2 + 1] == argv[i_1 + 1] && !(i_2 == i_1) || i_2 == i_1)
 }
 
 int main(int argc, string[] argv) {
@@ -27,15 +27,13 @@ int main(int argc, string[] argv) {
 
 
     while (i < argc - 1){
-        f1(i):{
+        f1(i, argv):{
             int j = 0;
             string temp = "";
             /* in/out filename pairs */
             in_fn = argv[i];
             out_fn = argv[i+1];
             while (j < 10) { /* Artificially increase workload by 10x */
-                j = j+1;
-
                 in_channel fin = open_read(in_fn);
                 out_channel fout = open_write(out_fn);
 
@@ -47,6 +45,7 @@ int main(int argc, string[] argv) {
 
                 close(fin);
                 close(fout);
+                j = j+1;
             }
         }
         i = i + 2;
