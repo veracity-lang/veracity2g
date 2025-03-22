@@ -19,7 +19,7 @@ def create_plot(data, benchmark, output_dir):
     
     plt.plot(log_N, data[benchmark], 
              marker='o', markersize=6, linewidth=2, 
-             label='Comm.')
+             label='NCBPar.')
 
     plt.axhline(y=1, color='black', linestyle='--', 
                 label='Speedup = 1', linewidth=1.6)
