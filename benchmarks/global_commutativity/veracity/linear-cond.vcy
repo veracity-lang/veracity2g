@@ -1,0 +1,32 @@
+commutativity{
+	{f1(x,y,z)}, {f2(x,y)}: (y > 0 || 0 == y && x + 2 == z)
+}
+int main(int argc, string[] argv) {
+	int size = int_of_string(argv[1]);
+	
+	int x = int_of_string(argv[2]);
+	int y = int_of_string(argv[3]);
+	int z = int_of_string(argv[4]);
+
+
+	f1(x,y,z):{ 
+		busy_wait(size);
+		mutex_lock(1);
+		if (y > 0) {
+			x = x + 2;
+		} else {
+			x = z;
+		}
+		mutex_unlock(1);
+	}
+	f2(x,y):{ mutex_lock(1); x = x + 1; y = y + 1; mutex_unlock(1); busy_wait(size); }
+	
+
+	print(
+		string_of_int(x) ^ " " ^ 
+		string_of_int(y) ^ " " ^ 
+		string_of_int(z) ^ "\n"
+	);
+
+	return 0;
+}

@@ -12,7 +12,7 @@ int main(int argc, string[] argv) {
 
   while(i<nloops) {
     /* "cluster_exec" */
-    nthreads = ;
+    nthreads = 8;
     numObjects = ;
     numAttributes = ;
     out_best_nclusters = ;
@@ -26,8 +26,9 @@ int main(int argc, string[] argv) {
     */
    while(j<nThreads) {
     work(j): {
-        myId = thread_getId();
-        calc on data[myId];
+        myId = /*thread_getId();*/ j;
+        busy_wait(n);
+        // calc on data[myId];
 
         int index = indices[myId];
 

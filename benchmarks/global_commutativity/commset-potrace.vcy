@@ -47,8 +47,11 @@ int main(int argc, string[] argv) {
                 close(fout);
                 j = j+1;
             }
+            s = "";
+            temp = "";
         }
         i = i + 2;
+
     }
     return 0;
 }

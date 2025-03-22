@@ -22,6 +22,8 @@ int main(int argc, string[] argv){
     int to_id_2 = 0;
     int vip_account = 0;
     
+    print(string_of_int(num_accounts));
+    print(string_of_int(num_transactions));
     /* Initialize account balances */
     int i = 0;
     while (i < num_accounts) {

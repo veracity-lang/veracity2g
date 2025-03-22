@@ -1,5 +1,5 @@
 commutativity {
-    {f1(x,a,c)}, {f2(c,z,y)}: _
+    {f1(x,a,c)}, {f2(c,z,y)}: (c > 0)
 }
 
 int main(int argc, string[] argv) {
@@ -9,7 +9,6 @@ int main(int argc, string[] argv) {
     int z = 0;
     int a = int_of_string(argv[3]);
     int c = int_of_string(argv[4]);
-    mutex_init(0); 
 
     f1(x,a,c):{ 
         busy_wait(size);

@@ -1,5 +1,5 @@
 commutativity {
-    {f1}, {f2(y)}: (!(1 == r[0]) && !(y == r[0] + 1) && !(r[0] > 1) || y == r[0] + 1 && !(r[0] > 1))
+    {f1(r)}, {f2(y,r)}: (!(1 == r[0]) && !(y == r[0] + 1) && !(r[0] > 1) || y == r[0] + 1 && !(r[0] > 1))
 }
 
 int main(int argc, string[] argv) {
@@ -8,11 +8,9 @@ int main(int argc, string[] argv) {
     int y = int_of_string(argv[3]); 
     int[] r = new int[1];
     r[0] = x;
-    
-    mutex_init(0);
 
-    f1:{ mutex_lock(0); r[0] = r[0] + 1; mutex_unlock(0); busy_wait(n); } 
-    f2(y):{ mutex_lock(0); if(r[0] > 1) { r[0] = y; } mutex_unlock(0);
+    f1(r):{ mutex_lock(0); r[0] = r[0] + 1; mutex_unlock(0); busy_wait(n); } 
+    f2(y,r):{ mutex_lock(0); if(r[0] > 1) { r[0] = y; } mutex_unlock(0);
       busy_wait(n);
     }
     

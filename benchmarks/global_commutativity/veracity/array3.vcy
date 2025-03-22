@@ -11,7 +11,6 @@ int main(int argc, string[] argv) {
     int[] arr = new int[10];
     
     int e = c % n;
-    mutex_init(0); 
 
     f1(a,b,e): { busy_wait(n); mutex_lock(0); a = a + 1; arr[e] = b; a = a - 1; mutex_unlock(0); }
     f2(a,d): { arr[d] = a; busy_wait(n); }

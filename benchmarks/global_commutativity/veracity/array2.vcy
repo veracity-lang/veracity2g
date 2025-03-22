@@ -1,5 +1,5 @@
 commutativity {
-    {f1}, {f2(x)}: (0 > a[0] && !(1 == x) || 1 == x)
+    {f1(a)}, {f2(x, a)}: (0 > a[0] && !(1 == x) || 1 == x)
 }
 
 int main(int argc, string[] argv) {
@@ -7,10 +7,9 @@ int main(int argc, string[] argv) {
     int x = int_of_string(argv[2]);
     int[] a = new int[1];
     a[0] = 69;
-    mutex_init(0); 
     
-    f1:{ busy_wait(n); mutex_lock(0); a[0] = a[0] + 1; mutex_unlock(0); }
-    f2(x):{ mutex_lock(0);  if(a[0] > 0) {a[0] = a[0] * x; } mutex_unlock(0); busy_wait(n); }
+    f1(a):{ busy_wait(n); mutex_lock(0); a[0] = a[0] + 1; mutex_unlock(0); }
+    f2(x,a):{ mutex_lock(0);  if(a[0] > 0) {a[0] = a[0] * x; } mutex_unlock(0); busy_wait(n); }
     
     
     return 0;
