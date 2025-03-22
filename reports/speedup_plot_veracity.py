@@ -37,8 +37,11 @@ for i, column in enumerate(columns):
 # Add horizontal line for speedup = 1
 plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
 
-plt.xlabel('Log(Computation Size)')
-plt.ylabel('Parallel-to-Sequential Speedup')
+plt.xticks(fontsize=15)
+plt.yticks(fontsize=15)
+
+plt.xlabel('Log(Computation Size)', fontsize=15)
+plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
 plt.legend()
 plt.grid(True)
 
