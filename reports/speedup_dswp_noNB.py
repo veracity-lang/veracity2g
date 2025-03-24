@@ -74,8 +74,21 @@ def prep_simpleio(n):
 
 
 def prep_potrace(n):
+    with open("a.txt", "w") as f:
+        f.write("A"*(n))
+    with open("b.txt", "w") as f:
+        f.write("B"*(n))
+    with open("c.txt", "w") as f:
+        f.write("C"*(n))
+    with open("d.txt", "w") as f:
+        f.write("D"*(n))
+    with open("e.txt", "w") as f:
+        f.write("E"*(n))
+    with open("f.txt", "w") as f:
+        f.write("F"*(n))
+    files = [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt"), os.path.join(os.path.dirname(sys.argv[0]), "e.txt"), os.path.join(os.path.dirname(sys.argv[0]), "f.txt")]
     result = [str(n)]
-    result.extend(prep_simpleio(n))
+    result.extend(files)
     return result
 
 # Program name, followed by any command line arguments
