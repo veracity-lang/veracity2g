@@ -19,16 +19,16 @@ commutativity {
 int main(int argc, string[] argv) {
     int scalingfactor = int_of_string(argv[1]);
     int i = 1;
-    string s = "";
-    string temp = "";
     int i_1 = 0;
     int i_2 = 0;
-    string in_fn = "";
-    string out_fn = "";
     int j = 0;
 
     while (i <= (argc - 1)/2){
         f1(i):{
+            string in_fn = "";
+            string out_fn = "";
+            string s = "";
+            string temp = "";
             j = 0;
             temp = "";
             /* in/out filename pairs */
@@ -50,9 +50,9 @@ int main(int argc, string[] argv) {
             }
             s = "";
             temp = "";
+            in_fn = "";
+            out_fn = "";
         }
-        in_fn = "";
-        out_fn = "";
         i = i + 1;
 
     }
