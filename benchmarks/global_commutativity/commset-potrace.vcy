@@ -13,7 +13,7 @@
 */
 
 commutativity {
-   {f1(i_1)}, {f1(i_2)} : (i_1 != i_2)
+   {f1(i_1)}, {f1(i_2)} : (argv[2*i_1+1] != argv[2*i_2] && argv[2*i_1] != argv[2*i_2+1] && argv[2*i_1+1] != argv[2*i_2+1])
 }
 
 int main(int argc, string[] argv) {
