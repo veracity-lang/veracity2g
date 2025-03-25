@@ -41,13 +41,15 @@ plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2
 plt.xticks(fontsize=15)
 plt.yticks(fontsize=15)
 
-plt.xlabel('Log(Computation Size)', fontsize=15)
-plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
+# plt.xlabel('Log(Computation Size)', fontsize=15)
+# plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
 plt.grid(True)
 
-plt.savefig(output_plot_file)
+plt.savefig(output_plot_file, dpi=300, bbox_inches='tight', transparent=True)
 
+plt.xlabel('Log(Computation Size)', fontsize=15)
+plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
 plt.legend()
-plt.savefig(output_plot_file_apx)
+plt.savefig(output_plot_file_apx, dpi=300, bbox_inches='tight', transparent=True)
 
 print(f"Plot saved successfully at {output_plot_file}")

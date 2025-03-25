@@ -26,6 +26,10 @@ def create_plot(data, benchmark, output_dir):
 
     plt.xticks(fontsize=15)
     plt.yticks(fontsize=15)
+
+
+    plt.xlabel('Log(Computation Size)', fontsize=12)
+    plt.ylabel('Par-to-Seq Speedup', fontsize=12)
     
     plt.legend(loc='best', fontsize=14)
     plt.grid(True, linestyle=':', alpha=0.6)

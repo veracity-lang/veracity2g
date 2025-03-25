@@ -5,7 +5,7 @@ https://github.com/kozyraki/stamp/blob/master/kmeans/kmeans.c
 */
 
 commutativity {
-   {work(j_1, indices)}, {work(j_2, indices)} : (indices[j_1] != indices[j_2])
+   {work(j_1, indices)}, {work(j_2, indices)} : (true)
 }
 
 int main(int argc, string[] argv) {
@@ -16,8 +16,9 @@ int main(int argc, string[] argv) {
   int j_1 = 0;
   int j_2 = 0;
   int j = 0;
+  int j = 0;
   int k = 0;
-  int myId = 0;
+  int z = 0;
   int[] new_centers_len = new int[1000];
   int[] new_centers = new int[1000];
   int nFeatures = 100;
@@ -29,6 +30,13 @@ int main(int argc, string[] argv) {
   cluster_centres = ;
   cluster_assign = ;*/
 
+  while(z<1000){
+    new_centers_len[z] = 0;
+    new_centers[z] = 0;
+    z = z + 1;
+  }
+
+
   while(i<nloops) {
     /* "cluster_exec" */
     /* ultimately calls:
@@ -37,11 +45,11 @@ int main(int argc, string[] argv) {
     myId = thread_getId();
     start = myId * CHUNK;
     */
+    j = 0;
     while(j<nThreads) {
       work(j, indices): {
         busy_wait(n);
         /* calc on data[myId];*/
-
         index = indices[j];
 
         /* update new_centers_len */
