@@ -71,18 +71,16 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/veracity/nonlinear.vcy", lambda n : [str(n), str(1), str(2), str(3), str(0)]), # TODO: Inference times out with valid condition
     ("benchmarks/global_commutativity/veracity/simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5)]),
     ("benchmarks/global_commutativity/veracity/even-odd.vcy", lambda n : [str(n), str(69), str(42)]),
-     ("benchmarks/global_commutativity/veracity/linear-bool.vcy", lambda n : [str(n), str(3), str(42)]),
+    ("benchmarks/global_commutativity/veracity/linear-bool.vcy", lambda n : [str(n), str(3), str(42)]),
     ("benchmarks/global_commutativity/veracity/linear-cond.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
-
-    # ("benchmarks/manual/ht-fizz-buzz.vcy", lambda n : [str(n)]),
-    
-
+    # ("benchmarks/global_commutativity/veracity/ht-fizz-buzz.vcy", lambda n : [str(n)]),
+    ("benchmarks/global_commutativity/veracity/dot-product.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
+    ("benchmarks/global_commutativity/veracity/loop-amt.vcy", lambda n : [str(n), str(1)]),
 
 
     # ("benchmarks/inference_output/counter-busywait.vcy", lambda n : [str(n)]),
     # ("benchmarks/inference_output/counter-busy-asym.vcy", lambda n : [str(n)]),
-    # ("benchmarks/inference_output/dot-product.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
-   
+
    
     # ("benchmarks/inference_output/load-balancing.vcy", lambda n : [str(n//4)]),
     

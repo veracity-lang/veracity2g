@@ -12,6 +12,7 @@ directory = sys.argv[1]
 
 input_csv_file = os.path.join(directory, 'ratio.csv')
 output_plot_file = os.path.join(directory, 'speedup-plot.png')
+output_plot_file_apx = os.path.join(directory, 'speedup-plot-apx.png')
 
 if not os.path.exists(input_csv_file):
     print(f"Error: {input_csv_file} does not exist.")
@@ -42,9 +43,11 @@ plt.yticks(fontsize=15)
 
 plt.xlabel('Log(Computation Size)', fontsize=15)
 plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
-plt.legend()
 plt.grid(True)
 
 plt.savefig(output_plot_file)
+
+plt.legend()
+plt.savefig(output_plot_file_apx)
 
 print(f"Plot saved successfully at {output_plot_file}")
