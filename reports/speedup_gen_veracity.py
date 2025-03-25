@@ -75,22 +75,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/veracity/linear-cond.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
     # ("benchmarks/global_commutativity/veracity/ht-fizz-buzz.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/veracity/dot-product.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
-    ("benchmarks/global_commutativity/veracity/loop-amt.vcy", lambda n : [str(n), str(1)]),
-
-
-    # ("benchmarks/inference_output/counter-busywait.vcy", lambda n : [str(n)]),
-    # ("benchmarks/inference_output/counter-busy-asym.vcy", lambda n : [str(n)]),
-
-   
-    # ("benchmarks/inference_output/load-balancing.vcy", lambda n : [str(n//4)]),
-    
-    # ("benchmarks/inference_output/nested-counter.vcy", lambda n : [str(n)]),
-    
-    # ("benchmarks/inference_output/nested.vcy", lambda n : [str(n)]),
-
-    # ("benchmarks/verify/calc.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
-    # ("benchmarks/verify/loop-amt.vcy", lambda n : [str(n), str(1)]),
-    # ("benchmarks/verify/nested-counter.vcy", lambda n : [str(n)]),
+    ("benchmarks/global_commutativity/veracity/loop-amt.vcy", lambda n : [str(n), str(1)])
 ]
 
 #    ("benchmarks/inference_output/overview-matrix.vcy", lambda n : [str(n)]),
@@ -99,8 +84,6 @@ def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     prog,fargs = b
     args = fargs(n)
 
-    # command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '--force-sequential', '../veracity2g/' + prog] + args # TODO: More time for inference?
-    # command_par = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../veracity2g/' + prog] + args
     command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args # TODO: More time for inference?
     command_par = [vcy_exe, 'interp', '--time', '--dswp', '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args
 
