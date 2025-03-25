@@ -993,13 +993,15 @@ and wait_deps j init_waits deps self_body =
   
   let wait_job (j', promise) = function
       | {commute_cond = { condition = None; _ }; _} ->
-          debug_print (lazy (Printf.sprintf "%d: Waiting on job dependency %d.\n" my_id j.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore
+          debug_print (lazy (Printf.sprintf "%d: Waiting on job dependency %d.\n" my_id j'.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore;
+          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
       | {commute_cond = cond; _}
         when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
-          debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore
-      | _ -> debug_print (lazy (Printf.sprintf "%d: Commute condition met. Skipping.\n" my_id))
+          debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j'.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore;
+          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
+      | _ -> debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid))
   in
   
   (* wait on every initial job *)
