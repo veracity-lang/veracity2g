@@ -38,12 +38,12 @@ for i, column in enumerate(columns):
 # Add horizontal line for speedup = 1
 plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
 
-plt.xticks(fontsize=15)
-plt.yticks(fontsize=15)
+plt.xticks(fontsize=17)
+plt.yticks(fontsize=17)
 
 # plt.xlabel('Log(Computation Size)', fontsize=15)
 # plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
-plt.grid(True)
+plt.grid(True, linestyle=':', alpha=0.6)
 
 plt.savefig(output_plot_file, dpi=300, bbox_inches='tight', transparent=True)
 
