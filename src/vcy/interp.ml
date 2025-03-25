@@ -1011,7 +1011,8 @@ and wait_deps j init_waits deps self_body =
   List.iter (fun d ->
     let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
     (* Get the jobs corresponding to this dependency *)
-    let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task && not (j' == j)) jobs in
+    let jobs_to_wait = List.filter (fun (j', _) -> 
+      j'.tid = d.pred_task && if j'.tid = j.tid then j'.tid < j.tid else true) jobs in
     List.iter (flip wait_job d) jobs_to_wait
   ) deps;
 
