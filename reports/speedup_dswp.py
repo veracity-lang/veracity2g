@@ -100,8 +100,8 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"]),
     ("benchmarks/global_commutativity/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
     ("benchmarks/global_commutativity/banking.vcy", lambda n : [str(n), "100", "1000"]),
-    # ("benchmarks/global_commutativity/array.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/commset-potrace.vcy", prep_potrace)
+    ("benchmarks/global_commutativity/commset-potrace.vcy", prep_potrace),
+    ("benchmarks/global_commutativity/commset-kmeans.vcy", lambda n : [str(n)])
 ]
     
 
