@@ -50,11 +50,16 @@ type hashtable_variant =
 | HTVarSequential
 | HTVarNaiveConcurrent
 
+type set_variant =
+| SetVarSequential
+| SetVarNaiveConcurrent
+
 type ty =
 | TVoid
 | TInt | TBool | TStr
 | TArr of ty
 | THashTable of ty * ty
+| TSet of ty
 | TChanR | TChanW
 | TStruct of id
 
@@ -69,6 +74,7 @@ let rec sty_of_ty = function
 
 
 type sht_ids = { ht : id; keys : id; size : id }
+type sset_ids = { vals : id; size : id }
 
 (* Embedded types from VCY to servois *)
 type ety =
@@ -77,6 +83,7 @@ type ety =
   | ETStr of id
   | ETArr of id * sty
   | ETHashTable of sty * sty * sht_ids
+  | ETSet of sty * sset_ids
   | ETChannel of id
 
 type arglist = ty bindlist
@@ -91,6 +98,7 @@ type exp =
 | CArr of ty * exp node list
 | NewArr of ty * exp node
 | NewHashTable of hashtable_variant * ty * ty
+| NewSet of set_variant * ty
 | Id of id
 | Index of exp node * exp node
 | CallRaw of id * exp node list
@@ -207,6 +215,7 @@ and value =
   | VStr   of string
   | VArr   of ty * value array
   | VHashTable of hashtable
+  | VSet    of set
   | VChanR  of string * in_channel * int
   | VChanW  of string * out_channel
   | VStruct of id * value ref bindlist
@@ -216,6 +225,12 @@ and hashtable = ty * ty * ht_variant
 and ht_variant =
   | VHTSequential of value Hashtables.Hashtable_seq.t
   | VHTNaive of value Hashtables.Hashtable_naive.t
+
+and set = ty * st_variant
+
+and st_variant = 
+  | VSetSequential of value Sets.Set_seq.t
+  | VSetNaive of value Sets.Set_naive.t
 
 (* VCY type <=> mangle index, servois type *)
 type embedding_map = (ty binding * ety) list
@@ -245,6 +260,7 @@ let string_of_ety = function
   | ETStr id -> "ETString " ^ id
   | ETArr(id, sty) -> "ETArr(" ^ id ^ ", " ^ string_of_sty sty ^ ")"
   | ETHashTable(sty, sty', sht_ids) -> "ETHashTable(" ^ string_of_sty sty ^ ", " ^ string_of_sty sty' ^ ", " ^ "{ ht : " ^ sht_ids.ht ^"; keys : " ^ sht_ids.keys ^ "; size : " ^ sht_ids.size ^ " }"
+  | ETSet(sty, s_ids) -> "ETSet(" ^ string_of_sty sty ^ ", " ^ "{ vals : " ^ s_ids.vals ^ "; size : " ^ s_ids.size ^ " }"
   | ETChannel id -> "ETChannel " ^ id
 
 (*
@@ -340,13 +356,14 @@ let type_of_value : value -> ty =
   | VArr (ty,_)    -> TArr ty
   | VStruct (id,_) -> TStruct id
   | VHashTable (tyk, tyv, _) -> THashTable (tyk, tyv)
+  | VSet (tyk, _) -> TSet (tyk)
 
 (* Is a type passed by reference (sort of)? 
  * Technically everything is passed by value.
  *)
 let type_is_reference : ty -> bool =
   function
-  | TChanR | TChanW | TArr _ | THashTable _ | TStruct _ -> true
+  | TChanR | TChanW | TArr _ | THashTable _ | TSet _ | TStruct _ -> true
   | _ -> false
 
 (* Presently this does the same as ( = ) *)
@@ -364,6 +381,8 @@ let rec ty_eq (env : env) ty1 ty2 =
   | THashTable (k1,v1), THashTable (k2,v2) ->
     ty_eq env k1 k2 &&
     ty_eq env v1 v2
+  | TSet (k1), TSet (k2) ->
+    ty_eq env k1 k2
   | TStruct id1, TStruct id2 ->
     id1 = id2
   | _ -> false
@@ -382,6 +401,7 @@ let ty_default_value (env : env) : ty -> value =
   | TArr ty    -> VNull (TArr ty)
   | TStruct id -> VNull (TStruct id)
   | THashTable (tyk, tyv) -> VNull (THashTable (tyk, tyv))
+  | TSet (tyk) -> VNull (TSet (tyk))
 
 let value_of_htdata : value Hashtables.htdata -> value =
   function
@@ -393,6 +413,16 @@ let htdata_of_value : value -> value Hashtables.htdata =
   | VInt i -> Hashtables.HTint (Int64.to_int i)
   | v -> Hashtables.HTD v
 
+let value_of_setdata : value Sets.setdata -> value =
+  function
+  | Sets.SD v -> v
+  | Sets.Sint i -> VInt (Int64.of_int i)
+
+let setdata_of_value : value -> value Sets.setdata =
+  function
+  | VInt i -> Sets.Sint (Int64.to_int i)
+  | v -> Sets.SD v
+  
 let init_mangle_id : id -> Smt.exp Smt.binding = fun i ->
   let [@warning "-8"] Smt.EVar mangled = (mangle_servois_id i 1) in
     (mangled, Smt.EVar (Var i))
@@ -402,6 +432,8 @@ let init_mangle : ety -> Smt.exp Smt.bindlist = function
     [init_mangle_id i]
   | ETHashTable (_,_,{ht;keys;size}) ->
     List.map init_mangle_id [ht;keys;size]
+  | ETSet (_,{vals;size}) ->
+    List.map init_mangle_id [vals;size]
 
 let final_mangle_id : int -> id -> Smt.exp = fun mangle i ->
     Smt.EBop (Eq, (mangle_servois_id_final i), (mangle_servois_id i mangle))
@@ -411,6 +443,8 @@ let final_mangle (mangle : int) : ety -> Smt.exp = function
     final_mangle_id mangle i
   | ETHashTable (_,_,{ht;keys;size}) ->
     Smt.ELop (And, (List.map (final_mangle_id mangle) [ht;keys;size]))
+  | ETSet (_,{vals;size}) ->
+    Smt.ELop (And, (List.map (final_mangle_id mangle) [vals;size]))
 
 let remove_index (mangled_id: string) : string =
   let r = Str.regexp "_[0-9]+" in 
@@ -425,6 +459,8 @@ let compile_ety_to_sty (id: string) (ty : ety) : (string * sty) list =
   | ETArr (_, sty) -> [(id, Smt.TArray (Smt.TInt, sty))]
   | ETHashTable (styk, styv, {ht=ht_id; keys=ht_keys; size=ht_size}) -> 
     [(ht_id, Smt.TArray (styk, styv)); (ht_keys, Smt.TSet styk); (ht_size, Smt.TInt)]
+  | ETSet (styk, {vals=set_vals; size=set_size}) -> 
+    [(set_vals, Smt.TSet styk); (set_size, Smt.TInt)]
   | ETChannel _ -> [(id, Smt.TString)]
 
 

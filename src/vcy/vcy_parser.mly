@@ -26,6 +26,9 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token HASHTABLE /* hashtable */
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
+%token SET /* Set */
+%token SET_SEQ
+%token SET_NAIVE
 %token RETURN   /* return */
 %token SEMI     /* ; */
 %token COLON    /* : */
@@ -165,6 +168,7 @@ ty:
   | TCHANW { TChanW }
   | t=ty LBRACKET RBRACKET { TArr t }
   | HASHTABLE LBRACKET tyk=ty COMMA tyv=ty RBRACKET { THashTable (tyk,tyv) }
+  | SET LBRACKET tyk=ty RBRACKET { TSet (tyk) }
   | id=UIDENT { TStruct id }
 
 %inline bop:
@@ -231,6 +235,8 @@ new_data:
   | NEW t=ty LBRACKET e=basic_exp RBRACKET {loc $startpos $endpos @@ NewArr(t,e)}
   | NEW htv=hashtable_variant LBRACKET tyk=ty COMMA tyv=ty RBRACKET
     {loc $startpos $endpos @@ NewHashTable (htv,tyk,tyv)}
+  | NEW setv=set_variant LBRACKET tyk=ty RBRACKET
+    {loc $startpos $endpos @@ NewSet (setv,tyk)}
   | NEW t=UIDENT LBRACE cs=separated_list(SEMI, field) RBRACE
                         { loc $startpos $endpos @@ CStruct(t, cs) }
 
@@ -238,6 +244,11 @@ new_data:
   | HASHTABLE { HTVarNaiveConcurrent }
   | HASHTABLE_SEQ { HTVarSequential }
   | HASHTABLE_NAIVE { HTVarNaiveConcurrent }
+
+%inline set_variant:
+  | SET { SetVarNaiveConcurrent }
+  | SET_SEQ { SetVarSequential }
+  | SET_NAIVE { SetVarNaiveConcurrent }
 
 field:
   | id=IDENT EQ e=exp { (id, e) }

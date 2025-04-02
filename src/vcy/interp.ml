@@ -299,6 +299,14 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | HTVarNaiveConcurrent -> VHTNaive (Hashtable_naive.make ())
     in
     env, VHashTable (tyk, tyv, ht)
+  | NewSet (variant, tyk) ->
+    let s =
+      let open Sets in
+      match variant with
+      | SetVarSequential -> VSetSequential (Set_seq.make ())
+      | SetVarNaiveConcurrent -> VSetNaive (Set_naive.make ())
+    in
+    env, VSet (tyk, s)
   | Id id ->
     let values = local_env env @ env.g.globals in
     begin match List.assoc_opt id values with
@@ -1575,7 +1583,7 @@ let cook_calls (g : global_env) : global_env =
       | Proj (e, i) ->
         Proj (cook_calls_of_exp e, i)
       | Id _ | CNull _ | CBool _ 
-      | CInt _ | CStr _ | NewHashTable _ -> e.elt
+      | CInt _ | CStr _ | NewHashTable _ | NewSet _ -> e.elt
     in
     node_up e e'
   in

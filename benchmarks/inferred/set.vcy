@@ -1,0 +1,18 @@
+int main(int argc, string[] argv) {
+    set[int] beta1 = new set[int];
+    set[int] beta2 = new set[int];
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[1]);
+
+    set_add(beta1, 42);
+    set_remove(beta1, 42);
+    set_contains(beta1, 42);
+    set_union(beta1, beta2);
+    set_intersect(beta1, beta2);
+
+	commute _ {
+		{ set_remove(beta1, x); }
+		{ set_add(beta1, y); }
+	}
+	return 0;
+}

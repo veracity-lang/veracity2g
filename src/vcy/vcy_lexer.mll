@@ -45,6 +45,10 @@
   ("hashtable_naive", HASHTABLE_NAIVE);
   ("pre", PRE);
   ("post", POST);
+  (* support a Set adt *)
+  ("set", SET);
+  ("set_seq", SET_SEQ);
+  ("set_naive", SET_NAIVE);
 
   (* Symbols *)
   ( ";", SEMI);
