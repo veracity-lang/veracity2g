@@ -1,0 +1,60 @@
+/* POTRACE */
+/* https://github.com/skyrpex/potrace/blob/master/src/main.c */
+/* https://dl.acm.org/doi/pdf/10.1145/1993498.1993500 */
+/* Similar to CommSet-md5sum (as explained by CommSet authors) */
+/* Main loop over input files. For each file, call:
+
+   process_file:
+   Process one or more bitmaps from fin, and write the results to fout
+   using the page_f function of the appropriate backend. 
+
+   static void process_file(backend_t *b, const char *infile, 
+     const char *outfile, FILE *fin, FILE *fout) 
+*/
+
+commutativity {
+   {f1(i_1, argv)}, {f1(i_2, argv)} : (argv[2*i_1+1] != argv[2*i_2] && argv[2*i_1] != argv[2*i_2+1] && argv[2*i_1+1] != argv[2*i_2+1])
+}
+
+int main(int argc, string[] argv) {
+    int scalingfactor = int_of_string(argv[1]);
+    int i = 1;
+    int i_1 = 0;
+    int i_2 = 0;
+    int j = 0;
+
+    while (i <= (argc - 1)/2){
+        f1(i, argv):{
+            string in_fn = "";
+            string out_fn = "";
+            string s = "";
+            string temp = "";
+            j = 0;
+            temp = "";
+            /* in/out filename pairs */
+            in_fn = argv[i*2];
+            out_fn = argv[i*2+1];
+            while (j < 10) { /* Artificially increase workload by 10x */
+                in_channel fin = open_read(in_fn);
+                out_channel fout = open_write(out_fn);
+
+                s = read_line(fin);
+                busy_wait(scalingfactor);
+                temp = string_of_int(md5_lower(s)); /* TODO */
+            
+                write(fout,temp);
+
+                close(fin);
+                close(fout);
+                j = j+1;
+            }
+            s = "";
+            temp = "";
+            in_fn = "";
+            out_fn = "";
+        }
+        i = i + 1;
+
+    }
+    return 0;
+}

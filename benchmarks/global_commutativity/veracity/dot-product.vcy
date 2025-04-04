@@ -1,0 +1,33 @@
+/* Dot product of 2D vectors */
+commutativity{
+  {f1}, {f2}: (true)
+}
+
+/*int dot_product(int[] x, int[] y, int d) {
+	
+	f1:{ mutex_lock(0); d = d + x[0] * y[0];mutex_unlock(0);  busy_wait(d);}
+	f2:{ busy_wait(d); mutex_lock(0); d = d + x[1] * y[1]; mutex_unlock(0); }
+	
+	return d;
+}*/
+
+int main(int argc, string[] argv) {
+
+	int d = int_of_string(argv[1]);
+ 
+	int[] x = new int[] {
+		int_of_string(argv[2]),
+		int_of_string(argv[3])
+	};
+
+	int[] y = new int[] {
+		int_of_string(argv[4]),
+		int_of_string(argv[5])
+	};
+
+	f1:{ mutex_lock(0); d = d + x[0] * y[0];mutex_unlock(0);  busy_wait(d);}
+	f2:{ busy_wait(d); mutex_lock(0); d = d + x[1] * y[1]; mutex_unlock(0); }
+	
+	/*return dot_product(x, y, d);*/
+	return d;
+}

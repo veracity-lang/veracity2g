@@ -72,15 +72,38 @@ def prep_simpleio(n):
         f.write("D"*(n))
     return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
 
+def prep_potrace(n):
+    with open("a.txt", "w") as f:
+        f.write("A"*(n))
+    with open("b.txt", "w") as f:
+        f.write("B"*(n))
+    with open("c.txt", "w") as f:
+        f.write("C"*(n))
+    with open("d.txt", "w") as f:
+        f.write("D"*(n))
+    with open("e.txt", "w") as f:
+        f.write("E"*(n))
+    with open("f.txt", "w") as f:
+        f.write("F"*(n))
+    files = [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt"), os.path.join(os.path.dirname(sys.argv[0]), "e.txt"), os.path.join(os.path.dirname(sys.argv[0]), "f.txt")]
+    result = [str(n)]
+    result.extend(files)
+    return result
+
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
+    ("benchmarks/global_commutativity/sollve_dotprod.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/2d-array.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/commset.vcy", prep_commset),
     ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)]),
     ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio),
-    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"])
+    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"]),
+    ("benchmarks/global_commutativity/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
+    ("benchmarks/global_commutativity/banking.vcy", lambda n : [str(n), "100", "1000"]),
+    ("benchmarks/global_commutativity/commset-potrace.vcy", prep_potrace),
+    ("benchmarks/global_commutativity/commset-kmeans.vcy", lambda n : [str(n)])
 ]
     
 def replace_commutativity_predicate_in_memory(code: str) -> str:

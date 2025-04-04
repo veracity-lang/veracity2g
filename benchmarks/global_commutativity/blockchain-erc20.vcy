@@ -1,0 +1,38 @@
+/*
+https://docs.openzeppelin.com/contracts/2.x/api/token/erc20
+*/
+commutativity {
+    {transfer(i1,amount1,toWhom1)}, {transfer(i2,amount2,toWhom2)}: (
+        pendingPoolSize[i1][toWhom1] < maxSpend[i1]
+    );
+    {approve(i1)}, {approve(i2)}: (i1 != i2)
+}
+
+int main(int argc, string[] argv) {
+    int scalingFactor = int_of_string();
+    int pendingPoolSize[][];
+    /* Approval phase */
+    while (i<nAgents) {
+        approve(i) : {
+            maxSpend[i] = 100;
+        }
+    }
+
+    /* Work phase */
+    while (i<nAgents) {
+        while(j<nTxns[i]) {
+            local(i,j): {
+                busy_wait(scalingFactor);
+                amount = calc(i,j);
+                toWhom = calc2(i,j);
+            }
+            transfer(i,amount,toWhom) : {
+                pendingPoolSize[i][toWhom] = pendingPoolSize[i][toWhom] + amount;
+                account[i] = account[i] - amount;
+                account[toWhom] = account[toWhom] + amount;
+                pendingPoolSize[i][toWhom] = pendingPoolSize[i][toWhom] - amount;
+            }
+        }
+    }
+    return 0;
+}

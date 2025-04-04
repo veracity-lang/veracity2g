@@ -1,0 +1,80 @@
+/*
+https://docs.openzeppelin.com/contracts/2.x/api/token/erc20
+*/
+commutativity {
+    {transfer(i_1,account_1,amount_1,toWhom_1,pendingPoolSize,nAgents,maxSpend)}, {transfer(i_2,account_2,amount_2,toWhom_2,pendingPoolSize,nAgents,maxSpend)}: (i_1 != i_2 || account_1[i_1] >= amount_1 + amount_2);
+    {approve(z_1)}, {approve(z_2)}: (true);
+    /*{local(i_1, j)}, {local(i_2, j)}: (true);*/
+    {approve(z)},{transfer(i, account, amount, toWhom,pendingPoolSize, nAgents, maxSpend)}: (true)
+}
+int main(int argc, string[] argv) {
+    int scalingFactor = int_of_string(argv[1]);
+    int nAgents = 20;
+
+    int[] pendingPoolSize = new int[nAgents * nAgents * nAgents];
+    int[] maxSpend = new int[nAgents];
+    int[] account = new int[nAgents];
+    int[] nTxns = new int[nAgents];
+
+    int a = int_of_string(argv[2]);
+    int b = int_of_string(argv[3]);
+    int i = 0;
+    int j = 0;
+    int z = 0;
+    int z_1 = 0;
+    int z_2 = 0;
+    int toWhom = 0;
+    int amount = 0;
+
+    int i_1 = 0;
+    int i_2 = 0;
+    int amount_1 = 0;
+    int amount_2 = 0;
+    int toWhom_1 = 0;
+    int toWhom_2 = 0;
+    int[] account_1 = new int[1];
+    int[] account_2 = new int[1];
+
+    while(i < nAgents){
+        nTxns[i] = 2;
+        pendingPoolSize[i] = 10;
+        account[i] = i * 100;
+        maxSpend[i] = i * 20;
+        i = i + 1;
+    }
+    i = 0;
+
+    while(i < nAgents + b + 1){
+        pendingPoolSize[i] = 0;
+        i = i + 1;
+    }
+    i = 0;
+
+    /* Approval phase */
+    while (z<nAgents) {
+        approve(z) : {
+            maxSpend[z] = 100;
+            busy_wait(scalingFactor);
+        }
+        z = z + 1;
+    }
+
+    /* Work phase */
+    while (i<nAgents) {
+        while(j<nTxns[i]) {
+            transfer(i,account,amount,toWhom,pendingPoolSize,nAgents,maxSpend) : {
+                busy_wait(scalingFactor);
+                amount = /*calc(i,j)*/ a;
+                toWhom = /*calc2(i,j)*/ b;
+                int temp = i * nAgents + toWhom;
+                pendingPoolSize[temp] = pendingPoolSize[temp] + amount;
+                account[i] = account[i] - amount;
+                account[toWhom] = account[toWhom] + amount;
+                pendingPoolSize[temp] = pendingPoolSize[temp] - amount;
+            }
+            j = j + 1;
+        }
+        i = i + 1;
+    }
+    return 0;
+}

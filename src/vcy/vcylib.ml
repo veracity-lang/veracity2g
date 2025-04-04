@@ -545,7 +545,7 @@ let lib_io : method_library =
       let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
       { bindings = 
         [ var_of_string @@ smt_e c1,
-            c0
+            EConst (CString "")
         ; var_of_string @@ smt_e rw_d1,
             rw_d0
         ; var_of_string @@ smt_e rw_ln1,

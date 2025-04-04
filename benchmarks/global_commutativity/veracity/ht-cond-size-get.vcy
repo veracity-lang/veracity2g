@@ -1,0 +1,23 @@
+commutativity {
+    {f1(tbl,y,z)}, {f2(tbl,y,z)}: (!(ht_size(tbl) > 0) && !(0 == z) || 0 == z)
+}
+
+int main(int argc, string[] argv) {
+	hashtable[int,int] tbl = new hashtable_seq[int,int];
+	int n = int_of_string(argv[1]);
+	int y = int_of_string(argv[2]);
+	int z = int_of_string(argv[3]);
+
+	f1(tbl,y,z):{ 	
+		busy_wait(n);
+		if(ht_size(tbl) > 0) { 
+		y = y + z;
+		}
+	}
+	f2(tbl,y,z):{ 	
+		y = ht_get(tbl,z);
+		busy_wait(n);
+	}
+	
+	return 0;
+}

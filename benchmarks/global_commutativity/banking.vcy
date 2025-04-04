@@ -1,0 +1,161 @@
+commutativity {
+    {processDeposit(acc_id_1)}, {processDeposit(acc_id_2)}: (acc_id_1 != acc_id_2);
+    {processWithdrawal(acc_id_1)}, {processWithdrawal(acc_id_2)}: (acc_id_1 != acc_id_2);
+    {processDeposit(acc_id_1)}, {processWithdrawal(acc_id_2)}: (acc_id_1 != acc_id_2);
+    {processTransfer(from_id, to_id)}, {processDeposit(acc_id)}: (from_id != acc_id && to_id != acc_id);
+    {processTransfer(from_id_1, to_id_1)}, {processTransfer(from_id_2, to_id_2)}: (from_id_1 != from_id_2 && from_id_1 != to_id_2 && to_id_1 != from_id_2 && to_id_1 != to_id_2)
+}
+
+int main(int argc, string[] argv){
+    int scalingfactor = int_of_string(argv[1]);
+    int num_accounts = int_of_string(argv[2]);
+    int num_transactions = int_of_string(argv[3]);
+    int[] accounts = new int[num_accounts];
+    int acc_id = 10;
+    int acc_id_1 = 0;
+    int acc_id_2 = 0;
+    int from_id = 2;
+    int from_id_1 = 0;
+    int from_id_2 = 0;
+    int to_id = 3;
+    int to_id_1 = 0;
+    int to_id_2 = 0;
+    int vip_account = 0;
+    
+    print(string_of_int(num_accounts));
+    print(string_of_int(num_transactions));
+    /* Initialize account balances */
+    int i = 0;
+    while (i < num_accounts) {
+        accounts[i] = 1000;  
+        i = i + 1;
+    }
+    
+    /* Process a single large deposit to a specific account */
+    vip_account = num_accounts / 2;
+    accounts[vip_account] = accounts[vip_account] + 50000;
+       
+    
+    /* Process batch of transactions (both deposits and withdrawals) in a single loop */
+    i = 0;
+    while (i < num_transactions) {
+        acc_id = i % num_accounts;
+        
+        /* Skip the VIP account as it was already processed separately */
+        if (acc_id != vip_account) {
+            /* Alternate between deposits and withdrawals */
+            if (i % 2 == 0) {
+                /* Process deposit */
+                int deposit_amount = 100 + (i * 5);
+                
+                processDeposit(acc_id): {
+                    print("Processing deposit of $");
+                    print(string_of_int(deposit_amount));
+                    print(" to account ");
+                    print(string_of_int(acc_id));
+                    print("\n");
+                    
+                    busy_wait(scalingfactor); 
+                    
+                    accounts[acc_id] = accounts[acc_id] + deposit_amount;
+                    print("Account ");
+                    print(string_of_int(acc_id));
+                    print(" new balance: $");
+                    print(string_of_int(accounts[acc_id]));
+                    print("\n");
+                }
+            } else {
+                /* Process withdrawal */
+                int withdrawal_amount = 50 + (i * 10);
+                
+                processWithdrawal(acc_id): {
+                    print("Processing withdrawal of $");
+                    print(string_of_int(withdrawal_amount));
+                    print(" from account ");
+                    print(string_of_int(acc_id));
+                    print("\n");
+                    
+                    busy_wait(scalingfactor); 
+                    
+                    /* Update account balance if sufficient funds */
+                    if (accounts[acc_id] >= withdrawal_amount) {
+                        accounts[acc_id] = accounts[acc_id] - withdrawal_amount;
+                        print("Account ");
+                        print(string_of_int(acc_id));
+                        print(" new balance: $");
+                        print(string_of_int(accounts[acc_id]));
+                        print("\n");
+                    } else {
+                        print("Insufficient funds in account ");
+                        print(string_of_int(acc_id));
+                        print("\n");
+                    }
+                }
+            }
+        }
+        
+        i = i + 1;
+    }
+    
+    /* Process a transfer between two specific accounts */
+    int from_account = 1;
+    int to_account = num_accounts - 1;
+    int transfer_amount = 250;
+    
+    processTransfer(from_account, to_account): {
+        print("Processing transfer of $");
+        print(string_of_int(transfer_amount));
+        print(" from account ");
+        print(string_of_int(from_account));
+        print(" to account ");
+        print(string_of_int(to_account));
+        print("\n");
+        
+        busy_wait(scalingfactor); 
+        
+        /* Execute transfer if sufficient funds */
+        if (accounts[from_account] >= transfer_amount) {
+            accounts[from_account] = accounts[from_account] - transfer_amount;
+            accounts[to_account] = accounts[to_account] + transfer_amount;
+            print("Transfer complete. New balances: Account ");
+            print(string_of_int(from_account));
+            print(": $");
+            print(string_of_int(accounts[from_account]));
+            print(", Account ");
+            print(string_of_int(to_account));
+            print(": $");
+            print(string_of_int(accounts[to_account]));
+            print("\n");
+        } else {
+            print("Transfer failed: Insufficient funds in account ");
+            print(string_of_int(from_account));
+            print("\n");
+        }
+    }
+
+    int total_balance = 0;
+    int max_balance = 0;
+    int max_account = 0;
+    
+    i = 0;
+    while (i < num_accounts) {
+        total_balance = total_balance + accounts[i];
+        if (accounts[i] > max_balance) {
+            max_balance = accounts[i];
+            max_account = i;
+        }
+        i = i + 1;
+    }
+    
+    print("\nFinal Statistics:\n");
+    print("Total funds in bank: $");
+    print(string_of_int(total_balance));
+    print("\n");
+    print("Account with highest balance: Account ");
+    print(string_of_int(max_account));
+    print(" with $");
+    print(string_of_int(max_balance));
+    print("\n");
+    
+    return 0;
+}

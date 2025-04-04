@@ -1,0 +1,75 @@
+/*
+k-means:
+https://github.com/kozyraki/stamp/blob/master/kmeans/kmeans.c
+
+*/
+
+commutativity {
+   {work(j_1, indices)}, {work(j_2, indices)} : (true)
+}
+
+int main(int argc, string[] argv) {
+  int n = int_of_string(argv[1]);
+  int nThreads = 8;
+  int nloops = 10;
+  int i = 0;
+  int j_1 = 0;
+  int j_2 = 0;
+  int j = 0;
+  int j = 0;
+  int k = 0;
+  int z = 0;
+  int[] new_centers_len = new int[1000];
+  int[] new_centers = new int[1000];
+  int nFeatures = 100;
+  int[] indices = new int[]{1,2,3,4,1,2,3,4};
+  int index = 0;
+  /*numObjects = ;
+  numAttributes = ;
+  out_best_nclusters = ;
+  cluster_centres = ;
+  cluster_assign = ;*/
+
+  while(z<1000){
+    new_centers_len[z] = 0;
+    new_centers[z] = 0;
+    z = z + 1;
+  }
+
+
+  while(i<nloops) {
+    /* "cluster_exec" */
+    /* ultimately calls:
+    work() in
+    https://github.com/kozyraki/stamp/blob/master/kmeans/normal.c
+    myId = thread_getId();
+    start = myId * CHUNK;
+    */
+    j = 0;
+    while(j<nThreads) {
+      work(j, indices): {
+        busy_wait(n);
+        /* calc on data[myId];*/
+        index = indices[j];
+
+        /* update new_centers_len */
+        mutex_lock(1);
+        new_centers_len[index] = new_centers_len[index] + 1;
+        mutex_unlock(1);
+        
+        /* loop over features */
+        k=0; 
+        while(k<nFeatures) {
+          mutex_lock(2);
+          new_centers[k] = new_centers[k] + 1;
+          mutex_unlock(2);
+          k = k + 1;
+        }
+        index = 0;
+      }
+      j = j + 1;
+    }
+    i = i + 1;
+  }
+  return 0;
+}

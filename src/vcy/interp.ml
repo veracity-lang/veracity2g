@@ -984,18 +984,24 @@ and wait_deps j init_waits deps self_body =
   *)
   
   (* debug_print (lazy (Printf.sprintf "%d's sorted deps: " (Option.value j.env.tid ~default:(-1)) ^ List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps' ^ "\n")); *)
+  let my_id = (Option.value j.env.tid ~default:(-1)) in
   
   debug_print (lazy (Printf.sprintf "%d's deps: (jobs with tid: %s) (tasks: %s)\n"
-    (Option.value j.env.tid ~default:(-1)) 
+    my_id 
     (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " (fst e |> fst).tid) "" init_waits)
     (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps)));
   
   let wait_job (j', promise) = function
+      | {commute_cond = { condition = None; _ }; _} ->
+          debug_print (lazy (Printf.sprintf "%d: Waiting on job dependency %d.\n" my_id j'.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore;
+          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
       | {commute_cond = cond; _}
         when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
-          debug_print (lazy (Printf.sprintf "Commute condition not met. Waiting on job %d.\n" j.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore
-      | _ -> debug_print (lazy ("Commute condition met. Skipping.\n"))
+          debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j'.tid));
+          Domainslib.Task.await (get !pool) promise |> ignore;
+          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
+      | _ -> debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid))
   in
   
   (* wait on every initial job *)
@@ -1005,7 +1011,8 @@ and wait_deps j init_waits deps self_body =
   List.iter (fun d ->
     let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
     (* Get the jobs corresponding to this dependency *)
-    let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task && not (j' == j)) jobs in
+    let jobs_to_wait = List.filter (fun (j', _) -> 
+      j'.tid = d.pred_task && if j'.tid = j.tid then j'.tid < j.tid else true) jobs in
     List.iter (flip wait_job d) jobs_to_wait
   ) deps;
 

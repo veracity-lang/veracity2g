@@ -21,7 +21,7 @@ def create_comparison_plot(data_commute, data_no_commute, data_no_NB, benchmark,
     
     # plt.rcParams.update({'font.size': 13})
     
-    plt.plot(log_N, data_commute[benchmark], label='Comm.', 
+    plt.plot(log_N, data_commute[benchmark], label='NCBPar.', 
              marker='o', markersize=6, linewidth=2)
     plt.plot(log_N, data_no_commute[benchmark], label='False-Comm.', 
              marker='s', markersize=6, linewidth=2, color='red')

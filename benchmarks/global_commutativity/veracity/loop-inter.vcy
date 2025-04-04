@@ -1,0 +1,26 @@
+commutativity {
+    {f1(x,s1)}, {f2(y,x,s2)}: (0 == x && 0 != y || 0 == y)
+}
+
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int y = int_of_string(argv[2]);
+    int n = int_of_string(argv[3]);
+    int s1 = 0;
+    int s2 = 0;
+    int acc = 0;
+    
+
+    f1(x,s1):{
+        
+        while(x>0) { x = x - 1;  busy_wait(n); s1 = s1 + 1; }
+        acc = acc + s1;
+    }
+    f2(x,y,s2):{
+    
+        while(y>0) { y = y - 1;  busy_wait(n); s2 = s2 + x; }
+        acc = acc + s2;
+    }
+    
+    return 0;
+}
