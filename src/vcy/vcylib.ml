@@ -240,7 +240,214 @@ let lib_debug : method_library =
     ; pc = None
     }
   ]
+
+  (* set_add(beta1, 42);
+  set_remove(beta1, 42);
+  set_contains(beta1, 42);
+  set_union(beta1, beta2);
+  set_intersect(beta1, beta2); *)
  
+let lib_set : method_library = 
+  let member_func () = let module P = (val check_prover ()) in
+    match P.name with 
+    | "CVC5" -> "set.member"
+    | _ -> "member"
+  in let insert_func () = "set.union"
+  in let remove_func () = "set.minus"
+  in let intersect_func () = "set.intersect"
+  in let singleton_func () = "set.singleton"
+  in
+  let open Sets in 
+  ["set_size", 
+    { pure = false
+    ; func = begin function
+      | env, [VSet (_, set)] ->
+        let size = 
+          match set with
+          | VSetNaive s      -> Set_naive.size s
+          | VSetSequential s -> Set_seq.size s
+        in
+        env, VInt (Int64.of_int size)
+      | _ -> raise @@ TypeFailure ("set_size arguments", Range.norange)
+      end
+    ; ret_ty = TInt
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, _, ETSet (_, {vals;size}), []) ->
+      let vals0, vals1 = mangle_servois_id_pair vals mangle in
+      let size0, size1 = mangle_servois_id_pair size mangle in
+      { bindings =
+        [ var_of_string @@ smt_e vals1, vals0
+        ; var_of_string @@ smt_e size1, size0
+        ]
+      ; ret_exp = size0
+      ; asserts = []
+      ; terms = []
+      ; preds = []
+      ; updates_rw = false
+      }
+    )
+    }
+    ;"set_mem", 
+    { pure = false;
+      func = begin function
+        | env, [VSet (ty, set); v] ->
+          if not @@ ty_match env v ty
+          then raise @@ TypeFailure ("set element type", Range.norange)
+          else 
+            let v = setdata_of_value v in
+            let mem = 
+              match set with
+              | VSetNaive t      -> Set_naive.mem t v
+              | VSetSequential t -> Set_seq.mem t v
+            in
+            env, VBool mem
+        | _ -> raise @@ TypeFailure ("set_mem arguments", Range.norange)
+      end;
+      ret_ty = TBool;
+      pc = Some (fun [@warning "-8"]
+        (mangle, _, ETSet (ty, {vals; size}), [v]) ->
+        let vals0, vals1 = mangle_servois_id_pair vals mangle in
+        { bindings = [var_of_string @@ smt_e vals1, vals0];
+          ret_exp = Smt.EFunc (member_func (), [v; vals0]);
+          asserts = [];
+          terms = [];
+          preds = [member_func (), [ty; Smt.TSet ty]];
+          updates_rw = false;
+        })
+    }
+    ; "set_add",
+    { pure = false
+    ; func = begin function
+      | env, [VSet (tyv, set); v] ->
+        if not @@ ty_match env v tyv
+        then raise @@ TypeFailure ("set value type", Range.norange)
+        else
+          let v = setdata_of_value v in
+          let res =
+            match set with
+            | VSetNaive t      -> Set_naive.add t v
+            | VSetSequential t -> Set_seq.add t v
+          in
+          env, VBool res
+      | _ -> raise @@ TypeFailure ("set add arguments", Range.norange)
+      end
+    ; ret_ty = TBool
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, _, ETSet (tyv, {vals;size}), [v]) ->
+      let vals0, vals1   = mangle_servois_id_pair vals mangle in
+      let size0, size1 = mangle_servois_id_pair size mangle in
+      { bindings =
+        [ var_of_string @@ smt_e vals1,
+        Smt.EFunc (insert_func (), [Smt.EFunc (singleton_func (), [v]); vals0]) ]
+      ; ret_exp = Smt.EConst (CBool true)
+      ; asserts = []
+      ; terms = [
+        ] (*TODO*)
+      ; preds =
+        [ member_func (), [tyv; Smt.TSet tyv] ]
+      ; updates_rw = false
+      }
+    )
+    }
+    ; "set_remove",
+    { pure = false
+    ; func = begin function
+      | env, [VSet (tyv, set); v] ->
+        if not @@ ty_match env v tyv
+        then raise @@ TypeFailure ("set value type", Range.norange)
+        else
+          let v = setdata_of_value v in
+          let res =
+            match set with
+            | VSetNaive t      -> Set_naive.remove t v
+            | VSetSequential t -> Set_seq.remove t v
+          in
+          env, VBool res
+      | _ -> raise @@ TypeFailure ("set_remove arguments", Range.norange)
+      end
+    ; ret_ty = TBool
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, _, ETSet (tyv, {vals;size}), [v]) ->
+      let vals0, vals1   = mangle_servois_id_pair vals mangle in
+      let size0, size1 = mangle_servois_id_pair size mangle in
+      { bindings =
+        [ var_of_string @@ smt_e vals1,
+          EFunc (remove_func (), [vals0; EFunc (singleton_func (), [v])])
+        ; var_of_string @@ smt_e size1,
+          EITE (EFunc (member_func (), [v; vals0]),
+            size0,
+            ELop (Add, [size0; EConst(CInt 1)])) (*TODO: make this -1*)
+        ]
+      ; ret_exp = Smt.EConst (CBool true)
+      ; asserts = []
+      ; terms = [] (*TODO*)
+      ; preds =
+        [ remove_func (), [tyv; Smt.TSet tyv] ]
+      ; updates_rw = false
+      }
+    )
+    }
+    (* ;"set_union",
+    { pure = false;
+      func = begin function
+        | env, [VSet (ty, set1); VSet (_, set2)] ->
+          let updated_set =
+            match set1, set2 with
+            | VSetNaive t1, VSetNaive t2 -> Set_naive.union t1 t2
+            | VSetSequential t1, VSetSequential t2 -> Set_seq.union t1 t2
+            | _ -> raise @@ TypeFailure ("set_union type mismatch", Range.norange)
+          in
+          env, VSet (ty, updated_set)
+        | _ -> raise @@ TypeFailure ("set_union arguments", Range.norange)
+      end;
+      ret_ty = TSet TInt;
+      pc = Some (fun [@warning "-8"]
+        (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
+        let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
+        let v2_0, _   = mangle_servois_id_pair v2 mangle in
+        { bindings = [
+            var_of_string @@ smt_e v1_1,
+            Smt.EFunc ("union", [v1_0; v2_0])
+          ];
+          ret_exp = v1_1;
+          asserts = [];
+          terms = []; (*TODO*)
+          preds = ["union", [ty; Smt.TSet ty]];
+          updates_rw = false;
+        })
+    }
+
+    ;"set_intersect",
+    { pure = false;
+      func = begin function
+        | env, [VSet (ty, set1); VSet (_, set2)] ->
+          let common_set =
+            match set1, set2 with
+            | VSetNaive t1, VSetNaive t2 -> Set_naive.intersect t1 t2
+            | VSetSequential t1, VSetSequential t2 -> Set_seq.intersect t1 t2
+            | _ -> raise @@ TypeFailure ("set_intersect type mismatch", Range.norange)
+          in
+          env, VSet (ty, common_set)
+        | _ -> raise @@ TypeFailure ("set_intersect arguments", Range.norange)
+      end;
+      ret_ty = TSet TInt;
+      pc = Some (fun [@warning "-8"]
+        (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
+        let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
+        let v2_0, _   = mangle_servois_id_pair v2 mangle in
+        { bindings = [
+            var_of_string @@ smt_e v1_1,
+            Smt.EFunc (intersect_func (), [v1_0; v2_0])
+          ];
+          ret_exp = v1_1;
+          asserts = [];
+          terms = [];
+          preds = [intersect_func (), [ty; Smt.TSet ty]];
+          updates_rw = false;
+        })
+    } *)
+  ]
+
 let lib_hashtable : method_library =
   let member_func () = let module P = (val check_prover ()) in
     match P.name with 
@@ -784,7 +991,8 @@ let lib_methods =
   lib_debug @ 
   lib_hashtable @
   lib_io @
-  lib_mutex
+  lib_mutex @
+  lib_set
 
 let pure_methods : id list =
   List.filter_map

@@ -96,6 +96,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         let ty = match typ with
                 | (TArr t) -> t
                 | THashTable (t1,t2) -> t2
+                | TSet t -> t
                 | _ -> failwith "not implemented"
         in
 

@@ -442,6 +442,10 @@ module AstML = struct
     | HTVarNaiveConcurrent -> "HTVarNaiveConcurrent"
     | HTVarSequential -> "HTVarSequential"
 
+  let string_of_setvariant = function
+    | SetVarSequential -> "SetVarSequential"
+    | SetVarNaiveConcurrent -> "SetVarNaiveConcurrent"
+
   let rec string_of_ty (t:ty) : string =
     match t with
     | TBool -> "TBool"
@@ -454,6 +458,7 @@ module AstML = struct
       sp "THashTable (%s, %s)" (string_of_ty tyk) (string_of_ty tyv)
     | TArr ty -> sp "TArr (%s)" @@ string_of_ty ty
     | TStruct id -> sp "TStruct (%s)" @@ string_of_id id
+    | TSet ty -> sp "TSet (%s)" @@ string_of_ty ty
 
   let string_of_binop : binop -> string = function
     | Add    -> "Add"
@@ -523,6 +528,8 @@ module AstML = struct
           id
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
+      | NewSet(variant,ty) -> sp "NewSet (%s, %s)"
+        (string_of_setvariant variant) (string_of_ty ty)
     end
 
   and string_of_exp (e:exp node) : string = 
@@ -672,6 +679,7 @@ module AstML = struct
       List.map (fun (i,v) -> sp " %s = %s" i (string_of_value !v)) vs |>
       String.concat ";" |>
       sp "%s {%s }" id
+    | VSet s -> "string_of_value VSet" (* TODO: implement this *)
         
   let string_of_binding_list (l : tyval bindlist) : string =
     let s =

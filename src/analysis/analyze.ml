@@ -27,6 +27,11 @@ let generate_embedding_map (vars : ty bindlist) : embedding_map =
         ( sty_of_ty tyk, sty_of_ty tyv, 
           { ht = id ; keys = id ^ "_keys"; size = id ^ "_size" })
     | TChanR | TChanW -> ETChannel id
+    | TSet t -> 
+      ETSet 
+      (sty_of_ty t,
+        {vals = id; size = id ^ "_size"}
+      )
     | _ -> raise @@ NotImplemented "Unsupported type embedding"
   in
   List.map (fun v -> v, f v) vars
