@@ -6,11 +6,11 @@ int main(int argc, string[] argv) {
 
     set_add(beta1, 42);
     set_remove(beta1, 42);
-    set_contains(beta1, 42);
-    set_union(beta1, beta2);
-    set_intersect(beta1, beta2);
+    set_mem(beta1, 42);
+    /*set_union(beta1, beta2);*/
+    /*set_intersect(beta1, beta2);*/
 
-	commute _ {
+	commute (x != y) {
 		{ set_remove(beta1, x); }
 		{ set_add(beta1, y); }
 	}

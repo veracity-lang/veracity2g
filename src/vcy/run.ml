@@ -145,7 +145,7 @@ module RunInterp : Runner = struct
     ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, "Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, " <name> Use a particular prover (default: CVC4)"
+    ; "--prover", Arg.Set_string prover_name, " <name> Use a particular prover (default: CVC5)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " <name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
@@ -158,7 +158,7 @@ module RunInterp : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
@@ -507,7 +507,7 @@ module RunInfer : Runner = struct
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
+    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--force", Arg.Set Interp.force_infer, " Force inference of all commutativity conditions (even when one is provided)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "-o",      Arg.Set_string output_file, "<file> Output transformed program to file. Default is stdout."
@@ -519,7 +519,7 @@ module RunInfer : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
@@ -588,7 +588,7 @@ module RunVerify : Runner = struct
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
+    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
     ] |>
     Arg.align
@@ -598,7 +598,7 @@ module RunVerify : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
@@ -624,10 +624,10 @@ module RunVerify : Runner = struct
     Arg.current := 1;
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
-    let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover ();
+    let verify_options = {
+      Servois2.Verify.default_verify_options with prover = get_prover ();
     } in
-    Util.servois2_synth_option := synth_options;
+    Util.servois2_verify_option := verify_options;
     match anons with
     | [prog] -> verify prog
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
