@@ -226,7 +226,7 @@ let get_postconditions () : sexp =
                 | None -> print_string key; print_newline (); raise Not_found
                 | Some ((id,ty),ety) ->
                   let final = match ty with 
-                  | THashTable (_,_) ->
+                  | THashTable (_,_) | TSet _ ->
                     final_mangle !value ety 
                   | _ -> let var = if !value == 0 then key else (key ^ "_" ^ Int.to_string (!value)) in
                           Smt.EBop (Eq, EVar (VarPost key), EVar (Var var));
@@ -444,7 +444,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   List.iter (
     fun [@warning "-8"] ((id,ty),ety) -> 
           match ty with 
-          | THashTable (_,_) -> begin 
+          | THashTable (_,_) | TSet _ -> begin 
           let ety_inits = init_mangle ety in
           List.iter (fun s -> ety_init_list := !ety_init_list @ [s]) ety_inits;
 
@@ -526,7 +526,6 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   (* let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in *)
   gstates := embedding_vars;
 
-  let predicates = generate_spec_predicates embedding_vars in
   let state_equal = generate_spec_statesEqual embedding_vars in
   let state = generate_spec_state embedding_vars in
 
@@ -537,6 +536,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   (* let pre = ELop(And, [EBop(Eq, EVar (Var "realWorld_opened"), EVar (Var "(as emptyset (Set String))")); pre]) in (* TODO: This is to debug until we have some way of constraining real world *) *)
 
   let preamble = generate_spec_preamble genv in 
+  let predicates = generate_spec_predicates embedding_vars in
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
               precond = pre; postcond = post; state = state; methods= methods; smt_fns = !smt_fn_list} in

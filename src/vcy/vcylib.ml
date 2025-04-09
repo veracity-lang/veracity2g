@@ -240,12 +240,6 @@ let lib_debug : method_library =
     ; pc = None
     }
   ]
-
-  (* set_add(beta1, 42);
-  set_remove(beta1, 42);
-  set_contains(beta1, 42);
-  set_union(beta1, beta2);
-  set_intersect(beta1, beta2); *)
  
 let lib_set : method_library = 
   let member_func () = let module P = (val check_prover ()) in
@@ -334,15 +328,30 @@ let lib_set : method_library =
     ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
       (mangle, _, ETSet (tyv, {vals;size}), [v]) ->
-      let vals0, vals1   = mangle_servois_id_pair vals mangle in
+      let vals0, vals1 = mangle_servois_id_pair vals mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
       { bindings =
-        [ var_of_string @@ smt_e vals1,
-        Smt.EFunc (insert_func (), [Smt.EFunc (singleton_func (), [v]); vals0]) ]
+        [  
+          var_of_string @@ smt_e size1,
+          EITE (EFunc (member_func (), [v; vals0]),
+            size0,
+            ELop (Add, [size0; EConst(CInt 1)]));
+          var_of_string @@ smt_e vals1,
+          EITE (EFunc (member_func (), [v; vals0]),
+            vals0,
+            Smt.EFunc (insert_func (), [vals0; Smt.EFunc (singleton_func (), [v])]))
+        ]
       ; ret_exp = Smt.EConst (CBool true)
       ; asserts = []
       ; terms = [
-        ] (*TODO*)
+        (Smt.EConst (CInt 1)), Smt.TInt;
+        pure_id size, Smt.TInt;
+        ELop (Add, [pure_id size; EConst(CInt 1)]), Smt.TInt;
+        pure_id @@ smt_e v, tyv;
+        EFunc (insert_func (), [vals0; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
+        Smt.EFunc (singleton_func (), [v]), Smt.TSet tyv;
+        pure_id @@ smt_e vals0, Smt.TSet tyv;
+        ]
       ; preds =
         [ member_func (), [tyv; Smt.TSet tyv] ]
       ; updates_rw = false
@@ -371,18 +380,29 @@ let lib_set : method_library =
       let vals0, vals1   = mangle_servois_id_pair vals mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
       { bindings =
-        [ var_of_string @@ smt_e vals1,
-          EFunc (remove_func (), [vals0; EFunc (singleton_func (), [v])])
-        ; var_of_string @@ smt_e size1,
+        [ 
+          var_of_string @@ smt_e size1,
           EITE (EFunc (member_func (), [v; vals0]),
-            size0,
-            ELop (Add, [size0; EConst(CInt 1)])) (*TODO: make this -1*)
+            ELop (Add, [size0; EUop(Neg,EConst(CInt 1))]),
+            size0);
+          var_of_string @@ smt_e vals1,
+          EITE (EFunc (member_func (), [v; vals0]),
+            EFunc (remove_func (), [vals0; EFunc (singleton_func (), [v])]),
+            vals0)
         ]
       ; ret_exp = Smt.EConst (CBool true)
       ; asserts = []
-      ; terms = [] (*TODO*)
-      ; preds =
-        [ remove_func (), [tyv; Smt.TSet tyv] ]
+      ; terms = [
+        (Smt.EUop(Neg,EConst (CInt 1))), Smt.TInt;
+        pure_id size, Smt.TInt;
+        ELop (Add, [pure_id size; EUop(Neg,EConst(CInt 1))]), Smt.TInt;
+        pure_id @@ smt_e v, tyv;
+        EFunc (remove_func (), [vals0; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
+        Smt.EFunc (singleton_func (), [v]), Smt.TSet tyv;
+        pure_id @@ smt_e vals0, Smt.TSet tyv; 
+      ]
+      ; preds = [ member_func (), [tyv; Smt.TSet tyv] ]
+        (* [ remove_func (), [Smt.TSet tyv; Smt.TSet tyv] ] *)
       ; updates_rw = false
       }
     )
@@ -391,16 +411,16 @@ let lib_set : method_library =
     { pure = false;
       func = begin function
         | env, [VSet (ty, set1); VSet (_, set2)] ->
-          let updated_set =
+          let changed =
             match set1, set2 with
             | VSetNaive t1, VSetNaive t2 -> Set_naive.union t1 t2
             | VSetSequential t1, VSetSequential t2 -> Set_seq.union t1 t2
             | _ -> raise @@ TypeFailure ("set_union type mismatch", Range.norange)
           in
-          env, VSet (ty, updated_set)
+          env, VBool changed
         | _ -> raise @@ TypeFailure ("set_union arguments", Range.norange)
       end;
-      ret_ty = TSet TInt;
+      ret_ty = TBool;
       pc = Some (fun [@warning "-8"]
         (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
         let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
@@ -409,11 +429,11 @@ let lib_set : method_library =
             var_of_string @@ smt_e v1_1,
             Smt.EFunc ("union", [v1_0; v2_0])
           ];
-          ret_exp = v1_1;
+          ret_exp = Smt.EConst (Smt.CBool true);
           asserts = [];
-          terms = []; (*TODO*)
+          terms = [];
           preds = ["union", [ty; Smt.TSet ty]];
-          updates_rw = false;
+          updates_rw = true;
         })
     }
 
@@ -421,16 +441,16 @@ let lib_set : method_library =
     { pure = false;
       func = begin function
         | env, [VSet (ty, set1); VSet (_, set2)] ->
-          let common_set =
+          let changed =
             match set1, set2 with
             | VSetNaive t1, VSetNaive t2 -> Set_naive.intersect t1 t2
             | VSetSequential t1, VSetSequential t2 -> Set_seq.intersect t1 t2
             | _ -> raise @@ TypeFailure ("set_intersect type mismatch", Range.norange)
           in
-          env, VSet (ty, common_set)
+          env, VBool changed  (* Return a boolean indicating if the intersection changed the set *)
         | _ -> raise @@ TypeFailure ("set_intersect arguments", Range.norange)
       end;
-      ret_ty = TSet TInt;
+      ret_ty = TBool;  (* Return type is now bool *)
       pc = Some (fun [@warning "-8"]
         (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
         let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
@@ -439,11 +459,11 @@ let lib_set : method_library =
             var_of_string @@ smt_e v1_1,
             Smt.EFunc (intersect_func (), [v1_0; v2_0])
           ];
-          ret_exp = v1_1;
+          ret_exp = Smt.EConst (Smt.CBool true);  (* Assume intersection may change, or compute if needed *)
           asserts = [];
           terms = [];
           preds = [intersect_func (), [ty; Smt.TSet ty]];
-          updates_rw = false;
+          updates_rw = true;  (* The original set may be updated in-place *)
         })
     } *)
   ]

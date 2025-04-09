@@ -31,23 +31,29 @@ module Set_naive = struct
       if existed then Hashtbl.remove tbl v;
       existed)
 
-  let union ((tbl1, m1) : 'd t) ((tbl2, m2) : 'd t) : 'd t =
-    let result = make () in
+  let union ((tbl1, m1) : _ t) ((tbl2, _) : _ t) : bool =
     Mutex.protect m1 (fun () ->
-      Hashtbl.iter (fun key _ -> Hashtbl.replace (fst result) key ()) tbl1);
-    Mutex.protect m2 (fun () ->
-      Hashtbl.iter (fun key _ -> Hashtbl.replace (fst result) key ()) tbl2);
-    result
-
-  (* Intersection of two sets *)
-  let intersect ((tbl1, m1) : 'd t) ((tbl2, m2) : 'd t) : 'd t =
-    let result = make () in
+      let changed = ref false in
+      Hashtbl.iter (fun k _ ->
+        if not (Hashtbl.mem tbl1 k) then (
+          Hashtbl.replace tbl1 k ();
+          changed := true
+        )
+      ) tbl2;
+      !changed
+    )
+  
+  let intersect ((tbl1, m1) : _ t) ((tbl2, _) : _ t) : bool =
     Mutex.protect m1 (fun () ->
-      Hashtbl.iter (fun key _ ->
-        if Mutex.protect m2 (fun () -> Hashtbl.mem tbl2 key) then
-          Hashtbl.replace (fst result) key ()
-      ) tbl1);
-    result
+      let changed = ref false in
+      Hashtbl.filter_map_inplace (fun k _ ->
+        if Hashtbl.mem tbl2 k then Some () else (
+          changed := true;
+          None
+        )
+      ) tbl1;
+      !changed
+    )
       
 
   let size (tbl, m : _ t) = 
@@ -74,19 +80,23 @@ module Set_seq = struct
     if existed then Hashtbl.remove t v;
     existed
 
-  let union (t1 : 'd t) (t2 : 'd t) : 'd t =
-    let result = make () in
-    Hashtbl.iter (fun key _ -> Hashtbl.replace result key ()) t1;
-    Hashtbl.iter (fun key _ -> Hashtbl.replace result key ()) t2;
-    result
-    
-  let intersect (t1 : 'd t) (t2 : 'd t) : 'd t =
-    let result = make () in
+  let union (t1 : _ t) (t2 : _ t) : bool =
+    let changed = ref false in
     Hashtbl.iter (fun key _ ->
-      if Hashtbl.mem t2 key then
-        Hashtbl.replace result key ()
+      if not (Hashtbl.mem t1 key) then (
+        Hashtbl.replace t1 key ();
+        changed := true
+      )
+    ) t2;
+    !changed
+  
+  let intersect (t1 : _ t) (t2 : _ t) : bool =
+    let found = ref false in
+    Hashtbl.iter (fun key _ ->
+      if Hashtbl.mem t2 key then found := true
     ) t1;
-    result
+    !found
+    
     
 
   let size = Hashtbl.length
