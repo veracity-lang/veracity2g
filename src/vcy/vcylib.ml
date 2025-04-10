@@ -407,7 +407,7 @@ let lib_set : method_library =
       }
     )
     }
-    (* ;"set_union",
+    ;"set_union",
     { pure = false;
       func = begin function
         | env, [VSet (ty, set1); VSet (_, set2)] ->
@@ -422,18 +422,34 @@ let lib_set : method_library =
       end;
       ret_ty = TBool;
       pc = Some (fun [@warning "-8"]
-        (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
+        (mangle, _, ETSet (ty, {vals = v1; size = s1}), [v2]) ->
         let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
-        let v2_0, _   = mangle_servois_id_pair v2 mangle in
+        let s1_0, s1_1 = mangle_servois_id_pair s1 mangle in
+        (* let v2_0, _ = mangle_servois_id_pair v2 mangle in *)
+        
         { bindings = [
+            (* Update the set values to their union *)
             var_of_string @@ smt_e v1_1,
-            Smt.EFunc ("union", [v1_0; v2_0])
+            Smt.EFunc ("set.union", [v1_0; v2]);
+            
+            (* Calculate new size as the size of the union *)
+            var_of_string @@ smt_e s1_1,
+            Smt.EFunc ("set.card", [Smt.EFunc ("set.union", [v1_0; v2])])
           ];
           ret_exp = Smt.EConst (Smt.CBool true);
           asserts = [];
-          terms = [];
-          preds = ["union", [ty; Smt.TSet ty]];
-          updates_rw = true;
+          terms = [
+            (* Include terms needed for SMT reasoning *)
+            pure_id s1, Smt.TInt;
+            pure_id @@ smt_e v1_0, Smt.TSet ty;
+            pure_id @@ smt_e v2, Smt.TSet ty;
+            Smt.EFunc ("set.union", [v1_0; v2]), Smt.TSet ty;
+          ];
+          preds = [
+            "set.union", [Smt.TSet ty; Smt.TSet ty; Smt.TSet ty];
+            "set.card", [Smt.TSet ty; Smt.TInt]
+          ];
+          updates_rw = false;
         })
     }
 
@@ -447,25 +463,41 @@ let lib_set : method_library =
             | VSetSequential t1, VSetSequential t2 -> Set_seq.intersect t1 t2
             | _ -> raise @@ TypeFailure ("set_intersect type mismatch", Range.norange)
           in
-          env, VBool changed  (* Return a boolean indicating if the intersection changed the set *)
+          env, VBool changed
         | _ -> raise @@ TypeFailure ("set_intersect arguments", Range.norange)
       end;
-      ret_ty = TBool;  (* Return type is now bool *)
+      ret_ty = TBool;
       pc = Some (fun [@warning "-8"]
-        (mangle, _, ETSet (ty, {vals = v1}), [ETSet (_, {vals = v2})]) ->
+        (mangle, _, ETSet (ty, {vals = v1; size = s1}), [v2]) ->
         let v1_0, v1_1 = mangle_servois_id_pair v1 mangle in
-        let v2_0, _   = mangle_servois_id_pair v2 mangle in
+        let s1_0, s1_1 = mangle_servois_id_pair s1 mangle in
+        (* let v2_0, _ = mangle_servois_id_pair v2 mangle in *)
+        
         { bindings = [
+            (* Update the set values to their intersection *)
             var_of_string @@ smt_e v1_1,
-            Smt.EFunc (intersect_func (), [v1_0; v2_0])
+            Smt.EFunc ("set.inter", [v1_0; v2]);
+            
+            (* Calculate new size as the size of the intersection *)
+            var_of_string @@ smt_e s1_1,
+            Smt.EFunc ("set.card", [Smt.EFunc ("set.inter", [v1_0; v2])])
           ];
-          ret_exp = Smt.EConst (Smt.CBool true);  (* Assume intersection may change, or compute if needed *)
+          ret_exp = Smt.EConst (Smt.CBool true);
           asserts = [];
-          terms = [];
-          preds = [intersect_func (), [ty; Smt.TSet ty]];
-          updates_rw = true;  (* The original set may be updated in-place *)
+          terms = [
+            (* Include terms needed for SMT reasoning *)
+            pure_id s1, Smt.TInt;
+            pure_id @@ smt_e v1_0, Smt.TSet ty;
+            pure_id @@ smt_e v2, Smt.TSet ty;
+            Smt.EFunc ("set.inter", [v1_0; v2]), Smt.TSet ty;
+          ];
+          preds = [
+            "set.inter", [Smt.TSet ty; Smt.TSet ty; Smt.TSet ty];
+            "set.card", [Smt.TSet ty; Smt.TInt]
+          ];
+          updates_rw = false;
         })
-    } *)
+    }
   ]
 
 let lib_hashtable : method_library =
