@@ -348,9 +348,9 @@ let lib_set : method_library =
         pure_id size, Smt.TInt;
         ELop (Add, [pure_id size; EConst(CInt 1)]), Smt.TInt;
         pure_id @@ smt_e v, tyv;
-        EFunc (insert_func (), [vals0; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
+        EFunc (insert_func (), [pure_id vals; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
         Smt.EFunc (singleton_func (), [v]), Smt.TSet tyv;
-        pure_id @@ smt_e vals0, Smt.TSet tyv;
+        pure_id vals, Smt.TSet tyv;
         ]
       ; preds =
         [ member_func (), [tyv; Smt.TSet tyv] ]
@@ -397,9 +397,9 @@ let lib_set : method_library =
         pure_id size, Smt.TInt;
         ELop (Add, [pure_id size; EUop(Neg,EConst(CInt 1))]), Smt.TInt;
         pure_id @@ smt_e v, tyv;
-        EFunc (remove_func (), [vals0; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
+        EFunc (remove_func (), [pure_id vals; Smt.EFunc (singleton_func (), [v])]), Smt.TSet tyv;
         Smt.EFunc (singleton_func (), [v]), Smt.TSet tyv;
-        pure_id @@ smt_e vals0, Smt.TSet tyv; 
+        pure_id vals, Smt.TSet tyv; 
       ]
       ; preds = [ member_func (), [tyv; Smt.TSet tyv] ]
         (* [ remove_func (), [Smt.TSet tyv; Smt.TSet tyv] ] *)
@@ -441,7 +441,7 @@ let lib_set : method_library =
           terms = [
             (* Include terms needed for SMT reasoning *)
             pure_id s1, Smt.TInt;
-            pure_id @@ smt_e v1_0, Smt.TSet ty;
+            pure_id v1, Smt.TSet ty;
             pure_id @@ smt_e v2, Smt.TSet ty;
             Smt.EFunc ("set.union", [v1_0; v2]), Smt.TSet ty;
           ];
@@ -487,7 +487,7 @@ let lib_set : method_library =
           terms = [
             (* Include terms needed for SMT reasoning *)
             pure_id s1, Smt.TInt;
-            pure_id @@ smt_e v1_0, Smt.TSet ty;
+            pure_id v1, Smt.TSet ty;
             pure_id @@ smt_e v2, Smt.TSet ty;
             Smt.EFunc ("set.inter", [v1_0; v2]), Smt.TSet ty;
           ];
