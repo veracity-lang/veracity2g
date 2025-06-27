@@ -266,9 +266,6 @@ stmt:
   | HAVOC i=IDENT SEMI { loc $startpos $endpos @@ Havoc i }
   | b=block  { loc $startpos $endpos @@ SBlock(None,b) }
   | bl=block_label COLON b=block { loc $startpos $endpos @@ SBlock(Some bl,b) }
-  | variant=commute_variant phi=commute_condition
-    LBRACE PRE COLON pre=exp blocks=nonempty_list(block) POST COLON post=exp RBRACE
-    { loc $startpos $endpos @@ GCommute(variant,phi,pre,blocks,post) }
 
 block_label:
   | i=IDENT { (i, None) }

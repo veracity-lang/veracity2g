@@ -616,19 +616,6 @@ module AstML = struct
       sp "Havoc %s" (string_of_id id)
     | SBlock (bl, b) -> 
       sp "SBlock (%s, %s)" (string_of_option string_of_blocklabel bl) (string_of_block b)
-    | GCommute (var,phi,pre,bl,post) -> 
-      sp "GCommute (%s, %s, %s, %s, %s)"
-        begin match var with
-        | CommuteVarSeq -> "CommuteVarSeq"
-        | CommuteVarPar -> "CommuteVarPar"
-        end
-        begin match phi with 
-        | PhiInf   -> "PhiInf" 
-        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
-        end
-        (string_of_exp pre)
-        (string_of_list string_of_block bl)
-        (string_of_exp post)
     | SendDep (id, vars) ->
       sp "SendDep (%d: %s)" id (string_of_args vars)
     | SendEOP (id) ->
