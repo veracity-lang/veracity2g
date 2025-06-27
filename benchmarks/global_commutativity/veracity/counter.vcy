@@ -1,0 +1,19 @@
+commutativity{
+	{f1(c)},{f2(c)}: (c != 0)
+}
+
+int main(int argc, string[] argv) {
+	int x = int_of_string(argv[1]);
+	int c = 42;
+
+
+	f1(c):{ 
+		mutex_lock(0); c = c + 1; mutex_unlock(0); busy_wait(x);
+	}
+	f2(c):{ 
+		mutex_lock(0); if (c > 0) { c = c - 1; mutex_unlock(0); busy_wait(x); } else { mutex_unlock(0); }
+	}
+
+	print(string_of_int(c) ^ "\n");
+	return 0;
+}

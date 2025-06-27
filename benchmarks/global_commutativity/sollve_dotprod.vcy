@@ -1,0 +1,93 @@
+
+/* Original Program: 
+    int arrSize = probSize;
+    int numBlocks = numTasks;
+    float* a = malloc(sizeof(float)*arrSize);
+    float* b = malloc(sizeof(float)*arrSize);
+    float* c = malloc(sizeof(float)*arrSize);
+    int* blockWork = malloc(sizeof(int)*numBlocks);
+
+    for (int i = 0; i< arrSize; i++)
+      {
+        a[i] = 3.0;
+        b[i] = 2.0;
+        c[i] = 0.0;
+      }
+    
+    int ctaskwork;
+
+    for (int i = 0 ; i < numBlocks; i++)
+      {
+        ctaskwork = (probSize - 1)/(numTasks); // maybe could be MAXWORK/TotWork rather than div by 2                                                         
+        blockWork[i] = ctaskwork;
+      }
+
+    int numCores = 0;
+    double cpu_time = 0.0;
+    double task_time = 0.0;
+    
+#ifdef CPU_TEST
+   cpu_time = -omp_get_wtime();
+
+    float* temp;
+
+#pragma omp parallel
+    {
+#pragma omp for schedule(static, gsz)
+      {
+        for (int i = 0; i < numBlocks; i++)
+          {
+            int startInd = (i%(numBlocks/ndevs))*blockWork[i];
+            int endInd = (i%(numBlocks/ndevs)+1)*blockWork[i];
+            b[startInd] = lboundary[i];
+            b[endInd-1] = rboundary[i];
+            for (int j = startInd; j <= endInd ; j++)
+              a[j] = (b[j] + b[j-1] + b[j+1])/3.0;
+            //swap pointers a an b for update                                                                                                                 
+            c=b;
+            b=a;
+            a=c;
+            lboundary[i] = a[startInd];
+            rboundary[i] = a[endInd-1];
+          }
+      }
+      cpu_time += omp_get_wtime();
+      printf("cpu_time for comp: %f\n", cpu_time);
+*/
+commutativity {
+   {f(i_1)}, {f(i_2)} : (i_1 != i_2)
+}
+
+/* Veracity doesn't have float types so we will simulate with bigger integers. */
+int main(int argc, string[] argv) {
+  int i_1 = 0; int i_2 = 0;
+
+  int arrSize = 1048576;
+  int psize = int_of_string(argv[1])/10;
+  int numBlocks = 8; /* don't make constant? */
+  int[] a = new int[arrSize];
+  int[] b = new int[arrSize];
+  int[] c = new int[arrSize];
+  int blockWork = (arrSize - 1)/numBlocks;
+  int i=0;
+  g:{ /* TODO: Dependencies don't quite generate right if we don't explicitly mark this */
+    for (int i = 0; i< arrSize; i = i+1;)
+    {
+      a[i] = 3;
+      b[i] = 2;
+      c[i] = 0;
+    }
+  }
+  i = 0;
+  while(i < numBlocks) {
+   f(i): {
+            int startInd = i*blockWork;
+            int endInd = (i+1)*blockWork;
+            for (int j = startInd + 1; j < endInd ; j = j+1;) {
+              busy_wait(psize);
+              a[j] = (b[j] + b[j-1] + b[j+1])/3; }
+          }
+    i = i +1;
+  }
+  return a[arrSize-1];
+}

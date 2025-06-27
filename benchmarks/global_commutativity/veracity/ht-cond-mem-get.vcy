@@ -1,0 +1,29 @@
+commutativity {
+    {f1(tbl,x)}, {f2(tbl,z)}: (tbl[z] == tbl[x] && !(z == x) || z == x)
+}
+
+int main(int argc, string[] argv) {
+	hashtable[int,int] tbl = new hashtable[int,int];
+	int n = int_of_string(argv[1]);
+	int x = int_of_string(argv[2]);
+	int y = int_of_string(argv[3]);
+	int z = int_of_string(argv[4]);
+
+	tbl[x] = 42;
+	tbl[z] = 42;
+
+	f1(tbl,x):{ 
+		busy_wait(n); mutex_lock(0); 
+		if(ht_mem(tbl, x)) { 
+			y = ht_get(tbl, x);
+		}  mutex_unlock(0);
+	}
+	f2(tbl,z):{	
+		mutex_lock(0); if(ht_mem(tbl, z)) {
+			y = ht_get(tbl, z);
+		} mutex_unlock(0);
+		busy_wait(n);
+	}
+
+	return 0;
+}

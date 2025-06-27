@@ -99,6 +99,7 @@
   ("assert", ASSERT);
   ("assume", ASSUME);
   ("havoc", HAVOC);
+  ("commutativity", COMMUTATIVITY);
 
   ("_", UNDERSCORE);
 

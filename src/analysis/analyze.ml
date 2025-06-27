@@ -11,6 +11,7 @@ let rec assoc_servois_ty (id : id) : embedding_map -> ty binding =
     | ETArr (i, _) when id = i -> v
     | ETHashTable (_,_,{ht;keys;size}) 
       when id = ht || id = keys || id = size -> v
+    | ETChannel i when id = i -> v
     | _ -> assoc_servois_ty id t
     end
 
@@ -25,6 +26,7 @@ let generate_embedding_map (vars : ty bindlist) : embedding_map =
       ETHashTable
         ( sty_of_ty tyk, sty_of_ty tyv, 
           { ht = id ; keys = id ^ "_keys"; size = id ^ "_size" })
+    | TChanR | TChanW -> ETChannel id
     | _ -> raise @@ NotImplemented "Unsupported type embedding"
   in
   List.map (fun v -> v, f v) vars
@@ -117,7 +119,7 @@ let phi_of_blocks (genv: global_env) (_: commute_variant) (blks: block node list
   in
   Servois2.Choose.choose := Servois2.Choose.poke2;
   let phi, _ = Servois2.Synth.synth ~options:!Util.servois2_synth_option spec m1 m2 in
-    (* Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete); *)
+    Printf.eprintf "%f, %f, %f, %d, %b\n" (!Servois2.Synth.last_benchmarks.time) (!Servois2.Synth.last_benchmarks.synth_time) (!Servois2.Synth.last_benchmarks.lattice_construct_time) (!Servois2.Synth.last_benchmarks.n_atoms) (!Servois2.Synth.last_benchmarks.answer_incomplete);
     exp_of_phi phi embedding
   (* Servois2.Choose.choose := Servois2.Choose.poke2; *)
 
