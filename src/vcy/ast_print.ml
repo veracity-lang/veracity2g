@@ -287,14 +287,24 @@ module AstPP = struct
           (* Basically copy pasted from print_block_aux *)
           if (List.length bodies) > 0 then
             begin pps "{"; ppnl (); pps "  ";
+                  begin match pre with
+                  | None -> pps ""
+                  | Some e -> pps "pre: ("; print_exp_aux 0 fmt e; pps ")"
+                  end;
+                  ppnl ();
                   pp_open_vbox fmt 0;
                   List.iter (Util.compose ppnl (print_block_aux fmt)) bodies;
                   pp_close_box fmt ();
+                  begin match post with
+                  | None -> pps ""
+                  | Some e -> pps "post: ("; print_exp_aux 0 fmt e; pps ")"
+                  end;
                   ppnl (); pps "}"
             end
           else pps "{ }"
       | Raise _ -> raise @@ NotImplemented "print_stmt_aux Raise"
-      | Assert _ -> raise @@ NotImplemented "print_stmt_aux Assert"
+      | Assert (e) -> 
+        pps "assert("; print_exp_aux 0 fmt e; pps ");"
       | Assume(e) ->
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
       | Havoc(id) ->
@@ -310,6 +320,7 @@ module AstPP = struct
         pps ")"
       | SendEOP(t) ->
         pps (Printf.sprintf "SendEOP(%d)" t);
+      | _ -> failwith "not implemented!"
     end
 
   let print_mdecl_aux fmt {elt={pure; mrtyp; mname; args; body};_} = (* TODO: doesn't use pure *)

@@ -420,10 +420,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let comm_blk = List.map (fun {elt=bl; _} -> bl ) blks in
           compile_block_to_smt (List.concat comm_blk) vctrs; 
           
+        
         | Assume(e) ->
           let exp_smt,_ = exp_to_smt_exp e right vctrs  in
           ELop(And, [exp_smt; compile_block_to_smt tl vctrs])
 
+        | Assert(e) ->
+          let exp_smt, _ = exp_to_smt_exp e right vctrs in
+          EBop(Imp, exp_smt, compile_block_to_smt tl vctrs)
+        
         | Havoc(id) ->
           let new_id = match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with EVar id -> id | _ -> failwith "havoc" in
           let havoc_id = id^"_havoc" in 

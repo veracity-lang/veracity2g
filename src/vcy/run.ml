@@ -464,6 +464,7 @@ end
 
 
 module RunInfer : Runner = struct
+  open Ast_print
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " infer [<flags>] <vcy program>"
   
@@ -485,6 +486,9 @@ module RunInfer : Runner = struct
   let lattice_timeout = ref (Some 30.)
   let stronger_pred_first = ref false
   let no_cache = ref true
+
+  let rewrite_commute = ref false
+  let print = ref false
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -511,6 +515,8 @@ module RunInfer : Runner = struct
     ; "--force", Arg.Set Interp.force_infer, " Force inference of all commutativity conditions (even when one is provided)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "-o",      Arg.Set_string output_file, "<file> Output transformed program to file. Default is stdout."
+    ; "--rewrite-commute", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
+    ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises"
     ] |>
     Arg.align
 
@@ -537,7 +543,19 @@ module RunInfer : Runner = struct
     Interp.emit_quiet := !quiet;
 
     let prog = Driver.parse_oat_file prog_name in
+    
+
+    let prog =
+      if !rewrite_commute then
+        Loop_induction.rewrite_program prog "infer"
+      else prog
+    in
+    if !print then 
+      Printf.printf "%s \n" (AstPP.string_of_prog prog)
+    else ();
+
     let env = Interp.initialize_env prog true in
+
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
@@ -567,6 +585,7 @@ module RunInfer : Runner = struct
 end
 
 module RunVerify : Runner = struct
+  open Ast_print
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " verify [<flags>] <vcy program>"
   
@@ -581,6 +600,9 @@ module RunVerify : Runner = struct
 
   let prover_name = ref ""
 
+  let rewrite_commute = ref false
+  let print = ref false
+
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -590,6 +612,8 @@ module RunVerify : Runner = struct
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
+    ; "--rewrite-commute", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
+    ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises"
     ] |>
     Arg.align
 
@@ -613,6 +637,15 @@ module RunVerify : Runner = struct
     Interp.print_cond := !cond;
 
     let prog = Driver.parse_oat_file prog_name in
+
+    let prog =
+      if !rewrite_commute then
+        Loop_induction.rewrite_program prog "verify"
+      else prog
+    in
+    if !print then 
+      Printf.printf "%s \n" (AstPP.string_of_prog prog);
+
     let env = Interp.initialize_env prog false in
     let dt, _ =
         time_exec @@ fun () -> Interp.verify_phis_of_prog env.g
