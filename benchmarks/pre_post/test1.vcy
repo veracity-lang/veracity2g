@@ -1,0 +1,14 @@
+int main(int argc, string[] argv) {
+    int ctr = int_of_string(argv[1]);
+    
+    commute (true) {
+        pre: (ctr == 0)
+        { 
+            ctr = 1;
+        } 
+        { }
+        post: (false) /* should fail */
+    }
+    
+    return 0;
+}
