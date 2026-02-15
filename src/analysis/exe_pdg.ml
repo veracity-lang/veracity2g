@@ -332,7 +332,7 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
   let find_commute_condition l1 l2 =
     let res = ref (None,[],[]) in 
     List.iter (
-      fun {elt=(bl, cond); _} ->
+      fun {elt=(bl, cond, _, _); _} ->
         let check_label label lb_list = 
           List.exists (fun (l,_) -> String.equal (fst label) l) lb_list
         in 

@@ -139,8 +139,21 @@ decl:
     { Gsdecl (loc $startpos $endpos {sname; fields}) }
   | COMMUTATIVITY LBRACE gc = separated_list(SEMI,group_commute) RBRACE { Commutativity(gc) }
 
+pre_block:
+  | LBRACE PRE COLON e=exp RBRACE { e }
+
+post_block:
+  | LBRACE POST COLON e=exp RBRACE { e }
+
 group_commute:
-  | bls = separated_list(COMMA, commute_frag) COLON phi=commute_condition {loc $startpos $endpos @@ (bls,phi) }
+  | bls=separated_list(COMMA, commute_frag)
+    COLON
+    pre=option(pre_block)
+    phi=commute_condition
+    post=option(post_block)
+    {
+      loc $startpos $endpos @@ (bls, phi, pre, post)
+    }
 
 commute_frag:
   /*| f = block_label {f}*/

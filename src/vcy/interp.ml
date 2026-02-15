@@ -557,7 +557,7 @@ and interp_global_commute (env: env) : (group_commute node * bool) list =
     begin match g with 
     | [] -> []
     | gc::tl -> 
-      let _, cc = gc.elt in 
+      let _, cc, pre, post = gc.elt in 
       begin match cc with 
       | PhiExp e ->
         let v = interp_phi env e in
@@ -1171,7 +1171,7 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
     begin match gc with 
     | [] -> [] 
     | gc::tl -> 
-      let labels, phi = gc.elt in 
+      let labels, phi, pre, post = gc.elt in 
       let blks = ref [] in
       List.iter (
         fun ls -> 
@@ -1193,7 +1193,7 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
       let phi' =
         let infer () =
         (* apply_pairs (fun b1 b2 -> infer_phi g CommuteVarPar (b1@b2) defs None None) !blks  *)
-        let phi' = infer_phi g CommuteVarPar !blks defs None None in
+        let phi' = infer_phi g CommuteVarPar !blks defs pre post in
           if !emit_inferred_phis then
             begin if !emit_quiet
             then Printf.printf "%s\n"
@@ -1207,7 +1207,7 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
       | PhiExp e -> if !force_infer then infer () else e
       | PhiInf -> infer ()
 
-      in let c = {gc with elt = (labels, PhiExp phi')} in
+      in let c = {gc with elt = (labels, PhiExp phi', pre, post)} in
       (List.cons c)
       (interp_group_commute tl)
     end
@@ -1298,7 +1298,7 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
     begin match gc with 
     | [] -> () 
     | gc::tl -> 
-      let labels, phi = gc.elt in 
+      let labels, phi, pre, post = gc.elt in 
       let blks = ref [] in
       List.iter (
         fun ls -> 
@@ -1318,7 +1318,7 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
         if !print_cond then 
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g CommuteVarPar !blks defs None None with
+        begin match Analyze.verify_of_block e g CommuteVarPar !blks defs pre post with
         | Some b, compl -> 
           let compl_str = 
             match compl with 

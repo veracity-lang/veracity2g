@@ -365,16 +365,24 @@ module AstPP = struct
 
   let print_group_commute_aux fmt (gc: group_commute node) =
     let pps = pp_print_string fmt in
-    let (bls, phi) = gc.elt in 
+    let (bls, phi, pre, post) = gc.elt in 
     print_list_aux fmt print_comma_sep_aux (fun fmt -> fun com_frag -> 
       pps "{";
       print_list_aux fmt print_comma_sep_aux print_blocklabel_aux com_frag;
       pps "}"
     ) bls;
     pps ": ";
+    begin match pre with
+    | None -> pps ""
+    | Some p -> pps "{pre:"; print_exp_aux 0 fmt p; pps ";}"
+    end;
     begin match phi with
       | PhiInf   -> pps "_" 
       | PhiExp e -> print_exp_aux 0 fmt e
+    end;
+    begin match post with
+    | None -> pps ""
+    | Some p -> pps "{post:"; print_exp_aux 0 fmt p; pps ";}"
     end
     
   let print_decl_aux fmt g =
@@ -674,11 +682,19 @@ module AstML = struct
     string_of_node string_of_sdecl_aux s
 
   let string_of_group_commute (gc: group_commute node) : string =
-    let (bls, phi) = gc.elt in 
-    sp "(%s, %s)" (string_of_list (string_of_list string_of_blocklabel) bls) 
+    let (bls, phi, pre, post) = gc.elt in 
+    sp "(%s, %s %s %s)" (string_of_list (string_of_list string_of_blocklabel) bls) 
+    begin match pre with
+      | None -> ""
+      | Some e -> sp "Pre: (%s)," (string_of_exp e)
+    end
     begin match phi with 
       | PhiInf   -> "PhiInf" 
       | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
+    end
+    begin match post with
+      | None -> ""
+      | Some e -> sp ", Post: (%s)" (string_of_exp e)
     end
 
   let string_of_decl : decl -> string = function

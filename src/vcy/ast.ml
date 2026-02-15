@@ -157,7 +157,7 @@ and callstk = blockstk list
 (* and blocklabel = id * (id list) option *)
 and blocklabel = id * (exp node list) option
 
-and group_commute = ((blocklabel list) list) * commute_condition
+and group_commute = ((blocklabel list) list) * commute_condition * commute_pre_cond option * commute_post_cond option
 
 (* and commute_frag = 
 | Blabel of blocklabel 

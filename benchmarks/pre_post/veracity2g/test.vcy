@@ -1,0 +1,16 @@
+commutativity {
+    {f1}, {f1} : (true);
+    {f1}, {f1} : {pre: (ctr == 0)}(true){post: (false)};
+    {f1}, {f1} : {pre: (ctr == 0)}(true){post: (ctr == 1)}
+}
+
+int main(int argc, string[] argv) {
+    int ctr = int_of_string(argv[1]);
+    
+    f1:{ 
+        ctr = 1;
+    } 
+    f2:{ }
+    
+    return ctr;
+}
