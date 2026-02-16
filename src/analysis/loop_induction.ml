@@ -1,188 +1,177 @@
 open Ast
-open Ast_print
 open Format
 open Range
 open Util
 open Stdlib
 
-let infer = ref false
+(* -------------------------------------------------- *)
+(* Mode flags *)
+(* -------------------------------------------------- *)
+
+let infer  = ref false
 let verify = ref false
 
-let true_exp : exp node =
-  no_loc (CBool true)
+let set_mode mode =
+  match mode with
+  | "infer"  -> infer := true
+  | "verify" -> verify := true
+  | _ -> ()
 
-let empty_block : block node =
-  no_loc []
-  
-let mk_and a b = no_loc (Bop (And, a, b))
-let mk_not a   = no_loc (Uop (Lognot, a))
+(* -------------------------------------------------- *)
+(* Expression helpers *)
+(* -------------------------------------------------- *)
 
-let mk_or e1 e2 =
-  no_loc (Bop (Or, e1, e2))
+let true_exp  : exp node   = no_loc (CBool true)
+let empty_blk : block node = no_loc []
 
-let mk_id x = no_loc (Id x)
+let mk_id x    = no_loc (Id x)
+let mk_int n   = no_loc (CInt (Int64.of_int n))
 
-let mk_add a b = no_loc (Bop (Add, a, b))
-let mk_sub a b = no_loc (Bop (Sub, a, b))
+let mk_bin op a b = no_loc (Bop (op, a, b))
+let mk_un  op a   = no_loc (Uop (op, a))
 
-let mk_eq a b  = no_loc (Bop (Eq, a, b))
+let mk_and  a b = mk_bin And a b
+let mk_or   a b = mk_bin Or a b
+let mk_add  a b = mk_bin Add a b
+let mk_sub  a b = mk_bin Sub a b
+let mk_eq   a b = mk_bin Eq a b
+let mk_lte  a b = mk_bin Lte a b
 
-let mk_lte a b  = no_loc (Bop (Lte, a, b))
-let mk_int n = no_loc (CInt (Int64.of_int n))
+let mk_not a = mk_un Lognot a
 
 let mk_implies j phi =
   mk_or (mk_not j) phi
 
-(* Assume we currently have these *)
-(* let exp_I  = no_loc (CBool true) *)
-(* let exp_I = no_loc
-    (Bop (
-      Eq,
-      no_loc (Id "c"),
-      no_loc (Bop (
-        Add,
-        no_loc (Id "c_init"),
-        no_loc (Bop (
-          Sub,
-          no_loc (Id "x"),
-          no_loc (Id "x_init")
-        ))
-      ))
-    )) *)
+(* -------------------------------------------------- *)
+(* Invariant setup *)
+(* -------------------------------------------------- *)
 
-(* base = c0 + (x - x0) *)
+(* base = c_init + (x - x_init) *)
 let base =
   mk_add (mk_id "c_init")
          (mk_sub (mk_id "x") (mk_id "x_init"))
 
-(* inv1: c == base *)
-let inv1 =
-  mk_eq (mk_id "c") base
+(* I = c <= base *)
+let exp_I =
+  mk_lte (mk_id "c") base
 
-(* inv2: c == base - 1 *)
-let inv2 =
-  mk_eq (mk_id "c")
-        (mk_sub base (mk_int 1))
-
-(* I = inv1 OR inv2 *)
-let exp_I = mk_lte (mk_id "c") base
-  (* mk_or inv1 inv2 *)
-
-(* let exp_J  = no_loc (CBool true) *)
 let exp_J = exp_I
-let exp_phi' = no_loc (Bop (Gt, no_loc (Id "c"), no_loc(CInt 0L)))
-(* TODO: for now, we have only one loop*)
-let exp_B  = ref (no_loc (CBool true))
 
-(* J ⇒ φ′ (¬J∨φ′)*) 
-let implies_exp = mk_implies exp_J exp_phi'
-  
-let block_has_loop (b : block node) : bool =
+(* φ′ = c > 0 *)
+let exp_phi' =
+  mk_bin Gt (mk_id "c") (no_loc (CInt 0L))
+
+let implies_exp =
+  mk_implies exp_J exp_phi'
+
+(* -------------------------------------------------- *)
+(* Loop extraction *)
+(* -------------------------------------------------- *)
+
+let block_has_loop (b : block node) =
   List.exists
     (fun s ->
       match s.elt with
       | While _ -> true
-      | _ -> false
-    )
+      | _ -> false)
     b.elt
-    
-let rewrite_loop (b : block node) : block node =
+
+let extract_loop_body (b : block node) =
   match b.elt with
   | [ { elt = While (cond, body); _ } ] ->
-      exp_B := cond;
-      body
-  (** TODO: also add for loop *)
+      (cond, body)
   | _ ->
-      b
+      failwith "Expected a single While loop block"
 
-let split_S_C1 (blocks : block node list) : block node * block node =
+let split_S_C1 blocks =
   match List.partition block_has_loop blocks with
-  | [s_block], [c1_block] ->
-      (rewrite_loop s_block, c1_block)
+  | [s_blk], [c1_blk] ->
+      let (cond, body) = extract_loop_body s_blk in
+      (cond, body, c1_blk)
 
   | _ ->
-      failwith "Expected exactly one loop-containing block in commute"
-    
-let mk_commute cv cc b1 b2 pre post l =
-  {elt= (Commute (cv, cc, [b1; b2], pre, post)); loc= l}
+      failwith "Expected exactly one loop-containing block"
 
+(* -------------------------------------------------- *)
+(* Commute premise generation *)
+(* -------------------------------------------------- *)
+
+let mk_commute cv cc b1 b2 pre post loc =
+  { elt = Commute (cv, cc, [b1; b2], pre, post); loc }
+
+let choose_cond default phi =
+  if !verify then PhiExp phi else default
 
 let commute_premises cv cc blocks loc =
-  let (block_S, block_C1) = split_S_C1 blocks in
-
-  (* 1. {J ∧ B} S {J} *)
-  let cond = if !verify then (PhiExp (no_loc (CBool true))) else cc 
-  in
-  let s1 = mk_commute cv cond
-    empty_block block_S
-    (Some (mk_and exp_J !exp_B))
-    (Some exp_J)
-    loc
-
-  in
-    
-  (* 2. J ⇒ φ′ *) 
-  (* let s2 = mk_commute cv cc
-    (no_loc [no_loc (Assert (mk_implies exp_J exp_phi'))]) empty_block
-    None None
-    loc *)
-  let s2 = no_loc (Assert (implies_exp))
-  
+  let (loop_cond, block_S, block_C1) =
+    split_S_C1 blocks
   in
 
-  (* 3. φ′ ⇒ C1 ▷◁ S *)
-  let cond = if !verify then (PhiExp exp_phi') else cc 
-  in
-  let s3 = mk_commute cv cond
-    block_C1 block_S
-    None None
-    loc
-  
+  let cond_true = choose_cond cc true_exp in
+  let cond_phi  = choose_cond cc exp_phi' in
+
+  let premise1 =
+    mk_commute cv cond_true
+      empty_blk block_S
+      (Some (mk_and exp_J loop_cond))
+      (Some exp_J)
+      loc
   in
 
-  (* 4. {I} C1 {I} *)
-  let cond = if !verify then (PhiExp (no_loc (CBool true))) else cc 
-  in
-  let s4 = mk_commute cv cond
-    block_C1 empty_block
-    (Some exp_I)
-    (Some exp_I)
-    loc
-  
+  let premise2 =
+    no_loc (Assert implies_exp)
   in
 
-  (* 5. {¬B} C1 {¬B} *)
-  let cond = if !verify then (PhiExp (no_loc (CBool true))) else cc 
+  let premise3 =
+    mk_commute cv cond_phi
+      block_C1 block_S
+      None None
+      loc
   in
-  let s5 = mk_commute cv cond
-    block_C1 empty_block
-    (Some (mk_not !exp_B))
-    (Some (mk_not !exp_B))
-    loc
 
+  let premise4 =
+    mk_commute cv cond_true
+      block_C1 empty_blk
+      (Some exp_I)
+      (Some exp_I)
+      loc
   in
-  [s1;s2;s3;s4;s5]
 
+  let premise5 =
+    let nb = mk_not loop_cond in
+    mk_commute cv cond_true
+      block_C1 empty_blk
+      (Some nb)
+      (Some nb)
+      loc
+  in
 
-let rewrite_commute_stmt (s : stmt node) : stmt node list =
+  [ premise1; premise2; premise3; premise4; premise5 ]
+
+(* -------------------------------------------------- *)
+(* Rewrite commute statements *)
+(* -------------------------------------------------- *)
+
+let rewrite_commute_stmt (s : stmt node) =
   match s.elt with
-  | Commute (cv, cc, blocks, _pre, _post) ->
+  | Commute (cv, cc, blocks, _, _) ->
       commute_premises cv cc blocks s.loc
-  | _ -> [s]
-      
+  | _ ->
+      [s]
 
-        
-let rewrite_block (b : block node) : block node =
+(* -------------------------------------------------- *)
+(* Rewrite blocks + statements *)
+(* -------------------------------------------------- *)
+
+let rec rewrite_block (b : block node) =
   node_app
     (fun stmts ->
       stmts
-      |> List.map rewrite_commute_stmt
-      |> List.flatten
-    )
+      |> List.map rewrite_stmt
+      |> List.flatten)
     b
 
-      
-let rewrite_stmt (s : stmt node) : stmt node list =
+and rewrite_stmt (s : stmt node) =
   match s.elt with
   | If (e, b1, b2) ->
       [ node_up s (If (e, rewrite_block b1, rewrite_block b2)) ]
@@ -201,34 +190,31 @@ let rewrite_stmt (s : stmt node) : stmt node list =
 
   | _ ->
       [s]
-  
-let rewrite_method (m : mdecl node) : mdecl node =
+
+(* -------------------------------------------------- *)
+(* Rewrite methods + program *)
+(* -------------------------------------------------- *)
+
+let rewrite_method (m : mdecl node) =
   node_app
     (fun m ->
-      { m with body =
+      { m with
+        body =
           node_app
             (fun stmts ->
               stmts
               |> List.map rewrite_stmt
-              |> List.flatten
-            )
+              |> List.flatten)
             m.body
-      }
-    )
+      })
     m
-  
 
-let rewrite_decl (d : decl) : decl =
-  match d with
+let rewrite_decl = function
   | Gmdecl m -> Gmdecl (rewrite_method m)
   | other -> other
 
-let rewrite_program (p : prog) (mode: string) : prog =
-  if (String.equal mode "infer") then
-    infer := true
-  else if (String.equal mode "verify") then
-    verify := true;
-
+let rewrite_program (p : prog) mode =
+  set_mode mode;
   List.map rewrite_decl p
 
 (** TODO: check if we have the pattern C1 and loop; for now assume*)
