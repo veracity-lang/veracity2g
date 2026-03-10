@@ -436,6 +436,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           pre := exp_smt;
           compile_block_to_smt tl vctrs;
 
+        | For _ | While _ -> failwith "Loops are not supported yet"
         | _ -> compile_block_to_smt tl vctrs
         end
   in
