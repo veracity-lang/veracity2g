@@ -391,7 +391,7 @@ module AstPP = struct
       | Gmdecl m -> print_mdecl_aux fmt m
       | Gsdecl s -> print_sdecl_aux fmt s.elt
       | Commutativity gcoms ->
-         pp_print_string fmt "{";
+         pp_print_string fmt "Commutativity {";
          print_list_aux fmt (fun fmt -> pp_print_string fmt ";"; pp_print_space fmt ()) print_group_commute_aux gcoms;
          pp_print_string fmt "}"
     end

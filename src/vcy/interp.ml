@@ -777,9 +777,27 @@ and interp_block ?(new_scope = true) (env : env) (block : block node) : env * va
 and jobs_mutex = Mutex.create ()
 and job_queue = Queue.create ()
 and all_jobs = ref []
+and total_job_time = ref 0.0
+and total_pure_job_time = ref 0.0
+and total_job_count = ref 0
+and job_time_mutex = Mutex.create ()
 and run_job jb initial_waits deps = 
+    let start = Unix.gettimeofday () in (* wait_deps + actual job execution *)
+
     wait_deps jb initial_waits deps (load_task_def jb.tid).body;
-    interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
+    let start_pure = Unix.gettimeofday () in (* actual job execution *)
+    let res = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
+    in 
+    let finish = Unix.gettimeofday () in
+    let exec_time = finish -. start in
+    let pure_exec_time = finish -. start_pure in
+
+    Mutex.protect job_time_mutex (fun () ->
+      total_job_time := !total_job_time +. exec_time;
+      total_pure_job_time := !total_pure_job_time +. pure_exec_time;
+      total_job_count := !total_job_count + 1
+    );
+    res
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
   List.fold_left (fun acc (varty,varid) ->
@@ -1680,7 +1698,23 @@ let interp_tasks env0 decls init_task tasks : value =
   (* let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs
     |> List.map (fun task -> {tid=task.id; env=env0}) in *)
   (* start the scheduler *)
-  scheduler init_task env0 |> flatten_value_option
+  let res = scheduler init_task env0 |> flatten_value_option in
+
+  let avg_job_time =
+    if !total_job_count = 0 then 0.0
+    else !total_job_time /. float_of_int !total_job_count
+
+  in 
+  let avg_pure_job_time =
+    if !total_job_count = 0 then 0.0
+    else !total_pure_job_time /. float_of_int !total_job_count
+
+  in 
+
+  debug_print (lazy (Printf.sprintf "number of jobs: %d\n" !total_job_count));
+  debug_print (lazy (Printf.sprintf "Average job execution time (including dependency waiting): %f\n" avg_job_time));
+  debug_print (lazy (Printf.sprintf "Average job execution time: %f\n" avg_pure_job_time));
+  res
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,
