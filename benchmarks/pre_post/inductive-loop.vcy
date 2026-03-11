@@ -1,0 +1,79 @@
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int[] files = new int[10];
+    int c = int_of_string(argv[2]);
+    int n = int_of_string(argv[3]);
+  
+
+    commute _ {
+        pre: (c > 0)
+        { 
+            /* while(x<n) { c = c + 1; x = x + 1; } */
+
+            assume(x < n);
+
+            c = c + 1;
+            x = x + 1;
+            
+        } 
+        { 
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+        post: (c > 0)
+    }
+
+    commute _ {
+        pre: (!(0 == c + 1))
+        { 
+            /* while(x<n) { c = c + 1; x = x + 1; } */
+
+            assume(x < n);
+
+            c = c + 1;
+            x = x + 1;
+            
+        } 
+        { 
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+        post: (!(0 == c) && !(0 == c + 1))
+    }
+
+    commute (!(0 == c + 1)) {
+        pre: (!(0 == c))
+        { 
+            /* while(x<n) { c = c + 1; x = x + 1; } */
+
+            assume(x < n);
+
+            c = c + 1;
+            x = x + 1;
+            
+        } 
+        { 
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+        post: (!(0 == c))
+    }
+
+    commute (true) { 
+        {
+            assume(x >= n);
+            }
+        {
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+    }
+    
+    return 0;
+}
+
+

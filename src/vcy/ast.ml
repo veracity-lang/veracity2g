@@ -136,13 +136,12 @@ and stmt =
 | For of vdecl list * exp node option * stmt node option * block node
 | While of exp node * block node
 | Raise of exp node
-| Commute of commute_variant * commute_condition * block node list
+| Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
 | Assert of exp node
 | Assume of exp node
 | Havoc of id
 | Require of exp node
 | SBlock of blocklabel option * block node
-| GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
 | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
 | SendEOP of int
 
