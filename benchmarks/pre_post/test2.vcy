@@ -5,7 +5,7 @@ int main(int argc, string[] argv) {
         pre: (ctr == 0)
         { ctr = 1; } 
         { }
-        post: (false) /* should fail */
+        post: (ctr != 0) /* should succeed */
     }
     
     return 0;
