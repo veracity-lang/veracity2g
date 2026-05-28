@@ -1,0 +1,40 @@
+/*
+ * ls_noncb_2: non-NCB block accesses a variable NOT in the conflict_set.
+ *
+ * NCBs f(i) write arr[i] with safe parameter i → conflict_set = [] (every
+ * write is to a distinct element).  The labeled-but-not-gc block 'log_all'
+ * writes 'log_count', which is not written by any NCB.
+ *
+ * Current pre-DSWP synthesis: conflict_set is empty, so NO lock is added
+ * anywhere — including inside 'log_all'.
+ *
+ * Gap: if a post-DSWP algorithm decides to pipeline multiple log_all
+ * iterations (or overlap log_all with other stages), log_count would need
+ * a mutex.  Pre-DSWP synthesis cannot detect this because log_count does
+ * not appear in any NCB write set.
+ *
+ * Expected synthesized locks: 0 (current pre-DSWP synthesis)
+ *                             1 needed post-DSWP (around log_count = log_count + 1)
+ * Return value: n   (all arr[j] = j+1 > 0)
+ */
+commutativity { {f(i_1)}, {f(i_2)} : (i_1 != i_2) }
+
+int[] arr       = new int[16];
+int   log_count = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) {
+        f(i): { arr[i] = i + 1; }
+        i = i + 1;
+    }
+    log_all: {
+        int j = 0;
+        while (j < n) {
+            if (arr[j] > 0) { log_count = log_count + 1; }
+            j = j + 1;
+        }
+    }
+    return log_count;
+}

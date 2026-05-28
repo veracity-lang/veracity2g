@@ -1,0 +1,28 @@
+/*
+ * ls_ncb_5: two different NCB types both writing the same shared scalar.
+ *
+ * add(i) increments 'total' and sub(i) decrements it.  Because two different
+ * label types write the same variable (inter-block conflict), a lock must be
+ * synthesized in BOTH blocks, not just one.
+ *
+ * Expected synthesized locks: 2 sites (one in add, one in sub)
+ * Return value: 0   (n additions cancel n subtractions)
+ */
+commutativity {
+    {add(i_1)}, {add(i_2)} : (true);
+    {sub(j_1)}, {sub(j_2)} : (true);
+    {add(i_1)}, {sub(j_2)} : (true)
+}
+
+int total = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) {
+        add(i): { busy_wait(10); total = total + 1; }
+        sub(i): { busy_wait(10); total = total - 1; }
+        i = i + 1;
+    }
+    return total;
+}

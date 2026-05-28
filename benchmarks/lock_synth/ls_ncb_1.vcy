@@ -1,0 +1,26 @@
+/*
+ * ls_ncb_1: shared scalar RMW — simplest lock case.
+ *
+ * count(i) increments the global scalar 'counter'.  Condition (true)
+ * means no parameter is safe, so every pair of concurrent instances can
+ * write the same scalar.  The RMW `counter = counter + 1` needs a mutex.
+ *
+ * Expected synthesized locks: 1 site  (inside count, around the Assn)
+ * Return value: n   (argv[1])
+ */
+commutativity { {count(i_1)}, {count(i_2)} : (true) }
+
+int counter = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) {
+        count(i): {
+            busy_wait(10);
+            counter = counter + 1;
+        }
+        i = i + 1;
+    }
+    return counter;
+}
