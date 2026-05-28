@@ -1,0 +1,32 @@
+/*
+ * ls_noncb_1: non-NCB labeled block accesses a variable IN the conflict_set.
+ *
+ * NCBs incr(i) share 'counter' (condition true → counter is in conflict_set).
+ * The labeled-but-not-gc block 'adjust' also increments counter.
+ *
+ * Current pre-DSWP synthesis: counter is in conflict_set, so the current
+ * implementation visits ALL named SBlocks (including non-gc ones) and DOES
+ * add a lock around `counter = counter + n` inside 'adjust'.
+ *
+ * This is correct if DSWP later pipelines 'adjust' with the incr loop, and
+ * harmless if it does not (the lock is uncontested in the sequential case).
+ *
+ * Expected synthesized locks: 2 sites
+ *   — 1 in incr  (counter = counter + 1)
+ *   — 1 in adjust (counter = counter + n)
+ * Return value: 2*n   (n from incr loop + n from adjust)
+ */
+commutativity { {incr(i_1)}, {incr(i_2)} : (true) }
+
+int counter = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) {
+        incr(i): { busy_wait(10); counter = counter + 1; }
+        i = i + 1;
+    }
+    adjust: { counter = counter + n; }
+    return counter;
+}
