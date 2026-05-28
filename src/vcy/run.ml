@@ -12,9 +12,10 @@ module RunParse : Runner = struct
 
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " parse [<flags>] <vcy program>"
-  
+
   let debug = ref false
   let include_nodes = ref false
+  let synthesize_locks = ref false
 
   let anons = ref []
 
@@ -28,6 +29,7 @@ module RunParse : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "-o",      Arg.Set_string output_file, "<file> Output AST to file (defaults to stdout)"
     ; "-n",      Arg.Set include_nodes, " Include node information in parse output"
+    ; "--synthesize-locks", Arg.Set synthesize_locks, " Apply lock synthesis before printing"
     ] |>
     Arg.align
 
@@ -41,6 +43,7 @@ module RunParse : Runner = struct
 
     let ast =
       Driver.parse_oat_file prog |>
+      (fun p -> if !synthesize_locks then Lock_synthesis.transform_prog p else p) |>
       AstML.string_of_prog
     in
 
@@ -135,6 +138,7 @@ module RunInterp : Runner = struct
   let prover_name = ref ""
   let timeout = ref None
   let dswp_mode = ref false
+  let synthesize_locks = ref false
   (* let no_named_blocks = ref false *) (* TODO *)
 
   let speclist =
@@ -149,6 +153,7 @@ module RunInterp : Runner = struct
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " <name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
+    ; "--synthesize-locks", Arg.Set synthesize_locks, " Synthesize fine-grained mutex_lock/unlock in named commutative blocks"
     (* ; "--no-named-blocks", Arg.Set no_named_blocks, " Deal with named blocks as the normal blocks" *)
     ] |>
     Arg.align
@@ -186,6 +191,7 @@ module RunInterp : Runner = struct
       end;
 
       let prog = Driver.parse_oat_file prog_name in
+      let prog = if !synthesize_locks then Lock_synthesis.transform_prog prog else prog in
       Random.self_init ();
 
       begin if !get_execution_time then
