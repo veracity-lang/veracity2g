@@ -16,6 +16,7 @@ module RunParse : Runner = struct
   let debug = ref false
   let include_nodes = ref false
   let synthesize_locks = ref false
+  let pretty = ref false
 
   let anons = ref []
 
@@ -30,6 +31,7 @@ module RunParse : Runner = struct
     ; "-o",      Arg.Set_string output_file, "<file> Output AST to file (defaults to stdout)"
     ; "-n",      Arg.Set include_nodes, " Include node information in parse output"
     ; "--synthesize-locks", Arg.Set synthesize_locks, " Apply lock synthesis before printing"
+    ; "--pretty", Arg.Set pretty, " Print in VCY source syntax instead of AST dump"
     ] |>
     Arg.align
 
@@ -41,10 +43,14 @@ module RunParse : Runner = struct
 
     AstML.include_nodes := !include_nodes;
 
-    let ast =
+    let prog' =
       Driver.parse_oat_file prog |>
-      (fun p -> if !synthesize_locks then Lock_synthesis.transform_prog p else p) |>
-      AstML.string_of_prog
+      (fun p -> if !synthesize_locks then Lock_synthesis.transform_prog p else p)
+    in
+    let ast =
+      if !pretty
+      then AstPP.string_of_prog prog'
+      else AstML.string_of_prog prog'
     in
 
     if !output_file = ""
