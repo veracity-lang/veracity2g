@@ -1,0 +1,51 @@
+/*
+ * ncb_max_reduce: parallel maximum reduction with check-then-update.
+ *
+ * Eight blocks each scan an 8-element segment of a 64-element array,
+ * compute the segment maximum, store it to local_max[i] (safe — i is
+ * the safe parameter), then attempt to update the shared global_max:
+ *
+ *   if (lmax > global_max) { global_max = lmax; }
+ *
+ * The if-condition reads global_max (conflicting) and the then-branch
+ * writes it: this is the check-then-update pattern.  Without atomicity
+ * two blocks could both pass the check and one write would be lost.
+ * Lock synthesis wraps the entire if-statement as a single critical section.
+ *
+ * The array scan, local_max write, and busy_wait are all outside the lock.
+ *
+ * Init: data[j] = j % 10  =>  global_max is always 9.
+ * Expected synthesized locks: 1 site (the whole if-statement).
+ * Return value: 9
+ */
+commutativity { {find_max(i_1)}, {find_max(i_2)} : (i_1 != i_2) }
+
+int[] data       = new int[64];
+int[] local_max  = new int[8];
+int   global_max = 0;
+int   block_size = 8;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int j = 0;
+    while (j < 64) { data[j] = j % 10; j = j + 1; }
+
+    int i = 0;
+    while (i < 8) {
+        find_max(i): {
+            busy_wait(n);
+            int startIdx = i * block_size;
+            int endIdx   = startIdx + block_size;
+            int lmax = 0;
+            int k = startIdx;
+            while (k < endIdx) {
+                if (data[k] > lmax) { lmax = data[k]; }
+                k = k + 1;
+            }
+            local_max[i] = lmax;                       /* safe: i is safe param */
+            if (lmax > global_max) { global_max = lmax; } /* check-then-update */
+        }
+        i = i + 1;
+    }
+    return global_max;
+}

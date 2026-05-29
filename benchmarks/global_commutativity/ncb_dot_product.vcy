@@ -1,0 +1,37 @@
+/*
+ * ncb_dot_product: parallel dot product via fine-grained reduction.
+ *
+ * Block dot(i) reads a[i] and b[i] (both safe — the i_1 != i_2 condition
+ * makes position 0 a safe parameter, so array accesses at index i are
+ * conflict-free) and adds a[i]*b[i] to a shared accumulator.
+ *
+ * Lock synthesis inserts exactly one critical section — around the
+ * accumulation `result = result + contrib` — and leaves the array reads
+ * and busy_wait outside it.  This is the canonical fine-grained benefit:
+ * parallel element-wise work with a serialised reduction step.
+ *
+ * Init: a[i] = i+1, b[i] = 1  =>  result = 1+2+...+N = N*(N+1)/2
+ * Expected synthesized locks: 1 site (around result = result + contrib).
+ * Return value: N*(N+1)/2   e.g. N=4 -> 10
+ */
+commutativity { {dot(i_1)}, {dot(i_2)} : (i_1 != i_2) }
+
+int[] a  = new int[16];
+int[] b  = new int[16];
+int result = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) { a[i] = i + 1; b[i] = 1; i = i + 1; }
+    i = 0;
+    while (i < n) {
+        dot(i): {
+            busy_wait(10);
+            int contrib = a[i] * b[i];      /* safe reads: i is safe param */
+            result = result + contrib;       /* shared RMW — needs lock     */
+        }
+        i = i + 1;
+    }
+    return result;
+}
