@@ -18,6 +18,7 @@ let force_sequential = ref false
 let force_infer = ref false
 
 let dswp_mode = ref false
+let synthesize_locks_flag = ref false
 
 let pool_size = ref 8
 
@@ -1691,6 +1692,9 @@ let interp_prog (prog : prog) (argv : string array) : int64 =
   match (if !dswp_mode
     then begin
       pool := Domainslib.Task.setup_pool ~num_domains:!pool_size () |> some;
+      if !synthesize_locks_flag then
+        Exe_pdg.generated_tasks :=
+          Lock_synthesis.synthesize_tasks prog !Exe_pdg.generated_tasks;
       interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks
       end
     else interp_exp env e |> snd) with
@@ -1705,6 +1709,9 @@ let interp_prog_time (prog : prog) (argv : string array) : float =
   if !dswp_mode then
     begin
       pool := Domainslib.Task.setup_pool ~num_domains:!pool_size () |> some;
+      if !synthesize_locks_flag then
+        Exe_pdg.generated_tasks :=
+          Lock_synthesis.synthesize_tasks prog !Exe_pdg.generated_tasks;
       let dt, _ = time_exec @@ fun () ->  interp_tasks env !Exe_pdg.generated_decl_vars (Option.get !Exe_pdg.generated_init_task) !Exe_pdg.generated_tasks in
       dt
     end

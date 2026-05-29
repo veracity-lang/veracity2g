@@ -191,7 +191,13 @@ module RunInterp : Runner = struct
       end;
 
       let prog = Driver.parse_oat_file prog_name in
-      let prog = if !synthesize_locks then Lock_synthesis.transform_prog prog else prog in
+      (* Pre-DSWP synthesis: applied to source AST when not in DSWP mode *)
+      let prog = if !synthesize_locks && not !dswp_mode
+                 then Lock_synthesis.transform_prog prog
+                 else prog in
+      (* Post-DSWP synthesis: applied to task bodies after PDG decomposition *)
+      if !synthesize_locks && !dswp_mode then
+        Interp.synthesize_locks_flag := true;
       Random.self_init ();
 
       begin if !get_execution_time then
