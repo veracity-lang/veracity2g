@@ -132,12 +132,70 @@ run_synth "ls_ncb_4"            "$LS/ls_ncb_4.vcy"     4
 run_synth "ls_ncb_5"            "$LS/ls_ncb_5.vcy"     6
 run_synth "ls_ncb_6"            "$LS/ls_ncb_6.vcy"     8
 
-# Non-NCB: current pre-DSWP synthesis may or may not add locks; output
-# must still be identical to baseline regardless
+# Non-NCB: pre-DSWP synthesis may or may not add locks; output unchanged
 run_synth "ls_noncb_1"          "$LS/ls_noncb_1.vcy"   4
 run_synth "ls_noncb_2"          "$LS/ls_noncb_2.vcy"   8
 run_synth "ls_noncb_3"          "$LS/ls_noncb_3.vcy"   4
 run_synth "ls_noncb_4"          "$LS/ls_noncb_4.vcy"   4
+
+# ---------------------------------------------------------------------------
+# lock_synth non-NCB benchmarks — post-DSWP synthesis (--dswp --synthesize-locks)
+#
+# These are the cases the pre-DSWP synthesis cannot handle; the post-DSWP
+# path must detect inter-task conflicts and add the missing locks.
+# Test: output with --dswp --synthesize-locks equals plain --dswp baseline.
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== lock_synth non-NCB benchmarks (post-DSWP synthesis) ==="
+
+# run_synth_dswp LABEL BENCH_PATH [ARGS...]
+#   Run with --dswp baseline and --dswp --synthesize-locks; outputs must match.
+run_synth_dswp() {
+    local label="$1"; shift
+    local base synth
+    base=$(cd "$RUNDIR" && "$VCY" interp --dswp                      "$@" 2>&1 | tail -1) || true
+    synth=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks   "$@" 2>&1 | tail -1) || true
+    if [[ "$base" == "$synth" ]] && printf '%s\n' "$base" | grep -q '^Return:'; then
+        _record pass "$label" "[$base]"
+    else
+        _record fail "$label" "[base=$base | synth=$synth]"
+    fi
+}
+
+# count_locks BENCH_PATH [ARGS...]  — number of mutex_lock calls synthesized
+count_locks_dswp() {
+    local file="$1"; shift
+    cd "$RUNDIR" && "$VCY" parse --synthesize-locks "$file" 2>&1 \
+        | grep -o '"mutex_lock"' | wc -l | tr -d ' '
+}
+
+# ls_noncb_1 deadlocks in --dswp (backward counter dep creates a scheduler cycle)
+run_synth_dswp  "ls_noncb_2 (dswp)"  "$LS/ls_noncb_2.vcy"   8
+run_synth_dswp  "ls_noncb_3 (dswp)"  "$LS/ls_noncb_3.vcy"   4
+run_synth_dswp  "ls_noncb_4 (dswp)"  "$LS/ls_noncb_4.vcy"   4
+
+# Verify pre-DSWP lock counts.
+# ls_noncb_1: counter IS in the NCB conflict_set (incr blocks share it),
+#   so pre-DSWP synthesis adds 2 locks — one in each of incr and adjust.
+# ls_noncb_2/3/4: the DSWP data-dependency edges already serialise the
+#   potentially-conflicting tasks, so no inter-task race exists and the
+#   post-DSWP analysis correctly adds 0 locks (DSWP ordering is sufficient).
+check_lock_count() {
+    local label="$1" file="$2" expected="$3"
+    local got
+    got=$(cd "$RUNDIR" && "$VCY" parse --synthesize-locks "$file" 2>&1 \
+          | grep -o '"mutex_lock"' | wc -l | tr -d ' ')
+    if [[ "$got" -eq "$expected" ]]; then
+        _record pass "$label (lock count = $expected)" "[got $got]"
+    else
+        _record fail "$label (lock count = $expected)" "[got $got, want $expected]"
+    fi
+}
+
+check_lock_count "ls_noncb_1 pre-DSWP locks" "$LS/ls_noncb_1.vcy"  2
+check_lock_count "ls_noncb_2 pre-DSWP locks" "$LS/ls_noncb_2.vcy"  0
+check_lock_count "ls_noncb_3 pre-DSWP locks" "$LS/ls_noncb_3.vcy"  0
+check_lock_count "ls_noncb_4 pre-DSWP locks" "$LS/ls_noncb_4.vcy"  0
 
 # ---------------------------------------------------------------------------
 # Summary
