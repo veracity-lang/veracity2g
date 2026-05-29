@@ -61,8 +61,8 @@ run_once() {
     local label="$1"; shift
     local out
     out=$(cd "$RUNDIR" && "$VCY" interp "$@" 2>&1) || true
-    if printf '%s\n' "$out" | grep -q '^Return:'; then
-        local ret; ret=$(printf '%s\n' "$out" | grep '^Return:' | tail -1)
+    local ret; ret=$(printf '%s\n' "$out" | grep -o 'Return: [-0-9]*' | tail -1)
+    if [[ -n "$ret" ]]; then
         _record pass "$label" "[$ret]"
     else
         local snippet; snippet=$(printf '%s\n' "$out" | head -1 | cut -c1-72)
@@ -72,13 +72,16 @@ run_once() {
 
 # run_synth LABEL BENCH_PATH [ARGS...]
 #   Run the benchmark twice: once plain, once with --synthesize-locks.
-#   Pass if both return the same "Return: N" value.
+#   Extracts "Return: N" from anywhere in the output so that benchmarks
+#   whose print statements lack trailing newlines still work correctly.
 run_synth() {
     local label="$1"; shift
     local base synth
-    base=$(cd "$RUNDIR" && "$VCY" interp                   "$@" 2>&1 | tail -1) || true
-    synth=$(cd "$RUNDIR" && "$VCY" interp --synthesize-locks "$@" 2>&1 | tail -1) || true
-    if [[ "$base" == "$synth" ]] && printf '%s\n' "$base" | grep -q '^Return:'; then
+    base=$(cd "$RUNDIR" && "$VCY" interp                    "$@" 2>&1 \
+          | grep -o 'Return: [-0-9]*' | tail -1) || true
+    synth=$(cd "$RUNDIR" && "$VCY" interp --synthesize-locks "$@" 2>&1 \
+          | grep -o 'Return: [-0-9]*' | tail -1) || true
+    if [[ "$base" == "$synth" ]] && [[ -n "$base" ]]; then
         _record pass "$label" "[$base]"
     else
         _record fail "$label" "[base=$base | synth=$synth]"
@@ -131,6 +134,11 @@ run_synth "ls_ncb_3"            "$LS/ls_ncb_3.vcy"     4
 run_synth "ls_ncb_4"            "$LS/ls_ncb_4.vcy"     4
 run_synth "ls_ncb_5"            "$LS/ls_ncb_5.vcy"     6
 run_synth "ls_ncb_6"            "$LS/ls_ncb_6.vcy"     8
+
+# New NCB benchmarks demonstrating three distinct lock patterns
+run_synth "ncb_histogram"       "$GC/ncb_histogram.vcy"   8
+run_synth "ncb_dot_product"     "$GC/ncb_dot_product.vcy" 4
+run_synth "ncb_max_reduce"      "$GC/ncb_max_reduce.vcy"  10
 
 # Non-NCB: pre-DSWP synthesis may or may not add locks; output unchanged
 run_synth "ls_noncb_1"          "$LS/ls_noncb_1.vcy"   4
