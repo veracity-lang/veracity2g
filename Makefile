@@ -8,13 +8,19 @@ else
   OPAM_SETUP :=
 endif
 
-.PHONY: all test clean
+.PHONY: all test latex clean
 
 all:
 	$(OPAM_SETUP) $(MAKE) -C src
 
 test: all
 	$(OPAM_SETUP) bash scripts/run_tests.sh
+
+# Emit post-DSWP task bodies with synthesized locks for all benchmark programs
+# and write reports/tasks_appendix.tex.  Optionally compile a standalone PDF:
+#   make latex && pdflatex reports/tasks_appendix_standalone.tex
+latex: all
+	$(OPAM_SETUP) bash scripts/emit_tasks.sh
 
 clean:
 	$(MAKE) -C src clean

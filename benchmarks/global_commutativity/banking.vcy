@@ -49,31 +49,31 @@ int main(int argc, string[] argv){
                 int deposit_amount = 100 + (i * 5);
                 
                 processDeposit(acc_id): {
-                    print("Processing deposit of $");
+                    print("Processing deposit of ");
                     print(string_of_int(deposit_amount));
                     print(" to account ");
                     print(string_of_int(acc_id));
-                    print("\n");
+                    print("NEWLINE");
                     
                     busy_wait(scalingfactor); 
                     
                     accounts[acc_id] = accounts[acc_id] + deposit_amount;
                     print("Account ");
                     print(string_of_int(acc_id));
-                    print(" new balance: $");
+                    print(" new balance: ");
                     print(string_of_int(accounts[acc_id]));
-                    print("\n");
+                    print("NEWLINE");
                 }
             } else {
                 /* Process withdrawal */
                 int withdrawal_amount = 50 + (i * 10);
                 
                 processWithdrawal(acc_id): {
-                    print("Processing withdrawal of $");
+                    print("Processing withdrawal of ");
                     print(string_of_int(withdrawal_amount));
                     print(" from account ");
                     print(string_of_int(acc_id));
-                    print("\n");
+                    print("NEWLINE");
                     
                     busy_wait(scalingfactor); 
                     
@@ -82,13 +82,13 @@ int main(int argc, string[] argv){
                         accounts[acc_id] = accounts[acc_id] - withdrawal_amount;
                         print("Account ");
                         print(string_of_int(acc_id));
-                        print(" new balance: $");
+                        print(" new balance: ");
                         print(string_of_int(accounts[acc_id]));
-                        print("\n");
+                        print("NEWLINE");
                     } else {
                         print("Insufficient funds in account ");
                         print(string_of_int(acc_id));
-                        print("\n");
+                        print("NEWLINE");
                     }
                 }
             }
@@ -103,13 +103,13 @@ int main(int argc, string[] argv){
     int transfer_amount = 250;
     
     processTransfer(from_account, to_account): {
-        print("Processing transfer of $");
+        print("Processing transfer of ");
         print(string_of_int(transfer_amount));
         print(" from account ");
         print(string_of_int(from_account));
         print(" to account ");
         print(string_of_int(to_account));
-        print("\n");
+        print("NEWLINE");
         
         busy_wait(scalingfactor); 
         
@@ -119,17 +119,17 @@ int main(int argc, string[] argv){
             accounts[to_account] = accounts[to_account] + transfer_amount;
             print("Transfer complete. New balances: Account ");
             print(string_of_int(from_account));
-            print(": $");
+            print(": ");
             print(string_of_int(accounts[from_account]));
             print(", Account ");
             print(string_of_int(to_account));
-            print(": $");
+            print(": ");
             print(string_of_int(accounts[to_account]));
-            print("\n");
+            print("NEWLINE");
         } else {
             print("Transfer failed: Insufficient funds in account ");
             print(string_of_int(from_account));
-            print("\n");
+            print("NEWLINE");
         }
     }
 
@@ -147,15 +147,15 @@ int main(int argc, string[] argv){
         i = i + 1;
     }
     
-    print("\nFinal Statistics:\n");
-    print("Total funds in bank: $");
+    print("NEWLINEFinal Statistics:NEWLINE");
+    print("Total funds in bank: ");
     print(string_of_int(total_balance));
-    print("\n");
+    print("NEWLINE");
     print("Account with highest balance: Account ");
     print(string_of_int(max_account));
-    print(" with $");
+    print(" with ");
     print(string_of_int(max_balance));
-    print("\n");
+    print("NEWLINE");
     
     return 0;
 }

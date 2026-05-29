@@ -1,0 +1,122 @@
+=== Init Task ===
+spawns: [1, 2, 3, 4, 5, 6]
+{ }
+
+=== Task 4 (Doall) ===
+deps_in:  {from 1 [new job: false]: int scalingfactor AND from 2 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2 AND from 3 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2 AND from 5 [new job: false]: int curVotes;int voted;int weight}
+deps_out: {from 2 [new job: false]: int curVotes;int voted;int weight AND from 3 [new job: false]: int curVotes;int voted;int weight AND from 5 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2}
+{
+  vote3(vote3_voterID,
+  vote3_proposal){
+    r_vote3 = 0;
+    busy_wait(scalingfactor);
+    int weight = ht_get(voter_weight, vote3_voterID);
+    if (weight != 0) {
+      r_vote3 = -1;
+    } else {
+      int voted = ht_get(voter_voted, vote3_voterID);
+      if (voted == 1) {
+        r_vote3 = -1;
+      } else {
+        ht_put(voter_voted, vote3_voterID, 1);
+        ht_put(voter_vote, vote3_voterID, vote3_proposal);
+        mutex_lock(0);
+        int curVotes = ht_get(proposals, vote3_proposal);
+        ht_put(proposals, vote3_proposal, curVotes + weight);
+        mutex_unlock(0);
+      }
+    }
+  }
+}
+
+=== Task 5 (Doall) ===
+deps_in:  {from 1 [new job: false]: int scalingfactor AND from 2 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2 AND from 3 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2 AND from 4 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2}
+deps_out: {from 2 [new job: false]: int curVotes;int voted;int weight AND from 3 [new job: false]: int curVotes;int voted;int weight AND from 4 [new job: false]: int curVotes;int voted;int weight}
+{
+  vote4(vote4_voterID,
+  vote4_proposal){
+    r_vote4 = 0;
+    busy_wait(scalingfactor);
+    int weight = ht_get(voter_weight, vote4_voterID);
+    if (weight != 0) {
+      r_vote4 = -1;
+    } else {
+      int voted = ht_get(voter_voted, vote4_voterID);
+      if (voted == 1) {
+        r_vote4 = -1;
+      } else {
+        ht_put(voter_voted, vote4_voterID, 1);
+        ht_put(voter_vote, vote4_voterID, vote4_proposal);
+        mutex_lock(0);
+        int curVotes = ht_get(proposals, vote4_proposal);
+        ht_put(proposals, vote4_proposal, curVotes + weight);
+        mutex_unlock(0);
+      }
+    }
+  }
+}
+
+=== Task 3 (Doall) ===
+deps_in:  {from 1 [new job: false]: int scalingfactor AND from 2 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_2,proposal_2],[voterID_1,proposal_1] => voterID_1 != voterID_2 AND from 4 [new job: false]: int curVotes;int voted;int weight AND from 5 [new job: false]: int curVotes;int voted;int weight}
+deps_out: {from 2 [new job: false]: int curVotes;int voted;int weight AND from 4 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2 AND from 5 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2}
+{
+  vote2(vote2_voterID,
+  vote2_proposal){
+    r_vote2 = 0;
+    busy_wait(scalingfactor);
+    int weight = ht_get(voter_weight, vote2_voterID);
+    if (weight != 0) {
+      r_vote2 = -1;
+    } else {
+      int voted = ht_get(voter_voted, vote2_voterID);
+      if (voted == 1) {
+        r_vote2 = -1;
+      } else {
+        ht_put(voter_voted, vote2_voterID, 1);
+        ht_put(voter_vote, vote2_voterID, vote2_proposal);
+        mutex_lock(0);
+        int curVotes = ht_get(proposals, vote2_proposal);
+        ht_put(proposals, vote2_proposal, curVotes + weight);
+        mutex_unlock(0);
+      }
+    }
+  }
+}
+
+=== Task 2 (Doall) ===
+deps_in:  {from 1 [new job: false]: int scalingfactor AND from 3 [new job: false]: int curVotes;int voted;int weight AND from 4 [new job: false]: int curVotes;int voted;int weight AND from 5 [new job: false]: int curVotes;int voted;int weight}
+deps_out: {from 3 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2 AND from 4 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2 AND from 5 [new job: false]: int curVotes;int voted;int weight / commute_cond: [voterID_1,proposal_1],[voterID_2,proposal_2] => voterID_1 != voterID_2}
+{
+  vote1(vote1_voterID,
+  vote1_proposal){
+    r_vote1 = 0;
+    busy_wait(scalingfactor);
+    int weight = ht_get(voter_weight, vote1_voterID);
+    if (weight != 0) {
+      r_vote1 = -1;
+    } else {
+      int voted = ht_get(voter_voted, vote1_voterID);
+      if (voted == 1) {
+        r_vote1 = -1;
+      } else {
+        ht_put(voter_voted, vote1_voterID, 1);
+        ht_put(voter_vote, vote1_voterID, vote1_proposal);
+        mutex_lock(0);
+        int curVotes = ht_get(proposals, vote1_proposal);
+        ht_put(proposals, vote1_proposal, curVotes + weight);
+        mutex_unlock(0);
+      }
+    }
+  }
+}
+
+=== Task 1 (Doall) ===
+deps_out: {from 2 [new job: false]: int scalingfactor AND from 3 [new job: false]: int scalingfactor AND from 4 [new job: false]: int scalingfactor AND from 5 [new job: false]: int scalingfactor}
+{
+  scalingfactor = 1000 * int_of_string(argv[1]);
+}
+
+=== Task 6 (Sequential) ===
+{
+  return 1;
+}

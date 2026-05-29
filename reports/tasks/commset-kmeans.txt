@@ -1,0 +1,84 @@
+=== Init Task ===
+spawns: [5, 1, 4]
+{
+  int n = int_of_string(argv[1]);
+  int nThreads = 8;
+  int nloops = 10;
+  int i = 0;
+  int j_1 = 0;
+  int j_2 = 0;
+  int j = 0;
+  int j = 0;
+  int k = 0;
+  int z = 0;
+  int[] new_centers_len = new int[1000];
+  int[] new_centers = new int[1000];
+  int nFeatures = 100;
+  int[] indices = new int[]{1, 2, 3, 4, 1, 2, 3, 4};
+  int index = 0;
+}
+
+=== Task 3 (Doall) ===
+deps_in:  {from 1 [new job: true]: int j AND from 2 [new job: true]: int j AND from 3 [new job: false]: [] / commute_cond: [j_2,indices],[j_1,indices] => true AND from 5 [new job: false]: int[] new_centers;int[] new_centers_len}
+deps_out: {from 3 [new job: false]: [] / commute_cond: [j_1,indices],[j_2,indices] => true}
+{
+  work(j,
+  indices){
+    busy_wait(n);
+    index = indices[j];
+    mutex_lock(1);
+    new_centers_len[index] = new_centers_len[index] + 1;
+    mutex_unlock(1);
+    k = 0;
+    while (k < nFeatures) {
+      mutex_lock(2);
+      new_centers[k] = new_centers[k] + 1;
+      mutex_unlock(2);
+      k = k + 1;
+    }
+    index = 0;
+  }
+}
+
+=== Task 2 (Doall) ===
+deps_in:  {from 1 [new job: true]: int j}
+deps_out: {from 3 [new job: true]: int j}
+{
+  while (j < nThreads) {
+    SendDep(3, int
+    j)
+    j = j + 1;
+  }
+  SendEOP(3)
+}
+
+=== Task 1 (Sequential) ===
+deps_out: {from 2 [new job: true]: int j AND from 3 [new job: true]: int j}
+{
+  while (i < nloops) {
+    j = 0;
+    SendDep(2, int
+    j)
+    i = i + 1;
+  }
+  SendEOP(2)
+}
+
+=== Task 5 (Sequential) ===
+deps_out: {from 3 [new job: false]: int[] new_centers;int[] new_centers_len}
+{
+  while (z < 1000) {
+    mutex_lock(0);
+    new_centers_len[z] = 0;
+    mutex_unlock(0);
+    mutex_lock(1);
+    new_centers[z] = 0;
+    mutex_unlock(1);
+    z = z + 1;
+  }
+}
+
+=== Task 4 (Sequential) ===
+{
+  return 0;
+}

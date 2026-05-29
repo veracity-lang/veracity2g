@@ -1,0 +1,127 @@
+=== Init Task ===
+spawns: [1, 2, 9, 3, 4, 5, 6, 7, 8]
+{
+  hashtable[int, int] tbl = new hashtable[int, int];
+  int n = 1000 * int_of_string(argv[1]);
+  int x = 2;
+  int y = 5;
+  int z = 0;
+  int f = 1;
+  int g = 0;
+  int i = 0;
+  int i_1 = 3;
+  int i_2 = 3;
+  int i_3 = 4;
+  int j = 0;
+  int[] files = new int[10];
+}
+
+=== Task 6 (Doall) ===
+deps_in:  {from 3 [new job: false]: [] / commute_cond: [files,i_1],[tbl,x,y] => true AND from 4 [new job: false]: [] / commute_cond: [files,i_1],[tbl,z,y] => true AND from 5 [new job: false]: [] / commute_cond: [files,i_1],[tbl,z,y] => true AND from 6 [new job: false]: [] / commute_cond: [files,i_2],[files,i_1] => files[i_2] == files[i_1] AND from 7 [new job: false]: int i;int[] files AND from 9 [new job: false]: int[] files}
+deps_out: {from 6 [new job: false]: [] / commute_cond: [files,i_1],[files,i_2] => files[i_2] == files[i_1] AND from 7 [new job: false]: int i;int[] files / commute_cond: [files,i_1],[files,i_3] => !(i_3 == i_1)}
+{
+  f4(files,
+  i){
+    busy_wait(n);
+    mutex_lock(0);
+    f = files[i];
+    f = f + 5;
+    mutex_unlock(0);
+    mutex_lock(1);
+    files[i] = f;
+    mutex_unlock(1);
+  }
+}
+
+=== Task 7 (Doall) ===
+deps_in:  {from 3 [new job: false]: [] / commute_cond: [files,i_3],[tbl,x,y] => true AND from 4 [new job: false]: [] / commute_cond: [files,i_3],[tbl,z,y] => true AND from 5 [new job: false]: [] / commute_cond: [files,i_3],[tbl,z,y] => true AND from 6 [new job: false]: int i;int[] files / commute_cond: [files,i_3],[files,i_1] => !(i_3 == i_1) AND from 9 [new job: false]: int[] files}
+deps_out: {from 6 [new job: false]: int i;int[] files}
+{
+  f6(files,
+  i){
+    busy_wait(n);
+    g = files[i];
+    g = g + 5;
+    mutex_lock(1);
+    files[i] = g;
+    mutex_unlock(1);
+  }
+}
+
+=== Task 5 (Doall) ===
+deps_in:  {from 1 [new job: false]: hashtable[int, int] tbl AND from 2 [new job: false]: int z;hashtable[int, int] tbl AND from 3 [new job: false]: int y / commute_cond: [tbl,z,y],[tbl,x,y] => !(ht_size(tbl) > 0) && !(0 == ht_size(tbl)) && !(0 == z) || 0 == ht_size(tbl) && !(0 == z) || 0 == z AND from 4 [new job: false]: int y / commute_cond: [tbl,z,y],[tbl,z,y] => !(ht_size(tbl) > 0) && !(0 == z) || 0 == z}
+deps_out: {from 3 [new job: false]: int y AND from 4 [new job: false]: int y AND from 6 [new job: false]: [] / commute_cond: [tbl,z,y],[files,i_1] => true AND from 7 [new job: false]: [] / commute_cond: [tbl,z,y],[files,i_3] => true}
+{
+  f3(tbl,
+  z,
+  y){
+    busy_wait(n);
+    if (ht_size(tbl) > 0) {
+      mutex_lock(2);
+      y = y + z;
+      mutex_unlock(2);
+    }
+  }
+}
+
+=== Task 4 (Doall) ===
+deps_in:  {from 1 [new job: false]: hashtable[int, int] tbl AND from 2 [new job: false]: int z;hashtable[int, int] tbl AND from 3 [new job: false]: int y / commute_cond: [tbl,z,y],[tbl,x,y] => tbl[z] == tbl[x] && !(z == x) || z == x AND from 5 [new job: false]: int y}
+deps_out: {from 3 [new job: false]: int y AND from 5 [new job: false]: int y / commute_cond: [tbl,z,y],[tbl,z,y] => !(ht_size(tbl) > 0) && !(0 == z) || 0 == z AND from 6 [new job: false]: [] / commute_cond: [tbl,z,y],[files,i_1] => true AND from 7 [new job: false]: [] / commute_cond: [tbl,z,y],[files,i_3] => true}
+{
+  f2(tbl,
+  z,
+  y){
+    mutex_lock(2);
+    y = ht_get(tbl, z);
+    mutex_unlock(2);
+    busy_wait(n);
+  }
+}
+
+=== Task 3 (Doall) ===
+deps_in:  {from 1 [new job: false]: int x;hashtable[int, int] tbl AND from 2 [new job: false]: hashtable[int, int] tbl AND from 4 [new job: false]: int y AND from 5 [new job: false]: int y}
+deps_out: {from 4 [new job: false]: int y / commute_cond: [tbl,x,y],[tbl,z,y] => tbl[z] == tbl[x] && !(z == x) || z == x AND from 5 [new job: false]: int y / commute_cond: [tbl,x,y],[tbl,z,y] => !(ht_size(tbl) > 0) && !(0 == ht_size(tbl)) && !(0 == z) || 0 == ht_size(tbl) && !(0 == z) || 0 == z AND from 6 [new job: false]: [] / commute_cond: [tbl,x,y],[files,i_1] => true AND from 7 [new job: false]: [] / commute_cond: [tbl,x,y],[files,i_3] => true}
+{
+  f1(tbl,
+  x,
+  y){
+    busy_wait(n);
+    if (ht_mem(tbl, x)) {
+      mutex_lock(2);
+      y = ht_get(tbl, x);
+      mutex_unlock(2);
+    }
+  }
+}
+
+=== Task 9 (Sequential) ===
+deps_out: {from 6 [new job: false]: int[] files AND from 7 [new job: false]: int[] files}
+{
+  while (j < 10) {
+    mutex_lock(1);
+    files[j] = j;
+    mutex_unlock(1);
+    j = j + 1;
+  }
+}
+
+=== Task 2 (Sequential) ===
+deps_out: {from 3 [new job: false]: hashtable[int, int] tbl AND from 4 [new job: false]: int z;hashtable[int, int] tbl AND from 5 [new job: false]: int z;hashtable[int, int] tbl}
+{
+  mutex_lock(3);
+  tbl[z] = 12;
+  mutex_unlock(3);
+}
+
+=== Task 1 (Doall) ===
+deps_out: {from 3 [new job: false]: int x;hashtable[int, int] tbl AND from 4 [new job: false]: hashtable[int, int] tbl AND from 5 [new job: false]: hashtable[int, int] tbl}
+{
+  mutex_lock(3);
+  tbl[x] = 12;
+  mutex_unlock(3);
+}
+
+=== Task 8 (Sequential) ===
+{
+  return 0;
+}

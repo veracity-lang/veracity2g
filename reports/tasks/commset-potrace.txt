@@ -1,0 +1,62 @@
+=== Init Task ===
+spawns: [3, 2]
+{
+  int scalingfactor = int_of_string(argv[1]);
+  int i = 1;
+  int i_1 = 0;
+  int i_2 = 0;
+  int j = 0;
+}
+
+=== Task 1 (Doall) ===
+deps_in:  {from 1 [new job: false]: [] / commute_cond: [i_2,argv],[i_1,argv] => argv[2 * i_1 + 1] != argv[2 * i_2] && argv[2 * i_1] != argv[2 * i_2 + 1] && argv[2 * i_1 + 1] != argv[2 * i_2 + 1] AND from 3 [new job: true]: int i}
+deps_out: {from 1 [new job: false]: [] / commute_cond: [i_1,argv],[i_2,argv] => argv[2 * i_1 + 1] != argv[2 * i_2] && argv[2 * i_1] != argv[2 * i_2 + 1] && argv[2 * i_1 + 1] != argv[2 * i_2 + 1] AND from 3 [new job: false]: }
+{
+  f1(i,
+  argv){
+    string in_fn = "";
+    string out_fn = "";
+    string s = "";
+    string temp = "";
+    mutex_lock(0);
+    j = 0;
+    mutex_unlock(0);
+    temp = "";
+    in_fn = argv[i * 2];
+    out_fn = argv[i * 2 + 1];
+    while (j < 10) {
+      TChanR fin = open_read(in_fn);
+      TChanW fout = open_write(out_fn);
+      s = read_line(fin);
+      busy_wait(scalingfactor);
+      temp = string_of_int(md5_lower(s));
+      write(fout, temp);
+      close(fin);
+      close(fout);
+      mutex_lock(0);
+      j = j + 1;
+      mutex_unlock(0);
+    }
+    s = "";
+    temp = "";
+    in_fn = "";
+    out_fn = "";
+  }
+}
+
+=== Task 3 (Sequential) ===
+deps_in:  {from 1 [new job: false]: }
+deps_out: {from 1 [new job: true]: int i}
+{
+  while (i <= (argc - 1) / 2) {
+    SendDep(1, int
+    i)
+    i = i + 1;
+  }
+  SendEOP(1)
+}
+
+=== Task 2 (Sequential) ===
+{
+  return 0;
+}

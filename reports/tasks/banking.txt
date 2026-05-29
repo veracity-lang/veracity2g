@@ -1,0 +1,200 @@
+=== Init Task ===
+spawns: [2, 3, 6, 7, 8, 9, 10, 11, 1, 12, 13]
+{
+  int scalingfactor = int_of_string(argv[1]);
+  int num_accounts = int_of_string(argv[2]);
+  int num_transactions = int_of_string(argv[3]);
+  int[] accounts = new int[num_accounts];
+  int acc_id = 10;
+  int acc_id_1 = 0;
+  int acc_id_2 = 0;
+  int from_id = 2;
+  int from_id_1 = 0;
+  int from_id_2 = 0;
+  int to_id = 3;
+  int to_id_1 = 0;
+  int to_id_2 = 0;
+  int vip_account = 0;
+  int i = 0;
+  int from_account = 1;
+  int to_account = num_accounts - 1;
+  int transfer_amount = 250;
+  int total_balance = 0;
+  int max_balance = 0;
+  int max_account = 0;
+}
+
+=== Task 6 (Doall) ===
+deps_in:  {from 1 [new job: false]: int[] accounts AND from 4 [new job: false]: int[] accounts / commute_cond: [from_id,to_id],[acc_id] => from_id != acc_id && to_id != acc_id AND from 5 [new job: false]: int[] accounts AND from 6 [new job: false]: [] / commute_cond: [from_id_2,to_id_2],[from_id_1,to_id_1] => from_id_1 != from_id_2 && from_id_1 != to_id_2 && to_id_1 != from_id_2 && to_id_1 != to_id_2}
+deps_out: {from 1 [new job: false]: int[] accounts AND from 4 [new job: false]: int[] accounts AND from 5 [new job: false]: int[] accounts AND from 6 [new job: false]: [] / commute_cond: [from_id_1,to_id_1],[from_id_2,to_id_2] => from_id_1 != from_id_2 && from_id_1 != to_id_2 && to_id_1 != from_id_2 && to_id_1 != to_id_2}
+{
+  processTransfer(from_account,
+  to_account){
+    print("Processing transfer of ");
+    print(string_of_int(transfer_amount));
+    print(" from account ");
+    print(string_of_int(from_account));
+    print(" to account ");
+    print(string_of_int(to_account));
+    print("NEWLINE");
+    busy_wait(scalingfactor);
+    if (accounts[from_account] >= transfer_amount) {
+      accounts[from_account] = accounts[from_account] - transfer_amount;
+      accounts[to_account] = accounts[to_account] + transfer_amount;
+      print("Transfer complete. New balances: Account ");
+      print(string_of_int(from_account));
+      print(": ");
+      print(string_of_int(accounts[from_account]));
+      print(", Account ");
+      print(string_of_int(to_account));
+      print(": ");
+      print(string_of_int(accounts[to_account]));
+      print("NEWLINE");
+    } else {
+      print("Transfer failed: Insufficient funds in account ");
+      print(string_of_int(from_account));
+      print("NEWLINE");
+    }
+  }
+}
+
+=== Task 5 (Doall) ===
+deps_in:  {from 1 [new job: true]: int withdrawal_amount;int acc_id;int[] accounts AND from 4 [new job: false]: int acc_id;int[] accounts / commute_cond: [acc_id_2],[acc_id_1] => acc_id_1 != acc_id_2 AND from 5 [new job: false]: [] / commute_cond: [acc_id_2],[acc_id_1] => acc_id_1 != acc_id_2 AND from 6 [new job: false]: int[] accounts}
+deps_out: {from 1 [new job: false]: int[] accounts;int acc_id AND from 4 [new job: false]: int[] accounts;int acc_id AND from 5 [new job: false]: [] / commute_cond: [acc_id_1],[acc_id_2] => acc_id_1 != acc_id_2 AND from 6 [new job: false]: int[] accounts}
+{
+  processWithdrawal(acc_id){
+    print("Processing withdrawal of ");
+    print(string_of_int(withdrawal_amount));
+    print(" from account ");
+    print(string_of_int(acc_id));
+    print("NEWLINE");
+    busy_wait(scalingfactor);
+    if (accounts[acc_id] >= withdrawal_amount) {
+      accounts[acc_id] = accounts[acc_id] - withdrawal_amount;
+      print("Account ");
+      print(string_of_int(acc_id));
+      print(" new balance: ");
+      print(string_of_int(accounts[acc_id]));
+      print("NEWLINE");
+    } else {
+      print("Insufficient funds in account ");
+      print(string_of_int(acc_id));
+      print("NEWLINE");
+    }
+  }
+}
+
+=== Task 4 (Doall) ===
+deps_in:  {from 1 [new job: true]: int deposit_amount;int acc_id;int[] accounts AND from 4 [new job: false]: [] / commute_cond: [acc_id_2],[acc_id_1] => acc_id_1 != acc_id_2 AND from 5 [new job: false]: int[] accounts;int acc_id AND from 6 [new job: false]: int[] accounts}
+deps_out: {from 1 [new job: false]: int[] accounts;int acc_id AND from 4 [new job: false]: [] / commute_cond: [acc_id_1],[acc_id_2] => acc_id_1 != acc_id_2 AND from 5 [new job: false]: int acc_id;int[] accounts / commute_cond: [acc_id_1],[acc_id_2] => acc_id_1 != acc_id_2 AND from 6 [new job: false]: int[] accounts / commute_cond: [acc_id],[from_id,to_id] => from_id != acc_id && to_id != acc_id}
+{
+  processDeposit(acc_id){
+    print("Processing deposit of ");
+    print(string_of_int(deposit_amount));
+    print(" to account ");
+    print(string_of_int(acc_id));
+    print("NEWLINE");
+    busy_wait(scalingfactor);
+    accounts[acc_id] = accounts[acc_id] + deposit_amount;
+    print("Account ");
+    print(string_of_int(acc_id));
+    print(" new balance: ");
+    print(string_of_int(accounts[acc_id]));
+    print("NEWLINE");
+  }
+}
+
+=== Task 1 (Sequential) ===
+deps_in:  {from 4 [new job: false]: int[] accounts;int acc_id AND from 5 [new job: false]: int[] accounts;int acc_id AND from 6 [new job: false]: int[] accounts}
+deps_out: {from 4 [new job: true]: int deposit_amount;int acc_id;int[] accounts AND from 5 [new job: true]: int withdrawal_amount;int acc_id;int[] accounts AND from 6 [new job: false]: int[] accounts}
+{
+  while (i < num_accounts) {
+    accounts[i] = 1000;
+    i = i + 1;
+  }
+  vip_account = num_accounts / 2;
+  accounts[vip_account] = accounts[vip_account] + 50000;
+  i = 0;
+  while (i < num_transactions) {
+    acc_id = i % num_accounts;
+    if (acc_id != vip_account) {
+      if (i % 2 == 0) {
+        int deposit_amount = 100 + i * 5;
+        SendDep(4, int
+        deposit_amount,
+        int
+        acc_id,
+        int[]
+        accounts)
+      } else {
+        int withdrawal_amount = 50 + i * 10;
+        SendDep(5, int
+        withdrawal_amount,
+        int
+        acc_id,
+        int[]
+        accounts)
+      }
+    }
+    i = i + 1;
+  }
+  i = 0;
+  while (i < num_accounts) {
+    total_balance = total_balance + accounts[i];
+    if (accounts[i] > max_balance) {
+      max_balance = accounts[i];
+      max_account = i;
+    }
+    i = i + 1;
+  }
+  print(string_of_int(total_balance));
+  print(string_of_int(max_account));
+  print(string_of_int(max_balance));
+  SendEOP(4)
+  SendEOP(5)
+}
+
+=== Task 2 (Doall) ===
+{
+  print(string_of_int(num_accounts));
+}
+
+=== Task 3 (Sequential) ===
+{
+  print(string_of_int(num_transactions));
+}
+
+=== Task 7 (Sequential) ===
+{
+  print("NEWLINEFinal Statistics:NEWLINE");
+}
+
+=== Task 8 (Sequential) ===
+{
+  print("Total funds in bank: ");
+}
+
+=== Task 9 (Sequential) ===
+{
+  print("NEWLINE");
+}
+
+=== Task 10 (Sequential) ===
+{
+  print("Account with highest balance: Account ");
+}
+
+=== Task 11 (Sequential) ===
+{
+  print(" with ");
+}
+
+=== Task 12 (Sequential) ===
+{
+  print("NEWLINE");
+}
+
+=== Task 13 (Sequential) ===
+{
+  return 0;
+}

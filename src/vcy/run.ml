@@ -145,6 +145,7 @@ module RunInterp : Runner = struct
   let timeout = ref None
   let dswp_mode = ref false
   let synthesize_locks = ref false
+  let emit_tasks = ref false
   (* let no_named_blocks = ref false *) (* TODO *)
 
   let speclist =
@@ -160,6 +161,7 @@ module RunInterp : Runner = struct
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
     ; "--synthesize-locks", Arg.Set synthesize_locks, " Synthesize fine-grained mutex_lock/unlock in named commutative blocks"
+    ; "--emit-tasks", Arg.Set emit_tasks, " Print DSWP task bodies (requires --dswp) and exit without running"
     (* ; "--no-named-blocks", Arg.Set no_named_blocks, " Deal with named blocks as the normal blocks" *)
     ] |>
     Arg.align
@@ -206,15 +208,49 @@ module RunInterp : Runner = struct
         Interp.synthesize_locks_flag := true;
       Random.self_init ();
 
+      (* --emit-tasks: run DSWP compilation, optionally synthesize, print, exit *)
+      if !dswp_mode && !emit_tasks then begin
+        ignore @@ Interp.initialize_env prog true;
+        if !synthesize_locks then
+          Exe_pdg.generated_tasks :=
+            Lock_synthesis.synthesize_tasks prog !Exe_pdg.generated_tasks;
+        (match !Exe_pdg.generated_init_task with
+        | None -> ()
+        | Some it ->
+          Printf.printf "=== Init Task ===\n";
+          Printf.printf "spawns: [%s]\n"
+            (String.concat ", " (List.map string_of_int it.Dswp_task.jobs));
+          let decl_str = Ast_print.AstPP.string_of_block it.Dswp_task.decls in
+          if String.length (String.trim decl_str) > 0 then
+            Printf.printf "%s\n" decl_str);
+        List.iter (fun (task : Dswp_task.dswp_task) ->
+          Printf.printf "\n=== Task %d (%s) ===\n" task.id
+            (match task.label with
+            | Dswp_task.Doall -> "Doall"
+            | Dswp_task.Sequential -> "Sequential");
+          if task.Dswp_task.deps_in <> [] then
+            Printf.printf "deps_in:  %s\n"
+              (Dswp_task.str_of_task_deps task.Dswp_task.deps_in);
+          if task.Dswp_task.deps_out <> [] then
+            Printf.printf "deps_out: %s\n"
+              (Dswp_task.str_of_task_deps task.Dswp_task.deps_out);
+          Printf.printf "%s\n"
+            (Ast_print.AstPP.string_of_block task.Dswp_task.body)
+        ) !Exe_pdg.generated_tasks;
+        flush stdout
+      end else begin
+
       begin if !get_execution_time then
         let time = Interp.interp_prog_time prog argv in
         Printf.printf "%f\n" time
-      else 
+      else
         let ret = Interp.interp_prog prog argv in
         Printf.printf "Return: %Ld\n" ret
       end;
 
       flush stdout
+
+      end
 
     with e ->
       let msg = Printexc.to_string e in
