@@ -1,0 +1,136 @@
+=== Init Task ===
+spawns: [6, 1, 5]
+{
+  int scalingFactor = int_of_string(argv[1]);
+  int nAgents = 20;
+  int[] pendingPoolSize = new int[nAgents * nAgents * nAgents];
+  int[] maxSpend = new int[nAgents];
+  int[] account = new int[nAgents];
+  int[] nTxns = new int[nAgents];
+  int a = int_of_string(argv[2]);
+  int b = int_of_string(argv[3]);
+  int i = 0;
+  int j = 0;
+  int z = 0;
+  int z_1 = 0;
+  int z_2 = 0;
+  int toWhom = 0;
+  int amount = 0;
+  int i_1 = 0;
+  int i_2 = 0;
+  int amount_1 = 0;
+  int amount_2 = 0;
+  int toWhom_1 = 0;
+  int toWhom_2 = 0;
+  int[] account_1 = new int[1];
+  int[] account_2 = new int[1];
+}
+
+=== Task 4 (Doall) ===
+deps_in:  {from 1 [new job: true]: int i;int i;int[] pendingPoolSize;int i;int[] maxSpend;int i;int[] account AND from 3 [new job: false]: int[] maxSpend / commute_cond: [i,account,amount,toWhom,pendingPoolSize,nAgents,maxSpend],[z] => true AND from 4 [new job: false]: [] / commute_cond: [i_2,account_2,amount_2,toWhom_2,pendingPoolSize,nAgents,maxSpend],[i_1,account_1,amount_1,toWhom_1,pendingPoolSize,nAgents,maxSpend] => i_1 != i_2 || account_1[i_1] >= amount_1 + amount_2 AND from 6 [new job: true]: }
+deps_out: {from 1 [new job: false]: int i AND from 2 [new job: false]: int i AND from 4 [new job: false]: [] / commute_cond: [i_1,account_1,amount_1,toWhom_1,pendingPoolSize,nAgents,maxSpend],[i_2,account_2,amount_2,toWhom_2,pendingPoolSize,nAgents,maxSpend] => i_1 != i_2 || account_1[i_1] >= amount_1 + amount_2}
+{
+  transfer(i,
+  account,
+  amount,
+  toWhom,
+  pendingPoolSize,
+  nAgents,
+  maxSpend){
+    busy_wait(scalingFactor);
+    mutex_lock(0);
+    amount = a;
+    mutex_unlock(0);
+    mutex_lock(1);
+    toWhom = b;
+    mutex_unlock(1);
+    int temp = i * nAgents + toWhom;
+    mutex_lock(2);
+    pendingPoolSize[temp] = pendingPoolSize[temp] + amount;
+    mutex_unlock(2);
+    mutex_lock(3);
+    account[i] = account[i] - amount;
+    account[toWhom] = account[toWhom] + amount;
+    mutex_unlock(3);
+    mutex_lock(2);
+    pendingPoolSize[temp] = pendingPoolSize[temp] - amount;
+    mutex_unlock(2);
+  }
+}
+
+=== Task 3 (Doall) ===
+deps_in:  {from 3 [new job: false]: [] / commute_cond: [z_2],[z_1] => true AND from 6 [new job: true]: int z}
+deps_out: {from 3 [new job: false]: [] / commute_cond: [z_1],[z_2] => true AND from 4 [new job: false]: int[] maxSpend / commute_cond: [z],[i,account,amount,toWhom,pendingPoolSize,nAgents,maxSpend] => true AND from 6 [new job: false]: int z}
+{
+  approve(z){
+    mutex_lock(4);
+    maxSpend[z] = 100;
+    mutex_unlock(4);
+    busy_wait(scalingFactor);
+  }
+}
+
+=== Task 1 (Sequential) ===
+deps_in:  {from 2 [new job: false]:  AND from 4 [new job: false]: int i}
+deps_out: {from 2 [new job: true]: int i;int i;int[] nTxns AND from 4 [new job: true]: int i;int i;int[] pendingPoolSize;int i;int[] maxSpend;int i;int[] account}
+{
+  while (i < nAgents) {
+    nTxns[i] = 2;
+    mutex_lock(2);
+    pendingPoolSize[i] = 10;
+    mutex_unlock(2);
+    mutex_lock(3);
+    account[i] = i * 100;
+    mutex_unlock(3);
+    mutex_lock(4);
+    maxSpend[i] = i * 20;
+    mutex_unlock(4);
+    i = i + 1;
+  }
+  i = 0;
+  while (i < nAgents + b + 1) {
+    mutex_lock(2);
+    pendingPoolSize[i] = 0;
+    mutex_unlock(2);
+    i = i + 1;
+  }
+  i = 0;
+  while (i < nAgents) {
+    SendDep(2, int
+    i,
+    int
+    i,
+    int[]
+    nTxns)
+    i = i + 1;
+  }
+  SendEOP(2)
+}
+
+=== Task 2 (Doall) ===
+deps_in:  {from 1 [new job: true]: int i;int i;int[] nTxns AND from 4 [new job: false]: int i}
+deps_out: {from 1 [new job: false]: }
+{
+  while (j < nTxns[i]) {
+    SendDep(4, )
+    j = j + 1;
+  }
+  SendEOP(4)
+}
+
+=== Task 6 (Sequential) ===
+deps_in:  {from 3 [new job: false]: int z}
+deps_out: {from 3 [new job: true]: int z AND from 4 [new job: true]: }
+{
+  while (z < nAgents) {
+    SendDep(3, int
+    z)
+    z = z + 1;
+  }
+  SendEOP(3)
+}
+
+=== Task 5 (Sequential) ===
+{
+  return 0;
+}

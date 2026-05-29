@@ -1,0 +1,53 @@
+=== Init Task ===
+spawns: [3, 2]
+{
+  int i = 1;
+  string[] digest = new string[16];
+  string s = "";
+  int i_1 = 0;
+  int i_2 = 0;
+  string filename = "";
+}
+
+=== Task 1 (Doall) ===
+deps_in:  {from 1 [new job: false]: [] / commute_cond: [i_2],[i_1] => i_1 != i_2 AND from 3 [new job: true]: int i}
+deps_out: {from 1 [new job: false]: [] / commute_cond: [i_1],[i_2] => i_1 != i_2 AND from 3 [new job: false]: int i}
+{
+  f1(i){
+    int j = 0;
+    string temp = "";
+    mutex_lock(0);
+    filename = argv[i];
+    mutex_unlock(0);
+    while (j < 10) {
+      j = j + 1;
+      TChanR c = open_read(filename);
+      mutex_lock(1);
+      s = read_line(c);
+      mutex_unlock(1);
+      int j = 0;
+      temp = string_of_int(md5_lower(s));
+      close(c);
+    }
+    digest[i] = temp;
+    print(digest[i]);
+    print("\n");
+  }
+}
+
+=== Task 3 (Sequential) ===
+deps_in:  {from 1 [new job: false]: int i}
+deps_out: {from 1 [new job: true]: int i}
+{
+  while (i < argc) {
+    SendDep(1, int
+    i)
+    i = i + 1;
+  }
+  SendEOP(1)
+}
+
+=== Task 2 (Sequential) ===
+{
+  return 0;
+}
