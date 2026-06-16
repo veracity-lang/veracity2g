@@ -12,6 +12,7 @@ endif
 
 all:
 	$(OPAM_SETUP) $(MAKE) -C src
+	cp src/vcy.exe ./vcy
 
 test: all
 	$(OPAM_SETUP) bash scripts/run_tests.sh
