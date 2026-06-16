@@ -491,6 +491,14 @@ and transform_single
   in
   { stmt with elt = elt' }
 
+(* ---- Verbose helpers ---- *)
+
+let print_lock_state (lock_st : lock_state) =
+  let sorted = List.sort (fun (_, a) (_, b) -> compare a b) lock_st.var_to_lock in
+  List.iter (fun (var, id) ->
+    Servois2.Util.pfvv "    lock %d <- variable \"%s\"\n" id var
+  ) sorted
+
 (* ---- Pre-DSWP entry point ---- *)
 
 (* Transform all method bodies in the program, locking NCB-level conflicts.
@@ -499,16 +507,25 @@ let transform_prog (prog : prog) : prog =
   let safe_pos_map  = build_safe_pos_map prog in
   let conflict_set  = compute_inter_block_conflict_set prog safe_pos_map in
   if conflict_set = [] then prog
-  else
+  else begin
     let lock_st = create_lock_state () in
-    List.map (function
+    let result = List.map (function
       | Gmdecl decl ->
         let body' = { decl.elt.body with elt =
           transform_stmts conflict_set safe_pos_map [] lock_st decl.elt.body.elt
         } in
         Gmdecl { decl with elt = { decl.elt with body = body' } }
       | other -> other
-    ) prog
+    ) prog in
+    Servois2.Util.pfvv "[lock synthesis] pre-DSWP\n";
+    Servois2.Util.pfvv "  conflict set: {%s}\n" (String.concat ", " conflict_set);
+    let method_names = List.filter_map (function
+      | Gmdecl decl -> Some decl.elt.mname | _ -> None) prog in
+    Servois2.Util.pfvv "  methods instrumented: %s\n" (String.concat ", " method_names);
+    Servois2.Util.pfvv "  locks synthesized:\n";
+    print_lock_state lock_st;
+    result
+  end
 
 (* ---- Post-DSWP entry point ---- *)
 
@@ -524,13 +541,25 @@ let synthesize_tasks (prog : prog) (tasks : dswp_task list) : dswp_task list =
   let intra_set     = compute_inter_block_conflict_set prog safe_pos_map in
   let conflict_set  = List.sort_uniq compare (inter_set @ intra_set) in
   if conflict_set = [] then tasks
-  else
+  else begin
     let lock_st = create_lock_state () in
-    List.map (fun task ->
+    let instrumented = ref [] in
+    let result = List.map (fun task ->
       if block_has_mutex task.body.elt then task
-      else
+      else begin
+        instrumented := task.id :: !instrumented;
         let body' = { task.body with elt =
           transform_stmts conflict_set safe_pos_map [] lock_st task.body.elt
         } in
         { task with body = body' }
-    ) tasks
+      end
+    ) tasks in
+    Servois2.Util.pfvv "[lock synthesis] post-DSWP\n";
+    Servois2.Util.pfvv "  inter-task conflict set: {%s}\n" (String.concat ", " inter_set);
+    Servois2.Util.pfvv "  intra-task conflict set: {%s}\n" (String.concat ", " intra_set);
+    Servois2.Util.pfvv "  tasks instrumented: %s\n"
+      (String.concat ", " (List.map string_of_int (List.rev !instrumented)));
+    Servois2.Util.pfvv "  locks synthesized:\n";
+    print_lock_state lock_st;
+    result
+  end
