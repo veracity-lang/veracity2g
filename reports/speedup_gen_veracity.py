@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Invoke with: python3 ./speedup_gen.py <directory>
+# Invoke with: python3 ./speedup_gen_veracity.py <directory>
 # The directory will be created if it doesn't exist,
 #   and 3 CSV files will be generated inside the directory
 
@@ -85,7 +85,7 @@ def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     args = fargs(n)
 
     command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args # TODO: More time for inference?
-    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args
+    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args
 
     def f(command : List[str], floatize : bool):
         popen = subprocess.Popen(

@@ -25,8 +25,8 @@ int main(int argc, string[] argv) {
 		int_of_string(argv[5])
 	};
 
-	f1:{ mutex_lock(0); d = d + x[0] * y[0];mutex_unlock(0);  busy_wait(d);}
-	f2:{ busy_wait(d); mutex_lock(0); d = d + x[1] * y[1]; mutex_unlock(0); }
+	f1:{ d = d + x[0] * y[0]; busy_wait(d);}
+	f2:{ busy_wait(d); d = d + x[1] * y[1]; }
 	
 	/*return dot_product(x, y, d);*/
 	return d;

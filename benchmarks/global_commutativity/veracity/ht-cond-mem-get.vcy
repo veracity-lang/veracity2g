@@ -13,15 +13,15 @@ int main(int argc, string[] argv) {
 	tbl[z] = 42;
 
 	f1(tbl,x):{ 
-		busy_wait(n); mutex_lock(0); 
+		busy_wait(n);
 		if(ht_mem(tbl, x)) { 
 			y = ht_get(tbl, x);
-		}  mutex_unlock(0);
+		} 
 	}
 	f2(tbl,z):{	
-		mutex_lock(0); if(ht_mem(tbl, z)) {
+		if(ht_mem(tbl, z)) {
 			y = ht_get(tbl, z);
-		} mutex_unlock(0);
+		}
 		busy_wait(n);
 	}
 
