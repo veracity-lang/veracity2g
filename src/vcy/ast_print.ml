@@ -27,6 +27,7 @@ module AstPP = struct
   | IAnd -> 30
   | IOr  -> 20
   | Concat -> 10
+  | Implies -> 5
 
   let prec_of_unop = function _ -> 110
 
@@ -59,10 +60,11 @@ module AstPP = struct
   | Neq    -> "!="
   | And    -> "&&"
   | Or     -> "||"
-  | IAnd   -> "&"
-  | IOr    -> "|"
-  | Concat -> "^"
-  | Mod    -> "%"
+  | IAnd    -> "&"
+  | IOr     -> "|"
+  | Concat  -> "^"
+  | Mod     -> "%"
+  | Implies -> "==>"
 
   let print_id_aux fmt (x:id) = pp_print_string fmt x
 
@@ -91,6 +93,9 @@ module AstPP = struct
     | THashTable (tyk, tyv) -> pps "hashtable["; print_ty_aux fmt tyk; pps ", "; print_ty_aux fmt tyv; pps "]"
     | TStruct sid -> pps sid
     | TArr ty -> print_ty_aux fmt ty; pps "[]"
+    | TLoc -> pps "tloc"
+    | THeapValue (tyi, tyl) ->
+      pps "HeapValue["; print_ty_aux fmt tyi; pps ", "; print_ty_aux fmt tyl; pps "]"
 
   and print_exp_aux level fmt e =
     let pps = pp_print_string fmt in
@@ -99,7 +104,7 @@ module AstPP = struct
 
     if this_level < level then pps "(";
     begin match e.elt with
-      | CNull t -> print_ty_aux fmt t; pps "null"
+      | CNull t -> (*print_ty_aux fmt t;*) pps "null"
       | CBool v -> pps (if v then "true" else "false")
       | CInt  v -> pps (Int64.to_string v)
       | CStr  v -> pps (Printf.sprintf "%S" v)
@@ -156,6 +161,31 @@ module AstPP = struct
           pps " : ";
           print_exp_aux this_level fmt e;
           pp_close_box fmt ()
+      | HeapValue (e1, e2 ) ->
+          pp_open_box fmt 0;
+          pps "heapval{";
+          print_exp_aux this_level fmt e1;
+          pps "{}";
+          print_exp_aux this_level fmt e2;
+          pps "}";
+          pp_close_box fmt () 
+      | HeapAlloc (e1, e2 ) ->
+          pp_open_box fmt 0;
+          pps "new {";
+          print_exp_aux this_level fmt e1;
+          pps "{}";
+          print_exp_aux this_level fmt e2;
+          pps "}";
+          pp_close_box fmt () 
+      | HDerefNext  (l1) -> print_exp_aux this_level fmt l1; pps "->next"
+      | HDerefValue (l1) -> print_exp_aux this_level fmt l1; pps "->value"
+      | Exists (id, ty, body) ->
+          pp_open_box fmt 0;
+          pps "exists "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
+          print_exp_aux 0 fmt body;
+          pp_close_box fmt ()
+      | _ -> failwith ("print_exp_aux: match failed for ")
+
     end; if this_level < level then pps ")"
 
   and print_cfield_aux l fmt (name, exp) =
@@ -254,8 +284,12 @@ module AstPP = struct
           pps "if ("; print_exp_aux 0 fmt e; pps ") ";
           print_cond_aux fmt b_then opt_b_else
 
-      | While(e, b) ->
-        pps "while ("; print_exp_aux 0 fmt e; pps ") ";
+      | While(e, inv, b) ->
+        pps "while ("; print_exp_aux 0 fmt e; pps ")";
+        (match inv with
+         | None -> ()
+         | Some i -> pps " invariant "; print_exp_aux 0 fmt i);
+        pps " ";
         print_block_aux fmt b
 
       | For(decls, eo, so, body) ->
@@ -278,27 +312,41 @@ module AstPP = struct
           begin match variant with
             | CommuteVarSeq -> pps "seq"
             | CommuteVarPar -> pps "par"
+            | CommuteVarLM  -> pps "left"
+            | CommuteVarRM  -> pps "right"
+            | CommuteVarRMCtx _ -> pps "right_ctx"
+            | CommuteVarLMCtx _ -> pps "left_ctx"
           end;
           begin match phi with
             | PhiExp(e) -> pps " ("; print_exp_aux 0 fmt e; pps ") "
             | PhiInf -> pps " _ "
           end;
           let ppnl = pp_force_newline fmt in
-          (* Basically copy pasted from print_block_aux *)
-          if (List.length bodies) > 0 then
+          if (List.length bodies) > 0 || pre <> None || post <> None then
             begin pps "{"; ppnl (); pps "  ";
                   pp_open_vbox fmt 0;
+                  (match pre with
+                   | Some e -> pps "pre: "; print_exp_aux 0 fmt e; ppnl ()
+                   | None -> ());
                   List.iter (Util.compose ppnl (print_block_aux fmt)) bodies;
+                  (match post with
+                   | Some e -> ppnl (); pps "post: "; print_exp_aux 0 fmt e
+                   | None -> ());
+                  (match variant with
+                   | CommuteVarRMCtx ctx | CommuteVarLMCtx ctx ->
+                       ppnl (); pps "context: "; print_exp_aux 0 fmt ctx
+                   | _ -> ());
                   pp_close_box fmt ();
                   ppnl (); pps "}"
             end
           else pps "{ }"
       | Raise _ -> raise @@ NotImplemented "print_stmt_aux Raise"
-      | Assert _ -> raise @@ NotImplemented "print_stmt_aux Assert"
+      | Assert(e) ->
+        pps "assert("; print_exp_aux 0 fmt e; pps ");"
       | Assume(e) ->
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
-      | Havoc(id) ->
-        pps "havoc "; pps id; pps ";"
+      | Havoc(e) ->
+        pps "havoc "; print_exp_aux 0 fmt e; pps ";"
       | SBlock(blocklabel, block) -> begin match blocklabel with
           | None -> ()
           | Some bl -> print_blocklabel_aux fmt bl
@@ -332,7 +380,8 @@ module AstPP = struct
     let pps = pp_print_string fmt in
     let ppsp = pp_print_space fmt in
     pp_open_hbox fmt ();
-    pps @@ Printf.sprintf "global %s =" gd.name; ppsp ();
+    print_ty_aux fmt gd.ty; ppsp ();
+    pps gd.name; pps " ="; ppsp ();
     print_exp_aux 0 fmt gd.init; pps ";";
     pp_close_box fmt ()
 
@@ -454,6 +503,9 @@ module AstML = struct
       sp "THashTable (%s, %s)" (string_of_ty tyk) (string_of_ty tyv)
     | TArr ty -> sp "TArr (%s)" @@ string_of_ty ty
     | TStruct id -> sp "TStruct (%s)" @@ string_of_id id
+    | TLoc -> "TLoc"
+    | THeapValue (tyi, tyl) ->
+      sp "THeapValue (%s, %s)" (string_of_ty tyi) (string_of_ty tyl)
 
   let string_of_binop : binop -> string = function
     | Add    -> "Add"
@@ -474,8 +526,9 @@ module AstML = struct
     | Shl    -> "Shl" 
     | Shr    -> "Shr" 
     | Sar    -> "Sar" 
-    | Concat -> "Concat"
-    | Mod    -> "Mod"
+    | Concat  -> "Concat"
+    | Mod     -> "Mod"
+    | Implies -> "Implies"
 
   let string_of_unop : unop -> string = function
     | Neg    -> "Neg"
@@ -493,6 +546,10 @@ module AstML = struct
       | CNull t -> sp "CNull %s" (string_of_ty t)
       | CBool b -> sp "CBool %b" b
       | CInt i -> sp "CInt %LiL" i
+      | HeapValue (e1, e2) -> sp "HeapValue (%s, %s)" (string_of_exp e1) (string_of_exp e2)
+      | HeapAlloc (e1, e2) -> sp "HeapAlloc (%s, %s)" (string_of_exp e1) (string_of_exp e2)
+      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1) 
+      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1) 
       | CStr s -> sp "CStr %S" s
       | CArr (t,cs) -> sp "CArr (%s, %s)" 
                           (string_of_ty t) 
@@ -523,6 +580,11 @@ module AstML = struct
           id
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
+      | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
+      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1)
+      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1)
+      | Exists (id, ty, body) ->
+          sp "Exists (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
     end
 
   and string_of_exp (e:exp node) : string = 
@@ -553,68 +615,35 @@ module AstML = struct
                           (string_of_list string_of_vdecl_aux d) 
                           (string_of_option string_of_exp e)
                           (string_of_option string_of_stmt s) (string_of_block b)
-    | While (e,b) -> sp "While (%s, %s)" (string_of_exp e) (string_of_block b)
-    | Commute (var,phi,bl,pre,post) -> 
-      begin match pre, post with 
-      | None, None -> 
-      sp "Commute (%s, %s, %s)"
-        begin match var with
-        | CommuteVarSeq -> "CommuteVarSeq"
-        | CommuteVarPar -> "CommuteVarPar"
-        end
-        begin match phi with 
-        | PhiInf   -> "PhiInf" 
-        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
-        end
-        (string_of_list string_of_block bl)
-      | Some pr, None ->
-      sp "Commute (%s, %s, %s, %s)"
-        begin match var with
-        | CommuteVarSeq -> "CommuteVarSeq"
-        | CommuteVarPar -> "CommuteVarPar"
-        end
-        begin match phi with 
-        | PhiInf   -> "PhiInf" 
-        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
-        end
-        (string_of_exp pr)
-        (string_of_list string_of_block bl)
-      | None, Some po ->
-      sp "Commute (%s, %s, %s, %s)"
-        begin match var with
-        | CommuteVarSeq -> "CommuteVarSeq"
-        | CommuteVarPar -> "CommuteVarPar"
-        end
-        begin match phi with 
-        | PhiInf   -> "PhiInf" 
-        | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
-        end
-        (string_of_list string_of_block bl)
-        (string_of_exp po)
-      | Some pr, Some po ->
+    | While (e,inv,b) -> sp "While (%s, %s, %s)" (string_of_exp e)
+                            (match inv with None -> "None" | Some i -> sp "Some %s" (string_of_exp i))
+                            (string_of_block b)
+    | Commute (var,phi,bl, pre,post) ->
       sp "Commute (%s, %s, %s, %s, %s)"
         begin match var with
         | CommuteVarSeq -> "CommuteVarSeq"
         | CommuteVarPar -> "CommuteVarPar"
+        | CommuteVarLM -> "CommuteVarLM"
+        | CommuteVarRM -> "CommuteVarRM"
+        | CommuteVarRMCtx ctx -> sp "CommuteVarRMCtx (%s)" (string_of_exp ctx)
+        | CommuteVarLMCtx ctx -> sp "CommuteVarLMCtx (%s)" (string_of_exp ctx)
         end
-        begin match phi with 
-        | PhiInf   -> "PhiInf" 
+        begin match phi with
+        | PhiInf   -> "PhiInf"
         | PhiExp e -> sp "PhiExp (%s)" (string_of_exp e)
         end
-        (string_of_exp pr)
         (string_of_list string_of_block bl)
-        (string_of_exp po)
-      end
-      
+        (match pre  with Some p -> string_of_exp p | _ -> "true")
+        (match post with Some p -> string_of_exp p | _ -> "true")
     | Raise e ->
       sp "Raise (%s)" (string_of_exp e)
     | Assert e ->
       sp "Assert (%s)" (string_of_exp e)
     | Assume e ->
       sp "Assume (%s)" (string_of_exp e)
-    | Havoc id ->
-      sp "Havoc %s" (string_of_id id)
-    | SBlock (bl, b) -> 
+    | Havoc e ->
+      sp "Havoc (%s)" (string_of_exp e)
+    | SBlock (bl, b) ->
       sp "SBlock (%s, %s)" (string_of_option string_of_blocklabel bl) (string_of_block b)
     | SendDep (id, vars) ->
       sp "SendDep (%d: %s)" id (string_of_args vars)
@@ -695,6 +724,13 @@ module AstML = struct
     | VChanW (s, _)    -> "write_channel(" ^ s ^ ")"
 
     | VHashTable _ -> "string_of_value VHashTable" (* TODO: implement this *)
+
+    | VLoc None -> sp "loc(null)"
+    | VLoc Some(loc) -> sp "loc(%s)" (Int64.to_string loc)
+    | VHeapValue (n, None) ->
+      sp "HeapValue(%s, null)" (Int64.to_string n)
+    | VHeapValue (n, Some loc) ->
+      sp "HeapValue(%s, loc(%s))" (Int64.to_string n) (Int64.to_string loc)
 
     | VStruct (id,vs) ->
       List.map (fun (i,v) -> sp " %s = %s" i (string_of_value !v)) vs |>

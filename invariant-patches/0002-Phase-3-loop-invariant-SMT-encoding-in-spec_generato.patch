@@ -1,0 +1,410 @@
+From 3eebef039c67d1f2a424e92172ddcf6a7376072a Mon Sep 17 00:00:00 2001
+From: Eric Koskinen <eric.koskinen@stevens.edu>
+Date: Thu, 4 Jun 2026 12:00:09 +0200
+Subject: [PATCH 2/6] Phase 3: loop-invariant SMT encoding in spec_generator +
+ benchmarks
+
+spec_generator.ml:
+- loop_modified_vars: syntactic pass collecting base variable names
+  written by a block; handles direct assignments, array assignments,
+  heap-field writes, HeapAlloc (all three heap model vars), Decl,
+  Havoc, and recursion into If/While/For/Commute
+- While(guard, Some inv, body) in compile_block_to_smt: replaces the
+  loop with its invariant via EExists/ELet over post-loop values of
+  modified vars; exit condition (inv && !guard) under bumped versions
+  pins each modified variable; SMT types from gstates or defaults
+- While(_, None, _): explicit fallthrough (skips loop as before)
+
+benchmarks/loops/ (8 new programs, all verified by CVC5):
+- scan, countdown, stride, two-loops, reset: B loop does not modify
+  the same variable as A; tight bound invariants pin exit values
+- inc-loop, inc-dec-loop, add-const: B loop modifies same variable c
+  as A; invariant uses local c0 = c (saved at loop entry in B) to
+  express exact post-loop value, proving additive commutativity
+
+test.sh: new benchmarks/loops section runs ./vcy verify on each file
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ benchmarks/loops/add-const.vcy    | 32 ++++++++++++
+ benchmarks/loops/countdown.vcy    | 18 +++++++
+ benchmarks/loops/inc-dec-loop.vcy | 33 +++++++++++++
+ benchmarks/loops/inc-loop.vcy     | 31 ++++++++++++
+ benchmarks/loops/reset.vcy        | 19 ++++++++
+ benchmarks/loops/scan.vcy         | 20 ++++++++
+ benchmarks/loops/stride.vcy       | 18 +++++++
+ benchmarks/loops/two-loops.vcy    | 25 ++++++++++
+ src/analysis/spec_generator.ml    | 81 +++++++++++++++++++++++++++++++
+ test.sh                           |  5 ++
+ 10 files changed, 282 insertions(+)
+ create mode 100644 benchmarks/loops/add-const.vcy
+ create mode 100644 benchmarks/loops/countdown.vcy
+ create mode 100644 benchmarks/loops/inc-dec-loop.vcy
+ create mode 100644 benchmarks/loops/inc-loop.vcy
+ create mode 100644 benchmarks/loops/reset.vcy
+ create mode 100644 benchmarks/loops/scan.vcy
+ create mode 100644 benchmarks/loops/stride.vcy
+ create mode 100644 benchmarks/loops/two-loops.vcy
+
+diff --git a/benchmarks/loops/add-const.vcy b/benchmarks/loops/add-const.vcy
+new file mode 100644
+index 0000000..1e79482
+--- /dev/null
++++ b/benchmarks/loops/add-const.vcy
+@@ -0,0 +1,32 @@
++/* add-const.vcy
++ * Block A increments c by 1.
++ * Block B runs a loop that adds 3 to c on each of n iterations
++ * (total: adds 3*n to c).
++ *
++ * These commute because addition is commutative:
++ *   A then B: (c+1) + 3*n = c + 3*n + 1
++ *   B then A: (c+3*n) + 1 = c + 3*n + 1
++ *
++ * The invariant c == c0 + 3*i (where c0 = c at loop entry) pins
++ * the post-loop value of c to c0 + 3*n.
++ *
++ * Run: ./vcy verify benchmarks/loops/add-const.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int i = 0;
++    int n = 4;
++
++    commute (true) {
++        { c = c + 1; }
++        {
++            int c0 = c;
++            while (i < n) invariant i >= 0 && i <= n && c == c0 + 3 * i {
++                c = c + 3;
++                i = i + 1;
++            }
++        }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/countdown.vcy b/benchmarks/loops/countdown.vcy
+new file mode 100644
+index 0000000..2ff13f3
+--- /dev/null
++++ b/benchmarks/loops/countdown.vcy
+@@ -0,0 +1,18 @@
++/* countdown.vcy
++ * Block A increments a shared counter c.
++ * Block B counts t down from 10 to 0.
++ * Tight invariant (t >= 0 && t <= 10) forces t = 0 at exit.
++ *
++ * Run: ./vcy verify benchmarks/loops/countdown.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int t = 10;
++
++    commute (true) {
++        { c = c + 1; }
++        { while (t > 0) invariant t >= 0 && t <= 10 { t = t - 1; } }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/inc-dec-loop.vcy b/benchmarks/loops/inc-dec-loop.vcy
+new file mode 100644
+index 0000000..d42bb6e
+--- /dev/null
++++ b/benchmarks/loops/inc-dec-loop.vcy
+@@ -0,0 +1,33 @@
++/* inc-dec-loop.vcy
++ * Block A increments c by 1.
++ * Block B runs a loop that increments then immediately decrements c each
++ * iteration, leaving c unchanged (net effect: 0 per iteration).
++ *
++ * These commute because B has no net effect on c:
++ *   A then B: c + 1  (B changes nothing)
++ *   B then A: c + 1  (B changes nothing)
++ *
++ * The invariant c == c0 confirms c is preserved by the loop.
++ * The invariant i >= 0 && i <= n pins the post-loop value of i.
++ *
++ * Run: ./vcy verify benchmarks/loops/inc-dec-loop.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int i = 0;
++    int n = 4;
++
++    commute (true) {
++        { c = c + 1; }
++        {
++            int c0 = c;
++            while (i < n) invariant i >= 0 && i <= n && c == c0 {
++                c = c + 1;
++                c = c - 1;
++                i = i + 1;
++            }
++        }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/inc-loop.vcy b/benchmarks/loops/inc-loop.vcy
+new file mode 100644
+index 0000000..e5d0763
+--- /dev/null
++++ b/benchmarks/loops/inc-loop.vcy
+@@ -0,0 +1,31 @@
++/* inc-loop.vcy
++ * Block A increments c by 1.
++ * Block B runs a loop that also increments c, adding n in total.
++ *
++ * These commute because addition is commutative:
++ *   A then B: (c+1) + n = c + n + 1
++ *   B then A: (c+n) + 1 = c + n + 1
++ *
++ * The invariant c == c0 + i (where c0 = c at loop entry) pins the
++ * post-loop value of c to c0 + n, letting Servois2 conclude equality.
++ *
++ * Run: ./vcy verify benchmarks/loops/inc-loop.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int i = 0;
++    int n = 5;
++
++    commute (true) {
++        { c = c + 1; }
++        {
++            int c0 = c;
++            while (i < n) invariant i >= 0 && i <= n && c == c0 + i {
++                c = c + 1;
++                i = i + 1;
++            }
++        }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/reset.vcy b/benchmarks/loops/reset.vcy
+new file mode 100644
+index 0000000..76730f1
+--- /dev/null
++++ b/benchmarks/loops/reset.vcy
+@@ -0,0 +1,19 @@
++/* reset.vcy
++ * Block A sets a shared flag to 1.
++ * Block B zeros out a counter x by decrementing it.
++ * Tight invariant (x >= 0 && x <= 100) forces x = 0 at exit.
++ * Since flag and x are independent, both orderings reach the same state.
++ *
++ * Run: ./vcy verify benchmarks/loops/reset.vcy --prover cvc5
++ */
++int main() {
++    int flag = 0;
++    int x = 100;
++
++    commute (true) {
++        { flag = 1; }
++        { while (x > 0) invariant x >= 0 && x <= 100 { x = x - 1; } }
++    }
++
++    return flag;
++}
+diff --git a/benchmarks/loops/scan.vcy b/benchmarks/loops/scan.vcy
+new file mode 100644
+index 0000000..eab52ac
+--- /dev/null
++++ b/benchmarks/loops/scan.vcy
+@@ -0,0 +1,20 @@
++/* scan.vcy
++ * Block A increments a shared counter c.
++ * Block B scans a loop variable i from 0 up to n.
++ * Tight invariant (i >= 0 && i <= n) forces i = n at exit,
++ * so Servois2 can verify that both orderings reach the same state.
++ *
++ * Run: ./vcy verify benchmarks/loops/scan.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int i = 0;
++    int n = 10;
++
++    commute (true) {
++        { c = c + 1; }
++        { while (i < n) invariant i >= 0 && i <= n { i = i + 1; } }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/stride.vcy b/benchmarks/loops/stride.vcy
+new file mode 100644
+index 0000000..90ccf8f
+--- /dev/null
++++ b/benchmarks/loops/stride.vcy
+@@ -0,0 +1,18 @@
++/* stride.vcy
++ * Block A increments a shared counter c.
++ * Block B decrements x by 2 each step until it reaches 0.
++ * Tight invariant (x >= 0 && x % 2 == 0 && x <= 20) forces x = 0 at exit.
++ *
++ * Run: ./vcy verify benchmarks/loops/stride.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int x = 20;
++
++    commute (true) {
++        { c = c + 1; }
++        { while (x > 0) invariant x >= 0 && x % 2 == 0 && x <= 20 { x = x - 2; } }
++    }
++
++    return c;
++}
+diff --git a/benchmarks/loops/two-loops.vcy b/benchmarks/loops/two-loops.vcy
+new file mode 100644
+index 0000000..2b219b7
+--- /dev/null
++++ b/benchmarks/loops/two-loops.vcy
+@@ -0,0 +1,25 @@
++/* two-loops.vcy
++ * Block A increments a shared counter c.
++ * Block B runs two sequential loops, each with a tight invariant.
++ * First loop scans i from 0 to n; second counts j down from 5 to 0.
++ * Both invariants uniquely determine exit values (i = n, j = 0),
++ * so Servois2 can verify commutativity.
++ *
++ * Run: ./vcy verify benchmarks/loops/two-loops.vcy --prover cvc5
++ */
++int main() {
++    int c = 0;
++    int i = 0;
++    int n = 8;
++    int j = 5;
++
++    commute (true) {
++        { c = c + 1; }
++        {
++            while (i < n) invariant i >= 0 && i <= n { i = i + 1; }
++            while (j > 0) invariant j >= 0 && j <= 5  { j = j - 1; }
++        }
++    }
++
++    return c;
++}
+diff --git a/src/analysis/spec_generator.ml b/src/analysis/spec_generator.ml
+index 3493b3f..81540aa 100644
+--- a/src/analysis/spec_generator.ml
++++ b/src/analysis/spec_generator.ml
+@@ -426,6 +426,46 @@ let mk_var_pair var_id leftright vctrs =
+   (EVar (Smt.Var(var_id^"_"^(string_of_int  cur_ctr))), 
+    EVar (Smt.Var(var_id^"_"^(string_of_int (cur_ctr+1)))))
+ 
++(* Collect base variable names that are written by a block of statements.
++   Results may contain duplicates; caller should dedup.
++   Includes heap model variable names when heap writes or allocations occur. *)
++let rec loop_modified_vars (stmts : block) : string list =
++  List.concat_map loop_modified_in_stmt stmts
++
++and loop_modified_in_stmt (stmt : stmt node) : string list =
++  let rec base_id_exp e = match e.elt with
++    | Id n -> Some n
++    | Index (b, _) -> base_id_exp b
++    | HDerefValue b | HDerefNext b -> base_id_exp b
++    | _ -> None
++  in
++  match stmt.elt with
++  (* Heap allocation writes the lhs variable and all three heap model vars *)
++  | Assn (lhs, {elt = HeapAlloc _; _}) ->
++      heap_model_vars @ Option.to_list (base_id_exp lhs)
++  (* Heap-field writes touch the relevant model array *)
++  | Assn ({elt = HDerefValue _; _}, _) -> ["heap_value"]
++  | Assn ({elt = HDerefNext  _; _}, _) -> ["heap_next"]
++  | Assn (lhs, _)  -> Option.to_list (base_id_exp lhs)
++  | Decl (id, _)   -> [id]
++  | Havoc e ->
++      let rec base_id = function
++        | {elt=Id n;_} -> n
++        | {elt=Index(b,_);_} -> base_id b
++        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
++        | _ -> failwith "loop_modified_vars: unsupported havoc lvalue"
++      in
++      [base_id e]
++  | If (_, b1, b2) ->
++      loop_modified_vars b1.elt @ loop_modified_vars b2.elt
++  | While (_, _, body) ->
++      loop_modified_vars body.elt
++  | For (vds, _, _, body) ->
++      List.map (fun (id, _) -> id) vds @ loop_modified_vars body.elt
++  | Commute (_, _, blocks, _, _) ->
++      List.concat_map (fun b -> loop_modified_vars b.elt) blocks
++  | _ -> []
++
+ let compile_block_to_smt_exp (genv: global_env) (b : block) =
+   let local_variable_ctr_list = variable_ctr_list in
+   let bind = function
+@@ -586,6 +626,47 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
+           pre := exp_smt;
+           compile_block_to_smt tl vctrs;
+ 
++        (* Loop with a verified invariant: replace the loop with its invariant.
++           Existentially quantify over post-loop values of all variables
++           written by the body, assert (I ∧ ¬G) at the post-loop state, then
++           continue with the block tail. *)
++        | While (guard, Some inv, body) ->
++          let modified =
++            loop_modified_vars body.elt
++            |> List.sort_uniq String.compare
++            |> List.filter (Hashtbl.mem vctrs)
++          in
++          (* Bump version counter for each modified variable (side-effects vctrs). *)
++          let havoc_triples = List.map (fun id ->
++            let hv = id ^ "_loop_havoc" in
++            let new_id =
++              match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with
++              | EVar v -> v
++              | _ -> failwith ("loop_modified_vars: expected EVar for " ^ id)
++            in
++            let sty =
++              match List.find_opt (fun ((vid,_),_) -> String.equal vid id) !gstates with
++              | Some ((_, ty), _) -> sty_of_ty ty
++              | None ->
++                  if List.mem id heap_model_vars
++                  then Smt.TArray (Smt.TInt, Smt.TInt)
++                  else Smt.TInt
++            in
++            (new_id, Smt.EVar (Smt.Var hv), hv, sty)
++          ) modified in
++          (* Evaluate invariant and guard under the post-loop variable versions. *)
++          let inv_smt,   _ = exp_to_smt_exp inv   right vctrs in
++          let guard_smt, _ = exp_to_smt_exp guard right vctrs in
++          let exit_cond = ELop (And, [inv_smt; EUop (Not, guard_smt)]) in
++          let existentials = List.map (fun (_, _, hv, sty) -> (Smt.Var hv, sty)) havoc_triples in
++          let lets         = List.map (fun (nid, e, _, _) -> (nid, e)) havoc_triples in
++          EExists (existentials,
++            ELet (lets,
++              ELop (And, [exit_cond; compile_block_to_smt tl vctrs])))
++
++        | While (_, None, _) ->
++          compile_block_to_smt tl vctrs
++
+         | _ -> compile_block_to_smt tl vctrs
+         end
+   in
+diff --git a/test.sh b/test.sh
+index 7518194..4fcb097 100755
+--- a/test.sh
++++ b/test.sh
+@@ -59,6 +59,11 @@ for f in "${MOVERS_INTERP[@]}"; do
+   fi
+ done
+ 
++echo "=== benchmarks/loops ==="
++for f in benchmarks/loops/*.vcy; do
++  run "$f" "$VCY" verify "$f" --prover cvc5
++done
++
+ echo "=== benchmarks/invariants ==="
+ for f in benchmarks/invariants/*.vcy; do
+   run "$f" "$VCY" invariants "$f" --prover cvc5
+-- 
+2.50.1 (Apple Git-155)
+

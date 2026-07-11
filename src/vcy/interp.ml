@@ -11,6 +11,7 @@ open Option
 
 let emit_inferred_phis = ref false
 let emit_quiet = ref false
+let silent = ref false
 
 let print_cond = ref false
 
@@ -195,13 +196,14 @@ and interp_binop (env : env) (op : binop) (loc : Range.t) (e1 : exp node) (e2 : 
   | VInt v1,  VInt v2  -> env, interp_binop_int op loc v1 v2
 
   | VBool v1, VBool v2 ->
-    let f = 
+    let f =
       match op with
-      | Eq  -> ( = )
-      | Neq -> ( <> )
-      | And -> ( && )
-      | Or  -> ( || )
-      | _   -> raise @@ TypeFailure ("bool binop operator", loc)
+      | Eq      -> ( = )
+      | Neq     -> ( <> )
+      | And     -> ( && )
+      | Or      -> ( || )
+      | Implies -> (fun a b -> not a || b)
+      | _       -> raise @@ TypeFailure ("bool binop operator", loc)
     in env, VBool (f v1 v2)
 
   | VStr v1, VStr v2   ->
@@ -339,6 +341,8 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
     | MethodL (id, {pure;func;_}) ->
       func (env,args)
     end
+  | Exists _ ->
+    raise @@ NotImplemented "exists is only supported in pre/post conditions, not in executable code"
   | Bop (op, en1, en2) ->
     interp_binop env op loc en1 en2
   | Uop (op, en)       ->
@@ -390,8 +394,62 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | Some v -> env, !v
       | None -> raise @@ ValueFailure ("Struct does not have field " ^ fid, loc)
       end
-    | _ -> raise @@ TypeFailure ("Projection source is not a struct", loc)
+    | env, VLoc (Some(loc_id)) ->
+      begin failwith "not here2"; match Hashtbl.find_opt Vcylib.heap_store loc_id with
+      | None -> raise @@ ValueFailure ("heap proj: unallocated location " ^ Int64.to_string loc_id, loc)
+      | Some (n, next) ->
+        begin match fid with
+        | "val"  -> env, VInt n
+        | "next" ->
+          begin match next with
+          | None   -> env, VNull TLoc
+          | Some l -> env, VLoc (Some(l))
+          end
+        | _ -> raise @@ TypeFailure ("Unknown heap field " ^ fid, loc)
+        end
+      end
+    | _ -> raise @@ TypeFailure ("Projection source is not a struct or loc", loc)
     end
+  (* | NewCell ->
+    let loc_id = !Vcylib.heap_next_loc in
+    Vcylib.heap_next_loc := Int64.succ loc_id;
+    env, VLoc loc_id *)
+  | HeapValue (eval1, eloc2) ->
+    let env, v1 = interp_exp env eval1 in
+    let env, v2 = interp_exp env eloc2 in
+    begin match v1, v2 with
+    | VInt n, VNull TLoc -> env, VHeapValue (n, None)
+    | VInt n, VLoc (Some(l))     -> env, VHeapValue (n, Some l)
+    | _ -> raise @@ TypeFailure ("HeapValue constructor: expected (int, loc)", loc)
+    end
+  | HeapAlloc (eval1, eloc2) ->
+      let env',  v = interp_exp env  eval1 in
+      let env'', l = interp_exp env' eloc2 in
+      (* get a new leap location *)
+      let newloc = Vcylib.heap_next_gen() in 
+      begin match v, l with 
+        | VInt i, VInt ii ->
+          Vcylib.heap_set newloc i (Some ii);  env'', VLoc (Some(newloc))
+        | VInt i, VLoc loc'' ->
+          Vcylib.heap_set newloc i loc'';      env'', VLoc (Some(newloc))
+        | VInt i, VNull TLoc ->
+          Vcylib.heap_set newloc i None;       env'', VLoc (Some(newloc))
+        | _ -> failwith "HeapAlloc attempted with bogus params" 
+      end 
+  | HDerefValue (eloc) ->
+      let env',  l = interp_exp env eloc in
+      begin match l with 
+      | VLoc None -> failwith "HDerefValue on a null location"
+      | VLoc Some(i) ->
+        let v = Vcylib.heap_get_value i in 
+          (env',VInt v) end
+  | HDerefNext (eloc) ->
+      let env',  l = interp_exp env eloc in
+      begin match l with 
+      | VLoc None -> failwith "HDerefNext on a null location"
+      | VLoc Some(i) ->
+        let l' = Vcylib.heap_get_next i in 
+          (env',VLoc l') end
   | CallRaw (id, args) ->
     let env, args = interp_exp_seq env args in
     begin match find_binding id env BindM with
@@ -414,9 +472,19 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
     | BVUndef -> raise @@ IdNotFound (id, lhs.loc)
     | BVLocal (ty,r)
     | BVGlobal (ty,r) ->
-      if ty_match env v ty
-      then begin r := v; env end
-      else raise @@ TypeFailure ("assignment type mismatch", loc)
+      begin match ty, v with
+      | TLoc, VHeapValue (n, next) ->
+        begin match !r with
+        | VLoc Some(loc_id) ->
+          failwith "not here.";
+          Hashtbl.replace Vcylib.heap_store loc_id (n, next); env
+        | _ -> raise @@ ValueFailure ("heap write: variable is not an initialized loc", loc)
+        end
+      | _ ->
+        if ty_match env v ty
+        then begin r := v; env end
+        else raise @@ TypeFailure ("assignment type mismatch", loc)
+      end
     | _ -> raise @@ UnreachableFailure "assn id find bind"
     end
   | Index (a, i) ->
@@ -466,6 +534,28 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
         env
       end
     | _ -> raise @@ TypeFailure ("Projection source is not a struct", lhs.loc)
+    end
+  | HDerefValue (loc_exp) ->
+    begin match interp_exp env loc_exp with
+    | env, VLoc (Some i) ->
+      begin match v with
+      | VInt n -> Vcylib.heap_set i n (Vcylib.heap_get_next i); env
+      | _ -> raise @@ TypeFailure ("heap->value write expects int on RHS", loc)
+      end
+    | _, VLoc None -> raise @@ ValueFailure ("heap->value write to null location", loc)
+    | _ -> raise @@ TypeFailure ("heap->value LHS does not evaluate to a location", loc)
+    end
+  | HDerefNext (loc_exp) ->
+    begin match interp_exp env loc_exp with
+    | env, VLoc (Some i) ->
+      let cur_val = Vcylib.heap_get_value i in
+      begin match v with
+      | VLoc next_opt -> Vcylib.heap_set i cur_val next_opt; env
+      | VNull _       -> Vcylib.heap_set i cur_val None;     env
+      | _ -> raise @@ TypeFailure ("heap->next write expects loc on RHS", loc)
+      end
+    | _, VLoc None -> raise @@ ValueFailure ("heap->next write to null location", loc)
+    | _ -> raise @@ TypeFailure ("heap->next LHS does not evaluate to a location", loc)
     end
   | _ -> raise @@ TypeFailure ("assignment LHS", loc)
 
@@ -648,7 +738,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
     (* Run for loop as a while loop *)
     let env, v = interp_stmt_while !env' Range.norange cnd body in
     pop_block_from_callstack env, v
-  | While (cnd, body) ->
+  | While (cnd, _inv, body) ->
     interp_stmt_while env stmt.loc cnd body
   | Commute (variant, phi, blocks, _, _) ->
     let cnd =
@@ -1245,23 +1335,31 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block 
     in node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
-  | While (e,b) ->
-    let s = While (e, infer_phis_of_block g defs b) in
+  | While (e,inv,b) ->
+    let s = While (e, inv, infer_phis_of_block g defs b) in
     node_app
       (List.cons (node_up h s))
       (infer_phis_of_block g defs t)
-  | Commute (var,phi,bl, pre, post) ->
+  | Commute (var,phi,bl,pre,post) ->
     let bl = List.map (infer_phis_of_block g defs) bl in
     let phi' =
       let infer () = let phi' = infer_phi g var bl defs pre post in
-        if !emit_inferred_phis then
+        if !emit_inferred_phis && not !silent then
           begin if !emit_quiet
           then Printf.printf "%s\n"
             (AstPP.string_of_exp phi')
           else Printf.printf "Inferred condition at %s: %s\n"
-            (Range.string_of_range h.loc) 
+            (Range.string_of_range h.loc)
             (AstPP.string_of_exp phi')
           end;
+        (match !Util.session_dir, !Util.pending_subdir with
+        | Some _, Some subdir ->
+          Util.commute_records := !Util.commute_records @ [{
+            Util.loc_str   = Range.string_of_range h.loc;
+            Util.condition = AstPP.string_of_exp phi';
+            Util.subdir;
+          }]
+        | _ -> ());
         phi'
       in match phi with
     | PhiExp e -> if !force_infer then infer () else e
@@ -1383,8 +1481,8 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     in node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
-  | While (e,b) ->
-    let s = While (e, verify_phis_of_block g defs b) in
+  | While (e,inv,b) ->
+    let s = While (e, inv, verify_phis_of_block g defs b) in
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
@@ -1397,42 +1495,72 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
     node_app
       (List.cons (node_up h s))
       (verify_phis_of_block g defs t)
-  
+
   | Commute (var,phi,bl,pre,post) ->
     let bl = List.map (verify_phis_of_block g defs) bl in
     begin match phi with
       | PhiExp e ->
-        if !print_cond then 
+        if !print_cond && not !silent then
           Printf.printf "%s\n" (AstPP.string_of_exp e);
 
-        begin match Analyze.verify_of_block e g var bl defs pre post with
-        | Some b, compl -> 
-          let compl_str = 
-            match compl with 
-            | Some true  -> "true" 
-            | Some false -> "false" 
-            | None       -> "unknown"
-          in
-          if not b then begin 
-            if not !emit_quiet then Printf.printf "Condition at %s verified as incorrect: %s\n" 
-              (Range.string_of_range h.loc) 
-              (AstPP.string_of_exp e)
-            else print_string "incorrect\n"
-          end else begin 
-            if not !emit_quiet then
-              Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
-                (Range.string_of_range h.loc) 
-                (AstPP.string_of_exp e)
-                compl_str
-            else Printf.printf "correct\n%s\n" compl_str
-          end
-        | None, _ -> 
-          if not !emit_quiet then
-            Printf.printf "Condition at %s unable to verify: %s\n" 
-              (Range.string_of_range h.loc) 
-              (AstPP.string_of_exp e)
-          else print_string "failure\n"
-        end
+        let commute_subdir = match !Util.session_dir with
+          | None -> None
+          | Some sdir ->
+            let n = !Util.commute_counter in
+            Util.commute_counter := n + 1;
+            let d = Printf.sprintf "%s/commute_%04d" sdir n in
+            Unix.mkdir d 0o755;
+            Servois2.Util.output_dir := Some d;
+            Servois2.Util.query_counter := 0;
+            Servois2.Diagram.diagram_counter := 0;
+            Some d
+        in
+        Fun.protect
+          ~finally:(fun () ->
+            Servois2.Util.output_dir := None;
+            match !Util.session_dir, commute_subdir with
+            | Some _, Some subdir ->
+              Util.commute_records := !Util.commute_records @ [{
+                Util.loc_str   = Range.string_of_range h.loc;
+                Util.condition = AstPP.string_of_exp e;
+                Util.subdir;
+              }]
+            | _ -> ())
+          (fun () ->
+            match Analyze.verify_of_block e g var bl defs pre post with
+            | Some b, compl ->
+              let compl_str =
+                match compl with
+                | Some true  -> "true"
+                | Some false -> "false"
+                | None       -> "unknown"
+              in
+              if not b then begin
+                let msg = Printf.sprintf "Condition at %s verified as incorrect: %s"
+                  (Range.string_of_range h.loc) (AstPP.string_of_exp e) in
+                if not !silent then begin
+                  if not !emit_quiet then Printf.printf "%s\n" msg
+                  else print_string "incorrect\n"
+                end;
+                raise @@ CommuteFailure (msg, h.loc)
+              end else begin
+                if not !silent then begin
+                  if not !emit_quiet then
+                    Printf.printf "Condition at %s verified as correct: %s\nComplete status: %s\n"
+                      (Range.string_of_range h.loc)
+                      (AstPP.string_of_exp e)
+                      compl_str
+                  else Printf.printf "correct\n%s\n" compl_str
+                end
+              end
+            | None, _ ->
+              if not !silent then begin
+                if not !emit_quiet then
+                  Printf.printf "Condition at %s unable to verify: %s\n"
+                    (Range.string_of_range h.loc)
+                    (AstPP.string_of_exp e)
+                else print_string "failure\n"
+              end)
       | PhiInf -> () end;
     let s = Commute (var, phi, bl, pre, post) in
     node_app
@@ -1522,8 +1650,16 @@ let cook_calls (g : global_env) : global_env =
         CStruct (id, List.map (fun (i, e) -> i, cook_calls_of_exp e) el)
       | Proj (e, i) ->
         Proj (cook_calls_of_exp e, i)
-      | Id _ | CNull _ | CBool _ 
+      | HeapValue (e1, e2) ->
+        HeapValue (cook_calls_of_exp e1, cook_calls_of_exp e2)
+      | HeapAlloc (e1, e2) ->
+        HeapAlloc (cook_calls_of_exp e1, cook_calls_of_exp e2)
+      | Id _ | CNull _ | CBool _
       | CInt _ | CStr _ | NewHashTable _ -> e.elt
+      | HDerefValue l -> HDerefValue(cook_calls_of_exp l)
+      | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
+      | Exists (id, ty, body) -> Exists (id, ty, cook_calls_of_exp body)
+      | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))
     in
     node_up e e'
   in
@@ -1559,8 +1695,8 @@ let cook_calls (g : global_env) : global_env =
       let ss = Option.map cook_calls_of_stmt ss in
       let b = cook_calls_of_block b in
       For (vl, e, ss, b)
-    | While (e, b) ->
-      While (cook_calls_of_exp e, cook_calls_of_block b)
+    | While (e, inv, b) ->
+      While (cook_calls_of_exp e, Option.map cook_calls_of_exp inv, cook_calls_of_block b)
     | Raise e ->
       Raise (cook_calls_of_exp e)
     | Commute (v, c, bl, pre, post) ->
@@ -1581,8 +1717,8 @@ let cook_calls (g : global_env) : global_env =
       Assert (cook_calls_of_exp e)
     | Assume e ->
       Assume (cook_calls_of_exp e)
-    | Havoc id ->
-      Havoc id
+    | Havoc e ->
+      Havoc (cook_calls_of_exp e)
     | Require e ->
       Require (cook_calls_of_exp e)
     | SBlock (bl, b) ->

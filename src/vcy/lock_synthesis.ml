@@ -50,7 +50,7 @@ and ids_in_stmt (s : stmt) : id list =
     List.concat_map (fun a -> ids_in_exp a.elt) args
   | If (cond, b1, b2) ->
     ids_in_exp cond.elt @ ids_in_stmts b1.elt @ ids_in_stmts b2.elt
-  | While (cond, body) -> ids_in_exp cond.elt @ ids_in_stmts body.elt
+  | While (cond, _, body) -> ids_in_exp cond.elt @ ids_in_stmts body.elt
   | For (_, eo, _, body) ->
     (match eo with Some e -> ids_in_exp e.elt | None -> []) @
     ids_in_stmts body.elt
@@ -160,7 +160,7 @@ and conflicting_writes_of_stmt outer_vars safe_args s =
   | If (_, b1, b2) ->
     conflicting_writes_in_stmts outer_vars safe_args b1.elt @
     conflicting_writes_in_stmts outer_vars safe_args b2.elt
-  | While (_, body) | For (_, _, _, body) | SBlock (_, body) ->
+  | While (_, _, body) | For (_, _, _, body) | SBlock (_, body) ->
     conflicting_writes_in_stmts outer_vars safe_args body.elt
   | Commute (_, _, blocks, _, _) ->
     List.concat_map (fun b -> conflicting_writes_in_stmts outer_vars safe_args b.elt) blocks
@@ -194,7 +194,7 @@ let rec block_has_mutex (stmts : stmt node list) : bool =
     match s.elt with
     | SCallRaw ("mutex_lock", _) | SCallRaw ("mutex_unlock", _) -> true
     | If (_, b1, b2) -> block_has_mutex b1.elt || block_has_mutex b2.elt
-    | While (_, b) | For (_, _, _, b) | SBlock (_, b) -> block_has_mutex b.elt
+    | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> block_has_mutex b.elt
     | _ -> false
   ) stmts
 
@@ -211,7 +211,7 @@ and named_sblocks_in_stmt = function
   | SBlock (None, body) -> named_sblocks_in_stmts body.elt
   | If (_, b1, b2) ->
     named_sblocks_in_stmts b1.elt @ named_sblocks_in_stmts b2.elt
-  | While (_, body) | For (_, _, _, body) -> named_sblocks_in_stmts body.elt
+  | While (_, _, body) | For (_, _, _, body) -> named_sblocks_in_stmts body.elt
   | Commute (_, _, blocks, _, _) ->
     List.concat_map (fun b -> named_sblocks_in_stmts b.elt) blocks
   | _ -> []
@@ -465,8 +465,8 @@ and transform_single
       let b1' = { b1 with elt = transform_stmts conflict_set safe_pos_map safe_args lock_st b1.elt } in
       let b2' = { b2 with elt = transform_stmts conflict_set safe_pos_map safe_args lock_st b2.elt } in
       If (cond, b1', b2')
-  | While (cond, body) ->
-    While (cond, { body with elt = transform_stmts conflict_set safe_pos_map safe_args lock_st body.elt })
+  | While (cond, inv, body) ->
+    While (cond, inv, { body with elt = transform_stmts conflict_set safe_pos_map safe_args lock_st body.elt })
   | For (decls, eo, so, body) ->
     For (decls, eo, so, { body with elt = transform_stmts conflict_set safe_pos_map safe_args lock_st body.elt })
   | SBlock (None, body) ->

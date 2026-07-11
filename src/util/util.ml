@@ -242,12 +242,23 @@ let rec last_element lst =
   | [x] -> Some x
   | _ :: tail -> last_element tail
 
-  let contains_substring str s =
+let contains_substring str s =
   try
     let regexp = Str.regexp_string s in
     Str.search_forward regexp str 0 >= 0
   with
     Not_found -> false
 
-  
-  let manual_dependency = ref false
+let manual_dependency = ref false
+
+(* HTML output session state *)
+type commute_record = {
+  loc_str   : string;   (* "file:[sl.sc-el.ec]" *)
+  condition : string;   (* inferred/verified condition expression *)
+  subdir    : string;   (* per-commute output dir with Servois2 files *)
+}
+
+let session_dir     : string option ref       = ref None
+let commute_counter : int ref                 = ref 0
+let commute_records : commute_record list ref = ref []
+let pending_subdir  : string option ref       = ref None

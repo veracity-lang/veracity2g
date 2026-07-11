@@ -32,7 +32,7 @@ let transform_stmt (s: stmt node) : enode_ast_elt =
     | [] -> EIf e
     | _ -> EIfElse e
     end
-  | While (e,_) -> EWhile e 
+  | While (e,_,_) -> EWhile e
   | For (v,e,s,_) -> EFor (v,e,s)
   | _ -> EStmt s
 
@@ -199,7 +199,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
     | SBlock (Some (_, None),body) | SBlock (None, body) -> find_block_vars body.elt
     | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt 
-    | While (e, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
+    | While (e, _, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
     | For (vdecls,eoption,soption,body) -> 
       List.concat_map (fun v -> 
       let id, (ty, e) = v in 
@@ -494,7 +494,7 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
 
         List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg blk1.elt
           
-      | While (_, bl) | For (_, _, _, bl) ->
+      | While (_, _, bl) | For (_, _, _, bl) ->
         let src, pdg = add_node pdg stmt in
         let pdg = traverse_ast bl.elt pdg in 
 
@@ -1049,7 +1049,7 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
             let rest, f = transform_block dag_scc_node (node_up block tl) in
             new_b1 @ new_b2 @ rest, false && f
           end
-        | While (e, b) ->
+        | While (e, inv, b) ->
           let new_body, f = transform_block dag_scc_node b in
           if stmt_exist stmt dag_scc_node then begin
             let updated_body = 
@@ -1060,7 +1060,7 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
                 new_body 
             in
             let rest, f = transform_block dag_scc_node (node_up block tl) in
-            (node_up stmt (While (e, node_up b updated_body))) :: rest, true && f
+            (node_up stmt (While (e, inv, node_up b updated_body))) :: rest, true && f
           end else begin
             let rest, f = transform_block dag_scc_node (node_up block tl) in
             new_body @ rest, false && f
@@ -1160,7 +1160,7 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
           in
           SendDep (i, vars @ (List.concat_map (fun d -> if d.pred_task == task.id then d.vars else []) t.deps_in))
         | If(e,bl1,bl2) -> If(e, node_up bl1 (update_body bl1.elt), node_up bl2 (update_body bl2.elt))
-        | While(e,bl) -> While(e, node_up bl (update_body bl.elt))
+        | While(e,inv,bl) -> While(e,inv, node_up bl (update_body bl.elt))
         | s -> s 
         end
         in 

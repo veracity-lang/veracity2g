@@ -23,9 +23,16 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token WHILE    /* while */
 %token COMMUTE_SEQ /* commute_seq */
 %token COMMUTE_PAR /* commute_par */
+%token COMMUTE_LEFT /* commute_left */
+%token COMMUTE_LEFT_CTX /* commute_left_ctx */
+%token COMMUTE_RIGHT /* commute_right */
+%token COMMUTE_RIGHT_CTX /* commute_right_ctx */
+%token CONTEXT /* context */
 %token HASHTABLE /* hashtable */
 %token HASHTABLE_SEQ
 %token HASHTABLE_NAIVE
+%token TLOC        /* loc */
+%token THEAP_VALUE /* heap_value */
 %token RETURN   /* return */
 %token SEMI     /* ; */
 %token COLON    /* : */
@@ -46,6 +53,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token RPAREN   /* ) */
 %token LBRACKET /* [ */
 %token RBRACKET /* ] */
+%token LRBRACE  /* {} heap cell */
+%token ARROW    /* -> heap deref */
 %token TILDE    /* ~ */
 %token BANG     /* ! */
 %token DOT      /* . */
@@ -74,6 +83,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token BOR      /* [|] */
 
 %token FUNC      /* => */
+%token DARROW    /* ==> implication */
+%token EXISTS    /* exists quantifier */
 %token RAISE
 %token PURE
 
@@ -81,8 +92,11 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %token COMMUTATIVITY
 %token PRE POST
 
+%token INVARIANT
+
 %token UNDERSCORE
 
+%right DARROW
 %left BOR
 %left BAND
 %left LOR
@@ -92,7 +106,7 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
 %left RSHIFTU RSHIFT LSHIFT
 %left DASH PLUS CARET
 %left STAR
-%left DOT
+%left DOT ARROW
 %left PERCENT
 %right QMARK COLON
 %nonassoc BANG
@@ -128,6 +142,8 @@ prog:
 decl:
   | ty=ty name=IDENT EQ init=exp(*gexp*) SEMI
     { Gvdecl (loc $startpos $endpos { name; ty; init }) }
+  | ty=ty name=UIDENT EQ init=exp(*gexp*) SEMI
+    { Gvdecl (loc $startpos $endpos { name; ty; init }) }
   | (*p=pure*) mrtyp=ty mname=IDENT LPAREN args=arglist RPAREN body=block
     { Gmdecl (loc $startpos $endpos { pure=false; mrtyp; mname; args; body }) }
   | mrtyp=ty mname=IDENT LPAREN args=arglist RPAREN FUNC e=exp SEMI
@@ -158,6 +174,7 @@ arglist:
     
 ty:
   | TINT   { TInt }
+  | TLOC   { TLoc }
   | TBOOL  { TBool }
   | TSTRING { TStr }
   | TVOID { TVoid }
@@ -166,6 +183,8 @@ ty:
   | t=ty LBRACKET RBRACKET { TArr t }
   | HASHTABLE LBRACKET tyk=ty COMMA tyv=ty RBRACKET { THashTable (tyk,tyv) }
   | id=UIDENT { TStruct id }
+  | TLOC { TLoc }
+  | THEAP_VALUE LBRACKET tyi=ty COMMA tyl=ty RBRACKET { THeapValue (tyi, tyl) }
 
 %inline bop:
   | STAR {Mul}
@@ -183,6 +202,7 @@ ty:
   | NEQ {Neq}
   | LAND {And}
   | LOR {Or}
+  | DARROW {Implies}
   | BAND {IAnd}
   | BOR {IOr}
   | PERCENT {Mod}
@@ -194,15 +214,25 @@ ty:
   | BANG  { Lognot }
   | TILDE { Bitnot }
 
-lhs:  
+lhs:
   | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | id=UIDENT           { loc $startpos $endpos @@ Id id }
   | e=basic_exp LBRACKET i=basic_exp RBRACKET
                         { loc $startpos $endpos @@ Index (e, i) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj (e, id) }
+  | l=basic_exp ARROW id=IDENT {
+        match id with
+        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
+        | "value" -> loc $startpos $endpos @@ HDerefValue l
+        | _       -> failwith (Printf.sprintf "lhs: unknown heap field '%s'" id) }
 
 exp:
   | be=basic_exp        { be }
   | nd=new_data         { nd }
+
+heapcell_exp:
+  | LBRACE e1=basic_exp LRBRACE e2=basic_exp RBRACE
+       { loc $startpos $endpos @@ HeapValue (e1, e2) }
 
 basic_exp:
   | ae=atomic_expr                  { ae }
@@ -216,16 +246,30 @@ basic_exp:
                         { loc $startpos $endpos @@ CallRaw (e,es) }
   | e=basic_exp DOT id=IDENT  { loc $startpos $endpos @@ Proj(e, id) }
   | LPAREN e=exp RPAREN { e }
-  
+  | l=basic_exp ARROW id=IDENT {
+        match id with
+        | "next"  -> loc $startpos $endpos @@ HDerefNext  l
+        | "value" -> loc $startpos $endpos @@ HDerefValue l
+        | _       -> failwith (Printf.sprintf "basic_exp: unknown heap field '%s'" id) }
+  | EXISTS id=IDENT DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Exists(id, TInt, body) }
+  | EXISTS id=IDENT COLON t=ty DOT body=basic_exp
+      %prec DARROW
+      { loc $startpos $endpos @@ Exists(id, t, body) }
+
 atomic_expr:
   | i=INT               { loc $startpos $endpos @@ CInt i }
-  | t=ty NULL           { loc $startpos $endpos @@ CNull t }
+  | NULL                { loc $startpos $endpos @@ CNull TLoc }
   | id=IDENT            { loc $startpos $endpos @@ Id id }
+  | id=UIDENT           { loc $startpos $endpos @@ Id id }
   | s=STRING   { loc $startpos $endpos @@ CStr s}
   | TRUE       { loc $startpos $endpos @@ CBool true}
   | FALSE      { loc $startpos $endpos @@ CBool false}
 
 new_data:
+  | NEW LBRACE e1=basic_exp LRBRACE e2=basic_exp RBRACE
+       { loc $startpos $endpos @@ HeapAlloc(e1,e2) }
   | NEW t=ty LBRACKET RBRACKET LBRACE es=separated_list(COMMA, exp) RBRACE 
                         {loc $startpos $endpos @@ CArr(t, es)}
   | NEW t=ty LBRACKET e=basic_exp RBRACKET {loc $startpos $endpos @@ NewArr(t,e)}
@@ -243,9 +287,14 @@ field:
   | id=IDENT EQ e=exp { (id, e) }
 
 vdecl:
-  | ty=ty id=IDENT EQ init=exp { (id, (ty, init)) }
+  | ty=ty id=IDENT  EQ init=exp { (id, (ty, init)) }
+  | ty=ty id=UIDENT EQ init=exp { (id, (ty, init)) }
 
-stmt: 
+%inline while_inv:
+  | (* empty *)              { None }
+  | INVARIANT inv=exp        { Some inv }
+
+stmt:
   | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }
   | p=lhs EQ e=exp SEMI { loc $startpos $endpos @@ Assn(p,e) }
   | e=IDENT(*exp*) LPAREN es=separated_list(COMMA, exp) RPAREN SEMI
@@ -253,30 +302,38 @@ stmt:
   | ifs=if_stmt         { ifs }
   | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
-  | WHILE LPAREN e=exp RPAREN b=block  
-                        { loc $startpos $endpos @@ While(e, b) }
+  | WHILE LPAREN e=exp RPAREN inv=while_inv b=block
+                        { loc $startpos $endpos @@ While(e, inv, b) }
   | FOR LPAREN vdecls=separated_list(COMMA, vdecl) SEMI e=option(exp) SEMI s=option(stmt) RPAREN b=block
       {loc $startpos $endpos @@ For(vdecls, e, s, b)}
   | variant=commute_variant phi=commute_condition
     LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) RBRACE
     { loc $startpos $endpos @@ Commute(variant,phi,blocks,pre,post) }
+  | COMMUTE_RIGHT_CTX phi=commute_condition
+    LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) CONTEXT COLON ctx=exp RBRACE
+    { loc $startpos $endpos @@ Commute(CommuteVarRMCtx ctx,phi,blocks,pre,post) }
+  | COMMUTE_LEFT_CTX phi=commute_condition
+    LBRACE option(PRE) option(COLON) pre=option(exp) blocks=nonempty_list(block) option(POST) option(COLON) post=option(exp) CONTEXT COLON ctx=exp RBRACE
+    { loc $startpos $endpos @@ Commute(CommuteVarLMCtx ctx,phi,blocks,pre,post) }
   | RAISE e=exp SEMI { loc $startpos $endpos @@ Raise e }
   | ASSERT e=exp SEMI { loc $startpos $endpos @@ Assert e }
   | ASSUME e=exp SEMI { loc $startpos $endpos @@ Assume e }
-  | HAVOC i=IDENT SEMI { loc $startpos $endpos @@ Havoc i }
+  | HAVOC e=exp SEMI { loc $startpos $endpos @@ Havoc e }
   | b=block  { loc $startpos $endpos @@ SBlock(None,b) }
   | bl=block_label COLON b=block { loc $startpos $endpos @@ SBlock(Some bl,b) }
 
 block_label:
   | i=IDENT { (i, None) }
   | i=IDENT LPAREN il=separated_list(COMMA,exp) RPAREN { (i, Some il) }
-  
+
 label:
   | i=IDENT {i}
 
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }
   | COMMUTE_PAR { CommuteVarPar }
+  | COMMUTE_LEFT { CommuteVarLM }
+  | COMMUTE_RIGHT { CommuteVarRM }
 
 commute_condition:
   | LPAREN phi=exp RPAREN { PhiExp(phi) }

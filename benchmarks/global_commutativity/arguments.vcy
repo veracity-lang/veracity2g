@@ -1,0 +1,23 @@
+commutativity {
+    {f1(i1,a,arr)}, {f2(i2,b,arr)}: (i1 != i2 || (i1 == i2 && b == 1))
+}
+
+int main(int argc, string[] argv) {
+    int a = 0;
+    int b = 0;
+    int arr = 10;
+    int gl = 1;
+    int i1 = 2; int i2 = 3;
+ 
+    f1(i1,a,arr):{
+        /*arr[i1] = arr[i1] + a;*/
+        gl = gl + 3;
+    }
+    f2(i2,b,arr):{
+        /*arr[i2] = arr[i2] * b;
+        */
+        gl = gl - 3;
+    }
+    
+    return 0;
+}
