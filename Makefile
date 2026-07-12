@@ -11,8 +11,8 @@ endif
 .PHONY: all test latex clean
 
 all:
-	$(OPAM_SETUP) $(MAKE) -C src
-	cp src/vcy.exe ./vcy
+	$(OPAM_SETUP) dune build --root src
+	cp src/_build/default/run.exe ./vcy
 
 test: all
 	$(OPAM_SETUP) bash scripts/run_tests.sh
@@ -24,4 +24,4 @@ latex: all
 	$(OPAM_SETUP) bash scripts/emit_tasks.sh
 
 clean:
-	$(MAKE) -C src clean
+	dune clean --root src
