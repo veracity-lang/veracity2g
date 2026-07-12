@@ -133,13 +133,53 @@ document.addEventListener('keydown',function(e){
 
 let js_suffix = {|</script>|}
 
+let dswp_css = {|<style>
+*{box-sizing:border-box}
+body{margin:0;padding:20px 24px;background:#1e1e1e;color:#d4d4d4;
+     font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+h1{color:#569cd6;margin:0 0 4px}
+h2{color:#4ec9b0;margin:24px 0 10px;font-size:1.05em;text-transform:uppercase;
+   letter-spacing:.06em;border-bottom:1px solid #3c3c3c;padding-bottom:6px}
+.meta{color:#888;font-size:.85em;margin-bottom:18px}
+.meta strong{color:#9cdcfe}
+.svg-wrap{background:#fff;border:1px solid #3c3c3c;border-radius:6px;
+          overflow:auto;max-width:100%;margin-bottom:20px}
+.svg-wrap svg{display:block;max-width:100%;height:auto}
+.tasks-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+            gap:14px;margin-bottom:20px}
+.task-card{background:#252526;border:1px solid #3c3c3c;border-radius:8px;padding:16px}
+.task-card h3{margin:0 0 8px;color:#569cd6;font-size:1em;display:flex;
+              align-items:center;gap:8px}
+.badge{display:inline-block;font-size:.72em;border-radius:3px;padding:1px 6px;
+       font-weight:600;vertical-align:middle}
+.badge-doall{background:#0e7c0e;color:#fff}
+.badge-seq{background:#7c4a0e;color:#fff}
+.deps{font-size:.82em;color:#888;margin-bottom:6px}
+.deps strong{color:#b5b5b5}
+.task-body{background:#1a1a1a;border:1px solid #333;border-radius:4px;
+           padding:10px 12px;font-family:'Consolas','Monaco',monospace;
+           font-size:.83em;color:#d4d4d4;white-space:pre-wrap;
+           word-break:break-all;margin:8px 0 0;max-height:300px;overflow-y:auto}
+.init-task{background:#252526;border:1px solid #3c3c3c;border-radius:8px;
+           padding:16px;margin-bottom:14px}
+.init-task h3{margin:0 0 8px;color:#c586c0;font-size:1em}
+.init-task .task-body{color:#ce9178}
+table.src{border-collapse:collapse;width:100%;
+          font-family:'Consolas','Monaco',monospace;font-size:.85em;
+          background:#252526;border-radius:6px;overflow:hidden}
+table.src td{padding:1px 8px;white-space:pre;vertical-align:top}
+.ln{color:#555;user-select:none;text-align:right;border-right:1px solid #333;
+    padding-right:10px;min-width:44px}
+.nosvg{color:#666;font-style:italic;font-size:.9em;padding:16px}
+</style>|}
+
+(* Resolve this run's output directory: a directory handed down by a calling
+   tool (or --out-dir) wins; otherwise $VERACITY_OUT; otherwise a fresh
+   ./veracity_output/run_NNNN/ in the CWD.  Output lands next to the user's
+   work rather than in /tmp, where it used to be reaped and unfindable. *)
 let create_session_dir () =
-  (* Filename.temp_file gives us a unique name; remove the dummy file,
-     create a directory instead. *)
-  let base = Filename.temp_file ~temp_dir:"/tmp" "veracity_" "" in
-  Sys.remove base;
-  Unix.mkdir base 0o755;
-  base
+  Servois2.Rundir.resolve ~root:Util.output_root ~tool:"veracity"
+    ~env_var:"VERACITY_OUT"
 
 let generate ~source_file ~session_dir ~records =
   (* 1. Read source *)
@@ -259,6 +299,148 @@ let generate ~source_file ~session_dir ~records =
   in
 
   let out_path = Filename.concat session_dir "index.html" in
+  let oc = open_out out_path in
+  output_string oc html;
+  close_out oc;
+
+  (* Manifest: same schema at every level so one script can walk the tree. *)
+  let children =
+    List.map
+      (fun (r : Util.commute_record) ->
+        { Servois2.Rundir.child_tool = "servois2";
+          child_path = Filename.basename r.Util.subdir })
+      records
+  in
+  Servois2.Rundir.write_manifest ~dir:session_dir ~tool:"veracity"
+    ~input:source_file
+    ~result:(Printf.sprintf "%d commutes" (List.length records))
+    ~artifacts:[ { Servois2.Rundir.kind = "report"; path = "index.html" } ]
+    ~children ();
+  out_path
+
+(* Render a Dswp_task.dependency list as readable HTML. *)
+let dep_list_html deps =
+  if deps = [] then "<span style=\"color:#555\">none</span>"
+  else
+    String.concat ", " (List.map (fun (d : Dswp_task.dependency) ->
+      let vars = Dswp_task.str_of_vars_list d.vars in
+      Printf.sprintf
+        "<span style=\"color:#9cdcfe\">T%d</span>[<span style=\"color:#ce9178\">%s</span>]"
+        d.pred_task (html_escape vars)
+    ) deps)
+
+let svg_section_html label dot_path =
+  match dot_to_svg dot_path with
+  | Some svg ->
+    Printf.sprintf "<h2>%s</h2><div class=\"svg-wrap\">%s</div>\n" label svg
+  | None ->
+    Printf.sprintf "<h2>%s</h2><p class=\"nosvg\">\
+      (Graphviz not available or .dot file missing: %s)</p>\n"
+      label (html_escape dot_path)
+
+(* Generate a standalone HTML report for a DSWP analysis.
+   pdg_dot   — path to the PDG .dot file (session_dir/pdg.dot)
+   tasks_dot — path to the SCC task DAG .dot file (session_dir/dag-scc.dot) *)
+let generate_dswp ~source_file ~session_dir
+                  ~(init_task : Dswp_task.init_task option)
+                  ~(tasks : Dswp_task.dswp_task list)
+                  ~pdg_dot ~tasks_dot =
+  let source_text =
+    try read_file source_file
+    with _ ->
+      Printf.eprintf "html_output: cannot read %s\n" source_file; ""
+  in
+  let source_lines = String.split_on_char '\n' source_text in
+
+  (* Source listing — plain, no commute annotations *)
+  let src_buf = Buffer.create 4096 in
+  Buffer.add_string src_buf "<table class=\"src\">\n";
+  List.iteri (fun i line ->
+    Buffer.add_string src_buf
+      (Printf.sprintf "<tr><td class=\"ln\">%d</td>\
+                       <td class=\"code\">%s</td></tr>\n"
+         (i + 1) (html_escape line))
+  ) source_lines;
+  Buffer.add_string src_buf "</table>\n";
+
+  (* Init task card *)
+  let init_html = match init_task with
+    | None -> ""
+    | Some it ->
+      let spawns = String.concat ", " (List.map string_of_int it.Dswp_task.jobs) in
+      let body_str = Ast_print.AstPP.string_of_block it.Dswp_task.decls in
+      Printf.sprintf
+        "<div class=\"init-task\">\
+           <h3>Init Task &mdash; spawns: [%s]</h3>\
+           <pre class=\"task-body\">%s</pre>\
+         </div>\n"
+        (html_escape spawns)
+        (html_escape (String.trim body_str))
+  in
+
+  (* Task cards *)
+  let task_cards_html =
+    String.concat "\n" (List.map (fun (t : Dswp_task.dswp_task) ->
+      let label_badge = match t.Dswp_task.label with
+        | Dswp_task.Doall      -> "<span class=\"badge badge-doall\">Doall</span>"
+        | Dswp_task.Sequential -> "<span class=\"badge badge-seq\">Sequential</span>"
+      in
+      let body_str = Ast_print.AstPP.string_of_block t.Dswp_task.body in
+      Printf.sprintf
+        "<div class=\"task-card\" id=\"task-%d\">\
+           <h3>Task %d %s</h3>\
+           <div class=\"deps\"><strong>deps_in:</strong> %s</div>\
+           <div class=\"deps\"><strong>deps_out:</strong> %s</div>\
+           <pre class=\"task-body\">%s</pre>\
+         </div>"
+        t.Dswp_task.id t.Dswp_task.id label_badge
+        (dep_list_html t.Dswp_task.deps_in)
+        (dep_list_html t.Dswp_task.deps_out)
+        (html_escape (String.trim body_str))
+    ) tasks)
+  in
+
+  let html = Printf.sprintf {|<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Veracity DSWP: %s</title>
+%s
+</head>
+<body>
+<h1>Veracity DSWP Analysis</h1>
+<div class="meta">
+  Source: <strong>%s</strong> &mdash; %d task(s) generated
+</div>
+
+%s
+%s
+
+<h2>Init Task</h2>
+%s
+
+<h2>Generated Tasks</h2>
+<div class="tasks-grid">
+%s
+</div>
+
+<h2>Source</h2>
+%s
+
+</body>
+</html>|}
+    (Filename.basename source_file)
+    dswp_css
+    (html_escape source_file)
+    (List.length tasks)
+    (svg_section_html "Program Dependency Graph" pdg_dot)
+    (svg_section_html "Task Graph" tasks_dot)
+    (if init_html = "" then "<p style=\"color:#555\">none</p>" else init_html)
+    task_cards_html
+    (Buffer.contents src_buf)
+  in
+
+  let out_path = Filename.concat session_dir "dswp.html" in
   let oc = open_out out_path in
   output_string oc html;
   close_out oc;

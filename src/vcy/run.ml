@@ -146,6 +146,8 @@ module RunInterp : Runner = struct
   let dswp_mode = ref false
   let synthesize_locks = ref false
   let emit_tasks = ref false
+  let generate_html = ref false
+  let open_html = ref false
   (* let no_named_blocks = ref false *) (* TODO *)
 
   let speclist =
@@ -162,6 +164,9 @@ module RunInterp : Runner = struct
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
     ; "--synthesize-locks", Arg.Set synthesize_locks, " Synthesize fine-grained mutex_lock/unlock in named commutative blocks"
     ; "--emit-tasks", Arg.Set emit_tasks, " Print DSWP task bodies (requires --dswp) and exit without running"
+    ; "--html",     Arg.Unit (fun () -> generate_html := true), " Generate HTML report of DSWP analysis in ./veracity_output/run_NNNN/ (requires --dswp)"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir",  Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ] |>
     Arg.align
 
@@ -208,6 +213,32 @@ module RunInterp : Runner = struct
         Interp.synthesize_locks_flag := true;
       Random.self_init ();
 
+      (* When --dswp --html: allocate the run dir now so dot files land there. *)
+      let dswp_sdir =
+        if !dswp_mode && !generate_html then begin
+          let sdir = Html_output.create_session_dir () in
+          Exe_pdg.output_dir := Some sdir;
+          Printf.eprintf "Session directory: %s\n" sdir;
+          Some sdir
+        end else None
+      in
+
+      let generate_dswp_html () =
+        match dswp_sdir with
+        | None -> ()
+        | Some sdir ->
+          let out = Html_output.generate_dswp
+            ~source_file:prog_name
+            ~session_dir:sdir
+            ~init_task:!Exe_pdg.generated_init_task
+            ~tasks:!Exe_pdg.generated_tasks
+            ~pdg_dot:(Filename.concat sdir "pdg.dot")
+            ~tasks_dot:(Filename.concat sdir "dag-scc.dot")
+          in
+          Printf.eprintf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
+      in
+
       (* --emit-tasks: run DSWP compilation, optionally synthesize, print, exit *)
       if !dswp_mode && !emit_tasks then begin
         ignore @@ Interp.initialize_env prog true;
@@ -237,18 +268,20 @@ module RunInterp : Runner = struct
           Printf.printf "%s\n"
             (Ast_print.AstPP.string_of_block task.Dswp_task.body)
         ) !Exe_pdg.generated_tasks;
-        flush stdout
+        flush stdout;
+        generate_dswp_html ()
       end else begin
 
-      begin if !get_execution_time then
-        let time = Interp.interp_prog_time prog argv in
-        Printf.printf "%f\n" time
-      else
-        let ret = Interp.interp_prog prog argv in
-        Printf.printf "Return: %Ld\n" ret
-      end;
-
-      flush stdout
+      Fun.protect ~finally:generate_dswp_html (fun () ->
+        begin if !get_execution_time then
+          let time = Interp.interp_prog_time prog argv in
+          Printf.printf "%f\n" time
+        else
+          let ret = Interp.interp_prog prog argv in
+          Printf.printf "Return: %Ld\n" ret
+        end;
+        flush stdout
+      )
 
       end
 
@@ -564,8 +597,9 @@ module RunInfer : Runner = struct
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
-    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
@@ -699,8 +733,9 @@ module RunVerify : Runner = struct
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
-    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in a fresh /tmp/ directory"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ] |>
     Arg.align
 

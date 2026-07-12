@@ -10,6 +10,13 @@ let generated_tasks = ref []
 let generated_decl_vars = ref []
 let codegen = ref false
 let commutativity_spec_exist = ref false
+(* When set, dot files (pdg.dot, dag-scc.dot, tasks.dot) land here instead of /tmp. *)
+let output_dir : string option ref = ref None
+
+let dot_out_path name =
+  match !output_dir with
+  | Some d -> Filename.concat d name
+  | None   -> Filename.concat "/tmp" name
 
 type dependency =
 | ControlDep
@@ -1310,9 +1317,9 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
 
   commutativity_spec_exist := (List.length (g.group_commute) > 0);
 
-  let pdg = build_pdg body.elt m_loc g.group_commute in 
+  let pdg = build_pdg body.elt m_loc g.group_commute in
   print_pdg_debug pdg;
-  print_pdg pdg "/tmp/pdg.dot";
+  print_pdg pdg (dot_out_path "pdg.dot");
   let sccs = find_sccs pdg in
   if !Util.debug then begin
     Printf.printf "Strongly Connected Components:\n";
@@ -1320,12 +1327,12 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   let dag_scc = coalesce_sccs pdg sccs in
   debug_print (lazy "DAG_SCCs:\n");
   print_dag_debug dag_scc;
-  print_dag dag_scc "/tmp/dag-scc.dot" dag_pdgnode_to_string;
-  let init_task, tasks = thread_partitioning dag_scc pdg [] body in 
+  print_dag dag_scc (dot_out_path "dag-scc.dot") dag_pdgnode_to_string;
+  let init_task, tasks = thread_partitioning dag_scc pdg [] body in
   debug_print (lazy (Printf.sprintf "gen_tasks called with %d globals\n" (List.length !decl_vars)));
   if !codegen then begin
     Codegen_c.gen_tasks (!decl_vars) tasks;
-    Codegen_c.print_tasks init_task tasks "/tmp/tasks.dot" end;
+    Codegen_c.print_tasks init_task tasks (dot_out_path "tasks.dot") end;
   generated_init_task := Some init_task;
   generated_tasks := tasks;
   generated_decl_vars := !decl_vars;
