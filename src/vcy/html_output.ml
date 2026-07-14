@@ -172,7 +172,6 @@ table.src td{padding:1px 8px;white-space:pre;vertical-align:top}
     padding-right:10px;min-width:44px}
 .nosvg{color:#666;font-style:italic;font-size:.9em;padding:16px}
 </style>|}
-
 (* Resolve this run's output directory: a directory handed down by a calling
    tool (or --out-dir) wins; otherwise $VERACITY_OUT; otherwise a fresh
    ./veracity_output/run_NNNN/ in the CWD.  Output lands next to the user's
@@ -303,7 +302,9 @@ let generate ~source_file ~session_dir ~records =
   output_string oc html;
   close_out oc;
 
-  (* Manifest: same schema at every level so one script can walk the tree. *)
+  (* Same manifest schema at every level of the tree, so one script can walk it
+     from any node.  Each commute subdir is a Servois2 run, recorded by relative
+     path so the tree stays movable. *)
   let children =
     List.map
       (fun (r : Util.commute_record) ->
