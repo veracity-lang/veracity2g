@@ -1,7 +1,7 @@
 commutativity {
-    {f1}, {f1} : (true);
-    {f1}, {f1} : {pre: (ctr == 0)}(true){post: (false)};
-    {f1}, {f1} : {pre: (ctr == 0)}(true){post: (ctr == 1)}
+    {f1}, {f2} : (true);
+    {f1}, {f2} : {pre: (ctr == 0)}(true){post: (false)};
+    {f1}, {f2} : {pre: (ctr == 0)}(true){post: (ctr == 1)}
 }
 
 int main(int argc, string[] argv) {

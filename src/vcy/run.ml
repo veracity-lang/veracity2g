@@ -648,7 +648,7 @@ module RunInfer : Runner = struct
 
     let prog =
       if !rewrite_commute then
-        Loop_induction.rewrite_program prog "infer"
+        Loop_induction.rewrite_program prog_name prog "infer"
       else prog
     in
     if !print then 
@@ -789,7 +789,7 @@ module RunVerify : Runner = struct
 
     let prog =
       if !rewrite_commute then
-        Loop_induction.rewrite_program prog "verify"
+        Loop_induction.rewrite_program prog_name prog "verify"
       else prog
     in
     if !print then 
