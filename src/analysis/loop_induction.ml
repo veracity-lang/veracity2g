@@ -276,8 +276,8 @@ let rec collect_stmt (s : stmt node) =
   | If (e, b1, b2) ->
       [node_up s (If (e, collect_block b1, collect_block b2))]
 
-  | While (e, b) ->
-      [node_up s (While (e, collect_block b))]
+  | While (e, i, b) ->
+      [node_up s (While (e, i, collect_block b))]
 
   | For (i, c, st, b) ->
       [node_up s (For (i, c, st, collect_block b))]
