@@ -78,7 +78,7 @@ let block_has_loop (b : block node) =
 
 let extract_loop_body (b : block node) =
   match b.elt with
-  | [ { elt = While (cond, body); _ } ] ->
+  | [ { elt = While (cond, _, body); _ } ] -> (** TODO: used Inv in while *)
       (cond, body)
   | _ ->
       failwith "Expected a single While loop block"
@@ -176,8 +176,8 @@ and rewrite_stmt (s : stmt node) =
   | If (e, b1, b2) ->
       [ node_up s (If (e, rewrite_block b1, rewrite_block b2)) ]
 
-  | While (e, b) ->
-      [ node_up s (While (e, rewrite_block b)) ]
+  | While (e, i, b) ->
+      [ node_up s (While (e, i, rewrite_block b)) ]
 
   | For (i, c, st, b) ->
       [ node_up s (For (i, c, st, rewrite_block b)) ]

@@ -81,7 +81,7 @@ let rec extract_diseqs (e : exp) : (id * id) list =
 
 (* Argument positions guaranteed distinct across concurrent instances *)
 let safe_positions_of_gc (gc : group_commute node) : int list =
-  let (groups, cond) = gc.elt in
+  let (groups, cond, _, _) = gc.elt in
   match cond with
   | PhiInf -> []
   | PhiExp phi ->
@@ -113,7 +113,7 @@ let build_safe_pos_map (prog : prog) : (id * int list) list =
     ) prog |> List.concat
   in
   List.concat_map (fun gc ->
-    let (groups, _) = gc.elt in
+    let (groups, _, _, _) = gc.elt in
     let safe_pos = safe_positions_of_gc gc in
     if safe_pos = [] then []
     else
@@ -238,7 +238,7 @@ let compute_inter_block_conflict_set
     ) [] all_sblocks
   in
   List.concat_map (fun gc ->
-    let (groups, _) = gc.elt in
+    let (groups, _, _, _) = gc.elt in
     let all_labels_in_gc = List.concat groups |> List.map fst |> List.sort_uniq compare in
     let multi_instance_labels =
       List.filter (fun label ->
