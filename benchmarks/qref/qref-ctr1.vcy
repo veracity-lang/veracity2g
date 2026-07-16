@@ -1,0 +1,34 @@
+int main(int argc, string[] argv) {
+    int ctr = int_of_string(argv[1]);
+    int ci = int_of_string(argv[2]);
+    int cj = int_of_string(argv[3]); 
+    int ctr_init = int_of_string(argv[4]);
+    int bl1=0; int bl2=0; int bl3=0;
+    int cl=0; int branch = 0; int loopiter = 0;
+    
+    havoc loopiter;
+    commute (true) {
+        pre: (ctr == ctr_init)
+        {  /* R: (cj:=ctr)*/
+            cj = ctr;
+        } 
+        { /* Interference - all actions or tests */
+            /* while(loopiter>0) { */
+                havoc branch;
+                if(branch < 0) {
+                    cl = ctr;
+                } else if (branch == 0) {
+                    bl1 = (ctr > 0); /* successful decr */
+                } else if (branch == 1) {
+                    bl2 = (ctr <= 0); /* unsuccessful decr */
+                } else {
+                    bl3 = (ctr != cl); /* failed CAS observation */
+                }
+                loopiter = loopiter - 1;
+            /* } */
+        }
+        post: (ctr == ctr_init && cj == ctr) 
+    }
+    
+    return 0;
+}

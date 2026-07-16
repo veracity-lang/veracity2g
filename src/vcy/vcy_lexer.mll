@@ -30,6 +30,11 @@
   ("void", TVOID);
   ("int", TINT);
   ("string", TSTRING);
+  (* type keyword for declarations *)
+  ("tloc", TLOC); (* loc l = ... *)
+  ("theapval", THEAP_VALUE); (* heapval v = { {} } *)
+  (* "value" and "next" are contextual field names after ->, not keywords *)
+
   ("struct", STRUCT);
   ("else", ELSE);
   ("if", IF);
@@ -40,6 +45,19 @@
   ("commute_seq", COMMUTE_SEQ);
   ("commute_par", COMMUTE_PAR);
   ("commute", COMMUTE_PAR);
+  (* moverness - sequential only because it's just for verification. *)
+  ("commute_right", COMMUTE_RIGHT);
+  ("commute_right_ctx", COMMUTE_RIGHT_CTX);
+  ("commute_left", COMMUTE_LEFT);
+  ("commute_left_ctx", COMMUTE_LEFT_CTX);
+  ("context", CONTEXT);
+  ("rightmover", COMMUTE_RIGHT);
+  ("leftmover", COMMUTE_LEFT);
+  ("pre", PRE);
+  ("post", POST);
+  ("invariant", INVARIANT);
+
+
   ("hashtable", HASHTABLE);
   ("hashtable_seq", HASHTABLE_SEQ);
   ("hashtable_naive", HASHTABLE_NAIVE);
@@ -84,15 +102,20 @@
   ( "<=", LEQ);
   ( ">=", GEQ);
   ( "<<", LSHIFT);
+  ( "->", ARROW);
   ( ">>", RSHIFT);
   ( ">>>", RSHIFTU);
   ( "&&", LAND);
   ( "||", LOR);
   ( "&", BAND);
   ( "|", BOR);
+  ( "{}", LRBRACE);
   
+  ( "==>", DARROW);
   ( "=>", FUNC);
 
+  ("exists", EXISTS);
+  ("forall", FORALL);
   ("raise", RAISE);
   ("pure", PURE);
 
@@ -179,10 +202,11 @@ rule token = parse
   | whitespace+ { token lexbuf }
   | newline { newline lexbuf; token lexbuf }
 
-  | ';' | ':' | '.' | '?' | ',' | '{' | '}' | '+' | '^' | '-' | '*' | '=' | "==" 
-  | "!=" | '!' | '~' | '(' | ')' | '[' | ']' | '%'
-  | "<" | "<=" | ">" | ">=" | "<<" | ">>" | ">>>" 
-  | "&&" | "||" | "&" | "|" | "=>" | "_" | "/" | "**"
+  | ';' | ':' | '.' | '?' | ',' | '{' | '}' | '+' | '^' | '-' | '*' | '=' | "=="
+  | "!=" | '!' | '~'
+  | "{}" | '(' | ')' | '[' | ']' | '%'
+  | "<" | "<=" | ">" | ">=" | "<<" | ">>" | ">>>" | "->"
+  | "&&" | "||" | "&" | "|" | "==>" | "=>" | "_" | "/" | "**"
     { create_token lexbuf }
 
   | _ as c { unexpected_char lexbuf c }

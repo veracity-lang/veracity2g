@@ -1,0 +1,22 @@
+/*
+ * ls_nolock_3: hashtable writes keyed by the safe parameter.
+ *
+ * store(k, v) writes ht[k]; the commutativity condition k_1 != k_2 makes
+ * position 0 a safe argument, so ht_put(ht, k, ...) is never conflicting.
+ *
+ * Expected synthesized locks: 0
+ * Return value: 0   (ht[0] = 0 * 0 = 0)
+ */
+commutativity { {store(k_1, v_1)}, {store(k_2, v_2)} : (k_1 != k_2) }
+
+hashtable[int,int] ht = new hashtable_seq[int,int];
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) {
+        store(i, i): { ht_put(ht, i, i * i); }
+        i = i + 1;
+    }
+    return ht_get(ht, 0);
+}

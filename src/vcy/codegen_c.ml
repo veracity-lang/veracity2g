@@ -67,10 +67,10 @@ and gen_stmt tsk = function
         end
     | If(guard, t, e) -> sp "if(%s) %s%selse %s" (gen_expnode guard) (gen_blocknode tsk t) (mk_newline ()) (gen_blocknode tsk e)
     | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (gen_ty ty) (!mangle id) (gen_expnode rhs)) inits) (guard |> Option.map gen_expnode |> Option.value ~default:"") (update |> Option.map (gen_stmtnode tsk) |> Option.value ~default:"") (gen_blocknode tsk body)
-    | While(guard, body) -> sp "while(%s) %s" (gen_expnode guard) (gen_blocknode tsk body)
+    | While(guard, _, body) -> sp "while(%s) %s" (gen_expnode guard) (gen_blocknode tsk body)
     | Raise(e) -> raise @@ NotImplemented "gen_stmt Raise"
     | Commute(var, phi, bodies, pre, post) -> raise @@ TaskCodeGenErr "gen_stmt should not have Commute stmts"
-    | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
+    | Havoc(e) -> sp "/* %s = __VERIFIER_nondet_int() */" (gen_expnode e)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
     | SBlock(blocklabel,block) -> sp "%s" (gen_blocknode tsk block) (* TODO: check *)
     | SendDep(tsk_id, vars) ->

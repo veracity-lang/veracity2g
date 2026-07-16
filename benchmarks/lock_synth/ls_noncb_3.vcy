@@ -1,0 +1,39 @@
+/*
+ * ls_noncb_3: no NCBs — two labeled stages sharing a global accumulator.
+ *
+ * There are no commutativity declarations at all, so conflict_set = [].
+ * Both 'sum_a' and 'sum_b' are labeled (named SBlocks) but not NCBs.
+ * They each accumulate arr[] into 'total'.
+ *
+ * Current pre-DSWP synthesis: conflict_set = [] → NO locks added.
+ *
+ * Gap: if a post-DSWP algorithm decides to pipeline sum_a and sum_b
+ * (or run them as concurrent stages of a pipeline), 'total' would need a
+ * mutex in both blocks.  Pre-DSWP synthesis has no information to make
+ * this decision.
+ *
+ * Expected synthesized locks: 0 (current pre-DSWP synthesis)
+ *                             2 needed post-DSWP (in sum_a and sum_b)
+ * Return value: n*(n-1)   e.g. n=4 → 12
+ */
+
+int   total = 0;
+int[] arr   = new int[16];
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    while (i < n) { arr[i] = i; i = i + 1; }
+
+    sum_a: {
+        int j = 0;
+        while (j < n) { total = total + arr[j]; j = j + 1; }
+    }
+
+    sum_b: {
+        int k = 0;
+        while (k < n) { total = total + arr[k]; k = k + 1; }
+    }
+
+    return total;
+}

@@ -31,11 +31,11 @@ def create_comparison_plot(data_commute, data_no_commute, data_no_NB, benchmark,
     plt.axhline(y=1, color='black', linestyle='--', 
                 label='Speedup = 1', linewidth=1.6)
 
-    # plt.xlabel('Log(Computation Size)', fontsize=12)
-    # plt.ylabel('Par-to-Seq Speedup', fontsize=12)
+    plt.xlabel('Log(Computation Size)', fontsize=19)
+    plt.ylabel('Par-to-Seq Speedup', fontsize=19)
 
-    plt.xticks(fontsize=15)
-    plt.yticks(fontsize=15)
+    plt.xticks(fontsize=19)
+    plt.yticks(fontsize=19)
     
     # benchmark_name = benchmark.replace('vote-run', 'Vote').title()
     # benchmark_name = benchmark_name.replace('2D-Array', 'PS-DSWP-Array')

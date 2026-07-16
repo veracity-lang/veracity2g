@@ -1,0 +1,40 @@
+/*
+ * ls_ncb_3: two-step hashtable RMW that must be atomic.
+ *
+ * tally(i) votes for bucket (i % 2).  Parameter 'i' is safe (i_1 != i_2),
+ * so the per-voter write ht_put(tallied, i, 1) needs no lock.  The bucket
+ * index 'i % 2' is NOT safe, so the read-then-write pair
+ *
+ *   int cur = ht_get(proposals, b);
+ *   ht_put(proposals, b, cur + 1);
+ *
+ * must be wrapped atomically under one mutex.  The backward-extension
+ * heuristic should pull the Decl/ht_get into the same critical section
+ * as the ht_put.
+ *
+ * Expected synthesized locks: 1 site covering {ht_get, ht_put} on proposals;
+ *                             0 locks on ht_put(tallied, ...)
+ * Return value: n   (argv[1])  — proposals[0] + proposals[1] = n
+ */
+commutativity { {tally(i_1)}, {tally(i_2)} : (i_1 != i_2) }
+
+hashtable[int,int] proposals = new hashtable_seq[int,int];
+hashtable[int,int] tallied   = new hashtable_seq[int,int];
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    ht_put(proposals, 0, 0);
+    ht_put(proposals, 1, 0);
+    int i = 0;
+    while (i < n) {
+        tally(i): {
+            busy_wait(10);
+            ht_put(tallied, i, 1);
+            int b = i % 2;
+            int cur = ht_get(proposals, b);
+            ht_put(proposals, b, cur + 1);
+        }
+        i = i + 1;
+    }
+    return ht_get(proposals, 0) + ht_get(proposals, 1);
+}

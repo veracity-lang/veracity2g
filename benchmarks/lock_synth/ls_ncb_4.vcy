@@ -1,0 +1,30 @@
+/*
+ * ls_ncb_4: check-then-update pattern.
+ *
+ * withdraw(amt) checks balance >= amt before decrementing.  The if-condition
+ * reads 'balance' and the then-branch writes it, forming a check-then-update
+ * that must be wrapped atomically.  Without the lock, two concurrent instances
+ * could both pass the check and over-withdraw.
+ *
+ * Expected synthesized locks: 1 site wrapping the entire If statement
+ * Return value: 0   (balance starts at n*10, n withdrawals of 10 each)
+ */
+commutativity { {withdraw(a_1)}, {withdraw(a_2)} : (true) }
+
+int balance = 0;
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    balance = n * 10;
+    int i = 0;
+    while (i < n) {
+        withdraw(10): {
+            busy_wait(10);
+            if (balance >= 10) {
+                balance = balance - 10;
+            }
+        }
+        i = i + 1;
+    }
+    return balance;
+}

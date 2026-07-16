@@ -1,0 +1,41 @@
+/*
+ * ls_noncb_4: DSWP pipeline — non-NCB initialiser races with NCB consumer.
+ *
+ * 'init' (labeled, not in gc) writes data[i].
+ * compute(i) (NCB) reads data[i] and writes result[i] (safe).
+ *
+ * NCB analysis: compute writes result[i] with safe i → conflict_set = [].
+ *   data is written only by init (non-NCB) → NOT in conflict_set.
+ *   result written by compute with safe key → not conflicting either.
+ *
+ * Current pre-DSWP synthesis: conflict_set = [] → NO locks anywhere.
+ *
+ * Gap: if DSWP creates a pipeline where init's later iterations overlap
+ * with compute's early iterations, there is a read-write race on data[i].
+ * Post-DSWP synthesis would need to protect data[i] in both init and compute.
+ *
+ * Expected synthesized locks: 0 (current pre-DSWP synthesis)
+ *                             protection needed post-DSWP on data[i] r/w
+ * Return value: 1   (result[0] = data[0] + 1 = 0 + 1 = 1)
+ */
+commutativity { {compute(i_1)}, {compute(i_2)} : (i_1 != i_2) }
+
+int[] data   = new int[16];
+int[] result = new int[16];
+
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+
+    init: {
+        int i = 0;
+        while (i < n) { data[i] = i; i = i + 1; }
+    }
+
+    int i = 0;
+    while (i < n) {
+        compute(i): { result[i] = data[i] + 1; }
+        i = i + 1;
+    }
+
+    return result[0];
+}

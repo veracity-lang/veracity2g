@@ -1,0 +1,710 @@
+From e2710927828a669fbe6965fab8da3dcc6d95acc1 Mon Sep 17 00:00:00 2001
+From: Eric Koskinen <eric.koskinen@stevens.edu>
+Date: Thu, 4 Jun 2026 11:37:18 +0200
+Subject: [PATCH 1/6] Loop invariant support: syntax, checker, CLI stage, and
+ benchmarks
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Phase 1 — AST and syntax:
+- ast.ml: While gains optional invariant field (exp node option)
+- vcy_lexer.mll: new "invariant" keyword → INVARIANT token
+- vcy_parser.mly: %inline while_inv rule; While stmt parses optional
+  "invariant <exp>" clause between the guard and the body
+- All traversals updated: interp.ml (interpret, infer_phis, verify_phis,
+  cook_calls), ast_print.ml (source + debug printers), ast_to_c.ml,
+  analyze.ml, spec_generator.ml
+
+Phase 2 — invariants checker:
+- src/vcy/invariants.ml (new): check_while_invariant verifies the
+  inductive step {I ∧ G} B {I} by prepending assume(I∧G) and appending
+  assert(I), then calling the existing assert-VCG infrastructure;
+  check_block/check_stmt recurse through the AST threading accumulated
+  type bindings; check_prog is the top-level entry point
+- src/api/veracity.ml + veracity.mli: new check_invariants API function
+- src/vcy/run.ml: new RunInvariants module and CmdInvariants CLI command
+  ("./vcy invariants file.vcy --prover cvc5")
+
+spec_generator fix:
+- get_postconditions: skip variables in variable_ctr_list that are not
+  in gstates (loop-internal vars like "steps", "tj", "nd" from the env
+  block while loop were raising Not_found)
+
+Benchmarks:
+- benchmarks/invariants/: 10 new test programs covering ascending and
+  descending counters, summation, doubling, tight bounds, two-variable
+  ordering, stride-2 parity, accumulator, nested loops, and constant
+  difference invariant — all verified by CVC5
+- test.sh: new "benchmarks/invariants" section runs ./vcy invariants on
+  each file expecting exit 0
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ benchmarks/invariants/acc.vcy      | 13 +++++
+ benchmarks/invariants/bounded.vcy  |  8 +++
+ benchmarks/invariants/dec.vcy      |  8 +++
+ benchmarks/invariants/diff.vcy     | 11 ++++
+ benchmarks/invariants/inc.vcy      |  9 ++++
+ benchmarks/invariants/nested.vcy   | 14 +++++
+ benchmarks/invariants/product.vcy  | 11 ++++
+ benchmarks/invariants/stride.vcy   |  9 ++++
+ benchmarks/invariants/sum.vcy      | 11 ++++
+ benchmarks/invariants/two-vars.vcy | 10 ++++
+ src/analysis/analyze.ml            |  2 +-
+ src/analysis/spec_generator.ml     |  6 ++-
+ src/api/veracity.ml                | 29 ++++++++++
+ src/api/veracity.mli               |  7 +++
+ src/vcy/ast.ml                     |  2 +-
+ src/vcy/ast_print.ml               | 12 +++--
+ src/vcy/ast_to_c.ml                |  2 +-
+ src/vcy/interp.ml                  | 14 ++---
+ src/vcy/invariants.ml              | 81 ++++++++++++++++++++++++++++
+ src/vcy/run.ml                     | 87 ++++++++++++++++++++++++------
+ src/vcy/vcy_lexer.mll              |  1 +
+ src/vcy/vcy_parser.mly             | 12 +++--
+ test.sh                            |  5 ++
+ 23 files changed, 331 insertions(+), 33 deletions(-)
+ create mode 100644 benchmarks/invariants/acc.vcy
+ create mode 100644 benchmarks/invariants/bounded.vcy
+ create mode 100644 benchmarks/invariants/dec.vcy
+ create mode 100644 benchmarks/invariants/diff.vcy
+ create mode 100644 benchmarks/invariants/inc.vcy
+ create mode 100644 benchmarks/invariants/nested.vcy
+ create mode 100644 benchmarks/invariants/product.vcy
+ create mode 100644 benchmarks/invariants/stride.vcy
+ create mode 100644 benchmarks/invariants/sum.vcy
+ create mode 100644 benchmarks/invariants/two-vars.vcy
+ create mode 100644 src/vcy/invariants.ml
+
+diff --git a/benchmarks/invariants/acc.vcy b/benchmarks/invariants/acc.vcy
+new file mode 100644
+index 0000000..660c0e8
+--- /dev/null
++++ b/benchmarks/invariants/acc.vcy
+@@ -0,0 +1,13 @@
++/* Accumulator: a running total and a count both stay non-negative.
++   Each iteration adds i to acc and increments both i and count. */
++int main() {
++    int acc   = 0;
++    int count = 0;
++    int i     = 0;
++    while (i < 50) invariant acc >= 0 && count >= 0 && i >= 0 {
++        acc   = acc + i;
++        count = count + 1;
++        i     = i + 1;
++    }
++    return acc;
++}
+diff --git a/benchmarks/invariants/bounded.vcy b/benchmarks/invariants/bounded.vcy
+new file mode 100644
+index 0000000..72c1261
+--- /dev/null
++++ b/benchmarks/invariants/bounded.vcy
+@@ -0,0 +1,8 @@
++/* Bounded counter: i stays within [0, 100] throughout. */
++int main() {
++    int i = 0;
++    while (i < 100) invariant i >= 0 && i <= 100 {
++        i = i + 1;
++    }
++    return i;
++}
+diff --git a/benchmarks/invariants/dec.vcy b/benchmarks/invariants/dec.vcy
+new file mode 100644
+index 0000000..00f079d
+--- /dev/null
++++ b/benchmarks/invariants/dec.vcy
+@@ -0,0 +1,8 @@
++/* Descending counter: i remains non-negative as long as the guard holds. */
++int main() {
++    int i = 100;
++    while (i > 0) invariant i >= 0 {
++        i = i - 1;
++    }
++    return i;
++}
+diff --git a/benchmarks/invariants/diff.vcy b/benchmarks/invariants/diff.vcy
+new file mode 100644
+index 0000000..950b9ca
+--- /dev/null
++++ b/benchmarks/invariants/diff.vcy
+@@ -0,0 +1,11 @@
++/* Difference invariant: the gap (a - b) stays constant throughout.
++   Invariant: a - b == 5 */
++int main() {
++    int a = 15;
++    int b = 10;
++    while (a > 0) invariant a - b == 5 {
++        a = a - 1;
++        b = b - 1;
++    }
++    return a;
++}
+diff --git a/benchmarks/invariants/inc.vcy b/benchmarks/invariants/inc.vcy
+new file mode 100644
+index 0000000..1942920
+--- /dev/null
++++ b/benchmarks/invariants/inc.vcy
+@@ -0,0 +1,9 @@
++/* Ascending counter: i stays non-negative throughout. */
++int main() {
++    int i = 0;
++    int n = 10;
++    while (i < n) invariant i >= 0 {
++        i = i + 1;
++    }
++    return i;
++}
+diff --git a/benchmarks/invariants/nested.vcy b/benchmarks/invariants/nested.vcy
+new file mode 100644
+index 0000000..f0689ba
+--- /dev/null
++++ b/benchmarks/invariants/nested.vcy
+@@ -0,0 +1,14 @@
++/* Nested loops: each loop carries its own invariant.
++   Outer invariant: i >= 0.  Inner invariant: j >= 0. */
++int main() {
++    int i = 0;
++    int n = 5;
++    while (i < n) invariant i >= 0 {
++        int j = 0;
++        while (j < i) invariant j >= 0 {
++            j = j + 1;
++        }
++        i = i + 1;
++    }
++    return i;
++}
+diff --git a/benchmarks/invariants/product.vcy b/benchmarks/invariants/product.vcy
+new file mode 100644
+index 0000000..b8ef39e
+--- /dev/null
++++ b/benchmarks/invariants/product.vcy
+@@ -0,0 +1,11 @@
++/* Doubling loop: product stays positive, index stays non-negative. */
++int main() {
++    int p = 1;
++    int i = 0;
++    int n = 8;
++    while (i < n) invariant p >= 1 && i >= 0 {
++        p = p * 2;
++        i = i + 1;
++    }
++    return p;
++}
+diff --git a/benchmarks/invariants/stride.vcy b/benchmarks/invariants/stride.vcy
+new file mode 100644
+index 0000000..0261e8d
+--- /dev/null
++++ b/benchmarks/invariants/stride.vcy
+@@ -0,0 +1,9 @@
++/* Stride-2 counter: x stays non-negative and even throughout.
++   Invariant: x >= 0 && x % 2 == 0 */
++int main() {
++    int x = 20;
++    while (x > 0) invariant x >= 0 && x % 2 == 0 {
++        x = x - 2;
++    }
++    return x;
++}
+diff --git a/benchmarks/invariants/sum.vcy b/benchmarks/invariants/sum.vcy
+new file mode 100644
+index 0000000..96df964
+--- /dev/null
++++ b/benchmarks/invariants/sum.vcy
+@@ -0,0 +1,11 @@
++/* Summation: both the index and the running total stay non-negative. */
++int main() {
++    int i = 0;
++    int s = 0;
++    int n = 20;
++    while (i < n) invariant s >= 0 && i >= 0 {
++        s = s + i;
++        i = i + 1;
++    }
++    return s;
++}
+diff --git a/benchmarks/invariants/two-vars.vcy b/benchmarks/invariants/two-vars.vcy
+new file mode 100644
+index 0000000..824e54d
+--- /dev/null
++++ b/benchmarks/invariants/two-vars.vcy
+@@ -0,0 +1,10 @@
++/* Two variables: x counts down, y is a fixed lower bound.
++   x >= y is inductive because x decreases while y stays fixed. */
++int main() {
++    int x = 10;
++    int y = 0;
++    while (x > y) invariant x >= y {
++        x = x - 1;
++    }
++    return x;
++}
+diff --git a/src/analysis/analyze.ml b/src/analysis/analyze.ml
+index f14e9c9..5f2f016 100644
+--- a/src/analysis/analyze.ml
++++ b/src/analysis/analyze.ml
+@@ -152,7 +152,7 @@ and stmt_has_havoc (s : stmt node) =
+   match s.elt with
+   | Havoc _ -> true
+   | If (_, b1, b2) -> block_has_havoc b1.elt || block_has_havoc b2.elt
+-  | While (_, b)   -> block_has_havoc b.elt
++  | While (_, _, b)   -> block_has_havoc b.elt
+   | For (_, _, _, b) -> block_has_havoc b.elt
+   | Commute (_, _, bls, _, _) -> List.exists (fun b -> block_has_havoc b.elt) bls
+   | _ -> false
+diff --git a/src/analysis/spec_generator.ml b/src/analysis/spec_generator.ml
+index 9c3d19d..3493b3f 100644
+--- a/src/analysis/spec_generator.ml
++++ b/src/analysis/spec_generator.ml
+@@ -50,7 +50,9 @@ and stmt_uses_heap (s : stmt node) = match s.elt with
+   | SCallRaw (_, es)      -> List.exists exp_uses_heap es
+   | SCall (_, es)         -> List.exists exp_uses_heap es
+   | If (e, b1, b2)        -> exp_uses_heap e || block_uses_heap b1.elt || block_uses_heap b2.elt
+-  | While (e, b)          -> exp_uses_heap e || block_uses_heap b.elt
++  | While (e, inv, b)     -> exp_uses_heap e
++                             || (match inv with Some i -> exp_uses_heap i | None -> false)
++                             || block_uses_heap b.elt
+   | For (vds, eo, sno, b) ->
+       List.exists (fun (_, (_, e)) -> exp_uses_heap e) vds
+       || (match eo  with None -> false | Some e -> exp_uses_heap e)
+@@ -297,7 +299,7 @@ let get_postconditions () : sexp =
+                 if List.mem key heap_model_vars then exp_list := !exp_list @ [final_mangle_id !value key]
+                 else
+                 match List.find_opt (fun ((id,ty),_) -> String.equal key id) !gstates with
+-                | None -> print_string key; print_newline (); raise Not_found
++                | None -> () (* loop-internal variable not in state; skip *)
+                 | Some ((id,ty),ety) ->
+                   let final = match ty with 
+                   | THashTable (_,_) ->
+diff --git a/src/api/veracity.ml b/src/api/veracity.ml
+index 35cc79a..84262ab 100644
+--- a/src/api/veracity.ml
++++ b/src/api/veracity.ml
+@@ -180,3 +180,32 @@ let verify ?(opts = default_options) input =
+          Interp.emit_inferred_phis := saved_emit;
+          Error (VerifyError (Printexc.to_string e)))
+     end
++
++let check_invariants ?(opts = default_options) input =
++  match resolve input with
++  | Error e -> Error e
++  | Ok prog ->
++    configure opts;
++    let prover : (module Servois2.Provers.Prover) = match opts.prover with
++      | `CVC4 -> (module Servois2.Provers.ProverCVC4)
++      | `CVC5 -> (module Servois2.Provers.ProverCVC5)
++      | `Z3   -> (module Servois2.Provers.ProverZ3)
++    in
++    (try
++      let env = Interp.initialize_env prog false in
++      let results = Invariants.check_prog env.g prover in
++      let failures = List.filter_map (fun (loc, res) ->
++        match res with
++        | Servois2.Provers.Sat _   ->
++            Some (Printf.sprintf "Loop invariant at %s: does not hold (counterexample exists)"
++              (Range.string_of_range loc))
++        | Servois2.Provers.Unsat   -> None
++        | Servois2.Provers.Unknown ->
++            Some (Printf.sprintf "Loop invariant at %s: could not be verified (unknown)"
++              (Range.string_of_range loc))
++      ) results in
++      match failures with
++      | []   -> Ok ()
++      | msgs -> Error (VerifyError (String.concat "\n" msgs))
++    with e ->
++      Error (VerifyError (Printexc.to_string e)))
+diff --git a/src/api/veracity.mli b/src/api/veracity.mli
+index 9ef77d9..a63d06d 100644
+--- a/src/api/veracity.mli
++++ b/src/api/veracity.mli
+@@ -42,3 +42,10 @@ val infer : ?opts:options -> input -> (Ast.global_env * string option) api_resul
+     printed to stdout as normal. Returns [Error (VerifyError _)] only on a
+     runtime/solver exception. *)
+ val verify : ?opts:options -> input -> (unit * string option) api_result
++
++(** Check every annotated while-loop invariant in the program.
++    Each invariant [I] on [while (G) invariant I { B }] is verified by
++    checking [{I ∧ G} B {I}] using the configured SMT prover.
++    Returns [Ok ()] if all invariants hold, [Error (VerifyError _)] if any
++    fail (the message names the location and the failing invariant). *)
++val check_invariants : ?opts:options -> input -> unit api_result
+diff --git a/src/vcy/ast.ml b/src/vcy/ast.ml
+index 8a87046..5bbaec8 100644
+--- a/src/vcy/ast.ml
++++ b/src/vcy/ast.ml
+@@ -144,7 +144,7 @@ and stmt =
+ | SCall of method_variant * exp node list
+ | If of exp node * block node * block node
+ | For of vdecl list * exp node option * stmt node option * block node
+-| While of exp node * block node
++| While of exp node * exp node option * block node
+ | Raise of exp node
+ | Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
+ | Assert of exp node
+diff --git a/src/vcy/ast_print.ml b/src/vcy/ast_print.ml
+index c8516ec..a916eba 100644
+--- a/src/vcy/ast_print.ml
++++ b/src/vcy/ast_print.ml
+@@ -262,8 +262,12 @@ module AstPP = struct
+           pps "if ("; print_exp_aux 0 fmt e; pps ") ";
+           print_cond_aux fmt b_then opt_b_else
+ 
+-      | While(e, b) ->
+-        pps "while ("; print_exp_aux 0 fmt e; pps ") ";
++      | While(e, inv, b) ->
++        pps "while ("; print_exp_aux 0 fmt e; pps ")";
++        (match inv with
++         | None -> ()
++         | Some i -> pps " invariant "; print_exp_aux 0 fmt i);
++        pps " ";
+         print_block_aux fmt b
+ 
+       | For(decls, eo, so, body) ->
+@@ -551,7 +555,9 @@ module AstML = struct
+                           (string_of_list string_of_vdecl_aux d) 
+                           (string_of_option string_of_exp e)
+                           (string_of_option string_of_stmt s) (string_of_block b)
+-    | While (e,b) -> sp "While (%s, %s)" (string_of_exp e) (string_of_block b)
++    | While (e,inv,b) -> sp "While (%s, %s, %s)" (string_of_exp e)
++                            (match inv with None -> "None" | Some i -> sp "Some %s" (string_of_exp i))
++                            (string_of_block b)
+     | Commute (var,phi,bl, pre,post) -> 
+       sp "Commute (%s, %s, %s, %s, %s)"
+         begin match var with
+diff --git a/src/vcy/ast_to_c.ml b/src/vcy/ast_to_c.ml
+index 7195c7a..976bf40 100644
+--- a/src/vcy/ast_to_c.ml
++++ b/src/vcy/ast_to_c.ml
+@@ -56,7 +56,7 @@ and c_of_stmt = function
+         end
+     | If(guard, t, e) -> sp "if(%s) %s%selse %s" (c_of_expnode guard) (c_of_blocknode t) (mk_newline ()) (c_of_blocknode e)
+     | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (c_of_ty ty) (!mangle id) (c_of_expnode rhs)) inits) (guard |> Option.map c_of_expnode |> Option.value ~default:"") (update |> Option.map c_of_stmtnode |> Option.value ~default:"") (c_of_blocknode body)
+-    | While(guard, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
++    | While(guard, _inv, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
+     | Raise(e) -> raise @@ NotImplemented "c_of_stmt Raise"
+     | Commute(var, phi, bodies, pre, post) -> !handle_comm phi bodies
+     | Havoc(e) ->
+diff --git a/src/vcy/interp.ml b/src/vcy/interp.ml
+index 9dede29..72c915d 100644
+--- a/src/vcy/interp.ml
++++ b/src/vcy/interp.ml
+@@ -676,7 +676,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
+     (* Run for loop as a while loop *)
+     let env, v = interp_stmt_while !env' Range.norange cnd body in
+     pop_block_from_callstack env, v
+-  | While (cnd, body) ->
++  | While (cnd, _inv, body) ->
+     interp_stmt_while env stmt.loc cnd body
+   | Commute (variant, phi, blocks, _, _) ->
+     let cnd =
+@@ -776,8 +776,8 @@ let rec infer_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
+     in node_app
+       (List.cons (node_up h s))
+       (infer_phis_of_block g defs t)
+-  | While (e,b) ->
+-    let s = While (e, infer_phis_of_block g defs b) in
++  | While (e,inv,b) ->
++    let s = While (e, inv, infer_phis_of_block g defs b) in
+     node_app
+       (List.cons (node_up h s))
+       (infer_phis_of_block g defs t)
+@@ -849,8 +849,8 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
+     in node_app
+       (List.cons (node_up h s))
+       (verify_phis_of_block g defs t)
+-  | While (e,b) ->
+-    let s = While (e, verify_phis_of_block g defs b) in
++  | While (e,inv,b) ->
++    let s = While (e, inv, verify_phis_of_block g defs b) in
+     node_app
+       (List.cons (node_up h s))
+       (verify_phis_of_block g defs t)
+@@ -1037,8 +1037,8 @@ let cook_calls (g : global_env) : global_env =
+       let ss = Option.map cook_calls_of_stmt ss in
+       let b = cook_calls_of_block b in
+       For (vl, e, ss, b)
+-    | While (e, b) ->
+-      While (cook_calls_of_exp e, cook_calls_of_block b)
++    | While (e, inv, b) ->
++      While (cook_calls_of_exp e, Option.map cook_calls_of_exp inv, cook_calls_of_block b)
+     | Raise e ->
+       Raise (cook_calls_of_exp e)
+     | Commute (v, c, bl, pre, post) ->
+diff --git a/src/vcy/invariants.ml b/src/vcy/invariants.ml
+new file mode 100644
+index 0000000..257d85a
+--- /dev/null
++++ b/src/vcy/invariants.ml
+@@ -0,0 +1,81 @@
++open Ast
++open Util
++
++(* Check the inductive step of one loop invariant:
++     {I ∧ G} B {I}
++   Constructs the block [assume(I && G); body...; assert(I)] and dispatches
++   it through the existing assert-VCG infrastructure.
++   Returns one result per assert in the block (there is exactly one). *)
++let check_while_invariant
++    (g : global_env)
++    (defs : ty bindlist)
++    (guard : exp node)
++    (inv   : exp node)
++    (body  : block node)
++    (prover : (module Servois2.Provers.Prover))
++  : (Range.t * Servois2.Provers.solve_result) list =
++  let assume_stmt = no_loc @@ Assume (no_loc @@ Bop (And, inv, guard)) in
++  let assert_stmt = no_loc @@ Assert inv in
++  let augmented : block = [assume_stmt] @ body.elt @ [assert_stmt] in
++  let global_binds = List.map (fun (id,(ty,_)) -> (id, ty)) g.globals in
++  let vars = defs @ global_binds in
++  Analyze.check_asserts_of_block augmented vars prover
++
++(* Recurse through a block, threading accumulated local type bindings so that
++   variables declared before a While are visible to its invariant check. *)
++let rec check_block
++    (g      : global_env)
++    (defs   : ty bindlist)
++    (body   : block node)
++    (prover : (module Servois2.Provers.Prover))
++  : (Range.t * Servois2.Provers.solve_result) list =
++  let rec go defs = function
++    | [] -> []
++    | stmt :: rest ->
++        let results = check_stmt g defs stmt prover in
++        let defs' = match stmt.elt with
++          | Decl (id, (ty, _)) -> (id, ty) :: defs
++          | _ -> defs
++        in
++        results @ go defs' rest
++  in
++  go defs body.elt
++
++and check_stmt
++    (g      : global_env)
++    (defs   : ty bindlist)
++    (stmt   : stmt node)
++    (prover : (module Servois2.Provers.Prover))
++  : (Range.t * Servois2.Provers.solve_result) list =
++  match stmt.elt with
++  | While (guard, Some inv, body) ->
++      check_while_invariant g defs guard inv body prover
++      @ check_block g defs body prover
++  | While (_, None, body) ->
++      check_block g defs body prover
++  | If (_, b1, b2) ->
++      check_block g defs b1 prover
++      @ check_block g defs b2 prover
++  | For (vds, _, _, body) ->
++      let defs' = List.fold_left (fun d (id,(ty,_)) -> (id,ty) :: d) defs vds in
++      check_block g defs' body prover
++  | Commute (_, _, blocks, _, _) ->
++      List.concat_map (fun b -> check_block g defs b prover) blocks
++  | _ -> []
++
++(* Walk all methods in the program and check every annotated while-loop
++   invariant.  Returns a list of (location, solve_result) pairs — one per
++   loop invariant found. *)
++let check_prog
++    (g      : global_env)
++    (prover : (module Servois2.Provers.Prover))
++  : (Range.t * Servois2.Provers.solve_result) list =
++  let global_binds = List.map (fun (id,(ty,_)) -> (id, ty)) g.globals in
++  List.concat_map (fun (name, m) ->
++    (* Use mdecl_of_tmethod to get args in (ty * id) order, then flip to
++       (id * ty) = ty bindlist as expected by check_asserts_of_block. *)
++    let mdecl = mdecl_of_tmethod name m in
++    let arg_binds = List.map (fun (ty, id) -> (id, ty)) mdecl.args in
++    let defs = arg_binds @ global_binds in
++    check_block g defs m.body prover
++  ) g.methods
+diff --git a/src/vcy/run.ml b/src/vcy/run.ml
+index 3355844..dc3f3ad 100644
+--- a/src/vcy/run.ml
++++ b/src/vcy/run.ml
+@@ -644,16 +644,70 @@ module RunVerify : Runner = struct
+     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+ end
+ 
++module RunInvariants : Runner = struct
++  let usage_msg exe_name =
++    "Usage: " ^ exe_name ^ " invariants [<flags>] <vcy program>"
++
++  let anons = ref []
++  let prover_name = ref ""
++  let use_ae = ref false
++  let silent_flag = ref false
++
++  let anon_fun (v : string) = anons := v :: !anons
++
++  let speclist =
++    [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
++    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
++    ; "--silent", Arg.Set silent_flag, " Suppress interpreter stdout"
++    ] |> Arg.align
++
++  let get_prover () : [ `CVC4 | `CVC5 | `Z3 ] =
++    match !prover_name |> String.lowercase_ascii with
++    | "cvc4" -> `CVC4
++    | "cvc5" -> `CVC5
++    | "z3"   -> `Z3
++    | ""     -> `CVC5
++    | s      -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
++
++  let run () =
++    Arg.current := 1;
++    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
++    match List.rev !anons with
++    | [prog_name] ->
++        let opts = Vcy.Veracity.{
++          default_options with
++          prover  = get_prover ();
++          use_ae  = !use_ae;
++          silent  = !silent_flag;
++        } in
++        (match Vcy.Veracity.check_invariants ~opts (Vcy.Veracity.File prog_name) with
++         | Ok () ->
++             Printf.printf "All loop invariants verified.\n"
++         | Error (Vcy.Veracity.VerifyError msg) ->
++             Printf.printf "Invariant failures:\n%s\n" msg;
++             exit 1
++         | Error e ->
++             Printf.printf "Error: %s\n"
++               (match e with
++                | Vcy.Veracity.ParseError  m -> "parse error: "  ^ m
++                | Vcy.Veracity.InterpError m -> "interp error: " ^ m
++                | Vcy.Veracity.InferError  m -> "infer error: "  ^ m
++                | Vcy.Veracity.VerifyError m -> m);
++             exit 1)
++    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
++end
++
+ type command =
+-  | CmdHelp (* Show help info *)
+-  | CmdParse (* Parse program *)
+-  | CmdInterp (* Interpret program *)
+-  | CmdInterface (* Generate interface *)
+-  | CmdYaml (* Generate YAML for Servois *)
+-  | CmdPhi (* Generate commutativity condition *)
+-  | CmdInfer (* Infer commute conditions *)
++  | CmdHelp
++  | CmdParse
++  | CmdInterp
++  | CmdInterface
++  | CmdYaml
++  | CmdPhi
++  | CmdInfer
+   | CmdVerify
+   | CmdTranslate
++  | CmdInvariants
+ 
+ let command_map =
+   [ "help",      CmdHelp
+@@ -663,20 +717,22 @@ let command_map =
+   ; "interface", CmdInterface
+   (*; "yaml",      CmdYaml*)
+   (*; "phi",       CmdPhi*)
+-  ; "infer",     CmdInfer
+-  ; "verify",    CmdVerify
+-  ; "translate", CmdTranslate
++  ; "infer",      CmdInfer
++  ; "verify",     CmdVerify
++  ; "translate",  CmdTranslate
++  ; "invariants", CmdInvariants
+   ]
+ 
+ let runner_map : (command * (module Runner)) list =
+-  [ CmdInterp,    (module RunInterp)
+-  ; CmdParse,     (module RunParse)
++  [ CmdInterp,     (module RunInterp)
++  ; CmdParse,      (module RunParse)
+   (*; CmdInterface, (module RunInterface)*)
+   (*; CmdYaml,      (module RunYaml)*)
+   (*; CmdPhi,       (module RunPhi)*)
+-  ; CmdInfer,     (module RunInfer)
+-  ; CmdVerify,    (module RunVerify)
+-  ; CmdTranslate, (module RunTranslate)
++  ; CmdInfer,      (module RunInfer)
++  ; CmdVerify,     (module RunVerify)
++  ; CmdTranslate,  (module RunTranslate)
++  ; CmdInvariants, (module RunInvariants)
+   ]
+ 
+ let display_help_message exe_name = 
+@@ -690,6 +746,7 @@ let display_help_message exe_name =
+     (*"  phi         Generate commutativty condition between two methods\n" ^*)
+     "  infer       Infer and emit all blank commutativity conditions\n" ^
+     "  verify      Verify all provided commutativity conditions\n" ^
++    "  invariants  Check all annotated while-loop invariants\n" ^
+     "  translate   Translate program to C\n "
+   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details
+ 
+diff --git a/src/vcy/vcy_lexer.mll b/src/vcy/vcy_lexer.mll
+index badde50..f8c6800 100644
+--- a/src/vcy/vcy_lexer.mll
++++ b/src/vcy/vcy_lexer.mll
+@@ -52,6 +52,7 @@
+   ("leftmover", COMMUTE_LEFT);
+   ("pre", PRE);
+   ("post", POST);
++  ("invariant", INVARIANT);
+ 
+ 
+   ("hashtable", HASHTABLE);
+diff --git a/src/vcy/vcy_parser.mly b/src/vcy/vcy_parser.mly
+index c023137..14b48b5 100644
+--- a/src/vcy/vcy_parser.mly
++++ b/src/vcy/vcy_parser.mly
+@@ -90,6 +90,8 @@ let loc (startpos:Lexing.position) (endpos:Lexing.position) (elt:'a) : 'a node =
+ /* Commutativie pre/post conditions */
+ %token PRE POST
+ 
++%token INVARIANT
++
+ %token UNDERSCORE
+ 
+ %right DARROW
+@@ -276,7 +278,11 @@ vdecl:
+   | ty=ty id=IDENT  EQ init=exp { (id, (ty, init)) }
+   | ty=ty id=UIDENT EQ init=exp { (id, (ty, init)) }
+ 
+-stmt: 
++%inline while_inv:
++  | (* empty *)              { None }
++  | INVARIANT inv=exp        { Some inv }
++
++stmt:
+   | d=vdecl SEMI        { loc $startpos $endpos @@ Decl(d) }
+   | p=lhs EQ e=exp SEMI { loc $startpos $endpos @@ Assn(p,e) }
+   | e=IDENT(*exp*) LPAREN es=separated_list(COMMA, exp) RPAREN SEMI
+@@ -284,8 +290,8 @@ stmt:
+   | ifs=if_stmt         { ifs }
+   | RETURN SEMI         { loc $startpos $endpos @@ Ret(None) }
+   | RETURN e=exp SEMI   { loc $startpos $endpos @@ Ret(Some e) }
+-  | WHILE LPAREN e=exp RPAREN b=block  
+-                        { loc $startpos $endpos @@ While(e, b) }
++  | WHILE LPAREN e=exp RPAREN inv=while_inv b=block
++                        { loc $startpos $endpos @@ While(e, inv, b) }
+   | FOR LPAREN vdecls=separated_list(COMMA, vdecl) SEMI e=option(exp) SEMI s=option(stmt) RPAREN b=block
+       {loc $startpos $endpos @@ For(vdecls, e, s, b)}
+   | variant=commute_variant phi=commute_condition
+diff --git a/test.sh b/test.sh
+index 0cdcccb..7518194 100755
+--- a/test.sh
++++ b/test.sh
+@@ -59,6 +59,11 @@ for f in "${MOVERS_INTERP[@]}"; do
+   fi
+ done
+ 
++echo "=== benchmarks/invariants ==="
++for f in benchmarks/invariants/*.vcy; do
++  run "$f" "$VCY" invariants "$f" --prover cvc5
++done
++
+ echo ""
+ echo "=== Results: $pass passed, $fail failed ==="
+ exit $((fail > 0 ? 1 : 0))
+-- 
+2.50.1 (Apple Git-155)
+

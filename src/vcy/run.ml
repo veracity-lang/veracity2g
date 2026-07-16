@@ -12,9 +12,11 @@ module RunParse : Runner = struct
 
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " parse [<flags>] <vcy program>"
-  
+
   let debug = ref false
   let include_nodes = ref false
+  let synthesize_locks = ref false
+  let pretty = ref false
 
   let anons = ref []
 
@@ -28,6 +30,8 @@ module RunParse : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "-o",      Arg.Set_string output_file, "<file> Output AST to file (defaults to stdout)"
     ; "-n",      Arg.Set include_nodes, " Include node information in parse output"
+    ; "--synthesize-locks", Arg.Set synthesize_locks, " Apply lock synthesis before printing"
+    ; "--pretty", Arg.Set pretty, " Print in VCY source syntax instead of AST dump"
     ] |>
     Arg.align
 
@@ -39,9 +43,14 @@ module RunParse : Runner = struct
 
     AstML.include_nodes := !include_nodes;
 
-    let ast =
+    let prog' =
       Driver.parse_oat_file prog |>
-      AstML.string_of_prog
+      (fun p -> if !synthesize_locks then Lock_synthesis.transform_prog p else p)
+    in
+    let ast =
+      if !pretty
+      then AstPP.string_of_prog prog'
+      else AstML.string_of_prog prog'
     in
 
     if !output_file = ""
@@ -135,6 +144,10 @@ module RunInterp : Runner = struct
   let prover_name = ref ""
   let timeout = ref None
   let dswp_mode = ref false
+  let synthesize_locks = ref false
+  let emit_tasks = ref false
+  let generate_html = ref false
+  let open_html = ref false
   (* let no_named_blocks = ref false *) (* TODO *)
 
   let speclist =
@@ -145,11 +158,15 @@ module RunInterp : Runner = struct
     ; "--time", Arg.Set get_execution_time, " Output execution time instead of main's return"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, "Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, " <name> Use a particular prover (default: CVC4)"
-    ; "--timeout", Arg.Float (fun f -> timeout := Some f), " <name> Set timeout for servois2 queries"
+    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
+    ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
-    (* ; "--no-named-blocks", Arg.Set no_named_blocks, " Deal with named blocks as the normal blocks" *)
+    ; "--synthesize-locks", Arg.Set synthesize_locks, " Synthesize fine-grained mutex_lock/unlock in named commutative blocks"
+    ; "--emit-tasks", Arg.Set emit_tasks, " Print DSWP task bodies (requires --dswp) and exit without running"
+    ; "--html",     Arg.Unit (fun () -> generate_html := true), " Generate HTML report of DSWP analysis in ./veracity_output/run_NNNN/ (requires --dswp)"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir",  Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ] |>
     Arg.align
 
@@ -158,7 +175,8 @@ module RunInterp : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
@@ -186,17 +204,86 @@ module RunInterp : Runner = struct
       end;
 
       let prog = Driver.parse_oat_file prog_name in
+      (* Pre-DSWP synthesis: applied to source AST when not in DSWP mode *)
+      let prog = if !synthesize_locks && not !dswp_mode
+                 then Lock_synthesis.transform_prog prog
+                 else prog in
+      (* Post-DSWP synthesis: applied to task bodies after PDG decomposition *)
+      if !synthesize_locks && !dswp_mode then
+        Interp.synthesize_locks_flag := true;
       Random.self_init ();
 
-      begin if !get_execution_time then
-        let time = Interp.interp_prog_time prog argv in
-        Printf.printf "%f\n" time
-      else 
-        let ret = Interp.interp_prog prog argv in
-        Printf.printf "Return: %Ld\n" ret
-      end;
+      (* When --dswp --html: allocate the run dir now so dot files land there. *)
+      let dswp_sdir =
+        if !dswp_mode && !generate_html then begin
+          let sdir = Html_output.create_session_dir () in
+          Exe_pdg.output_dir := Some sdir;
+          Printf.eprintf "Session directory: %s\n" sdir;
+          Some sdir
+        end else None
+      in
 
-      flush stdout
+      let generate_dswp_html () =
+        match dswp_sdir with
+        | None -> ()
+        | Some sdir ->
+          let out = Html_output.generate_dswp
+            ~source_file:prog_name
+            ~session_dir:sdir
+            ~init_task:!Exe_pdg.generated_init_task
+            ~tasks:!Exe_pdg.generated_tasks
+            ~pdg_dot:(Filename.concat sdir "pdg.dot")
+            ~tasks_dot:(Filename.concat sdir "dag-scc.dot")
+          in
+          Printf.eprintf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
+      in
+
+      (* --emit-tasks: run DSWP compilation, optionally synthesize, print, exit *)
+      if !dswp_mode && !emit_tasks then begin
+        ignore @@ Interp.initialize_env prog true;
+        if !synthesize_locks then
+          Exe_pdg.generated_tasks :=
+            Lock_synthesis.synthesize_tasks prog !Exe_pdg.generated_tasks;
+        (match !Exe_pdg.generated_init_task with
+        | None -> ()
+        | Some it ->
+          Printf.printf "=== Init Task ===\n";
+          Printf.printf "spawns: [%s]\n"
+            (String.concat ", " (List.map string_of_int it.Dswp_task.jobs));
+          let decl_str = Ast_print.AstPP.string_of_block it.Dswp_task.decls in
+          if String.length (String.trim decl_str) > 0 then
+            Printf.printf "%s\n" decl_str);
+        List.iter (fun (task : Dswp_task.dswp_task) ->
+          Printf.printf "\n=== Task %d (%s) ===\n" task.id
+            (match task.label with
+            | Dswp_task.Doall -> "Doall"
+            | Dswp_task.Sequential -> "Sequential");
+          if task.Dswp_task.deps_in <> [] then
+            Printf.printf "deps_in:  %s\n"
+              (Dswp_task.str_of_task_deps task.Dswp_task.deps_in);
+          if task.Dswp_task.deps_out <> [] then
+            Printf.printf "deps_out: %s\n"
+              (Dswp_task.str_of_task_deps task.Dswp_task.deps_out);
+          Printf.printf "%s\n"
+            (Ast_print.AstPP.string_of_block task.Dswp_task.body)
+        ) !Exe_pdg.generated_tasks;
+        flush stdout;
+        generate_dswp_html ()
+      end else begin
+
+      Fun.protect ~finally:generate_dswp_html (fun () ->
+        begin if !get_execution_time then
+          let time = Interp.interp_prog_time prog argv in
+          Printf.printf "%f\n" time
+        else
+          let ret = Interp.interp_prog prog argv in
+          Printf.printf "Return: %Ld\n" ret
+        end;
+        flush stdout
+      )
+
+      end
 
     with e ->
       let msg = Printexc.to_string e in
@@ -218,7 +305,6 @@ module RunInterp : Runner = struct
 
 end
 
-(*
 module RunTranslate : Runner = struct
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " translate [<flags>] <vcy program>"
@@ -266,7 +352,6 @@ module RunTranslate : Runner = struct
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 
 end
-*)
 
 module RunCompile : Runner = struct
   let usage_msg exe_name =
@@ -467,25 +552,31 @@ module RunInfer : Runner = struct
   open Ast_print
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " infer [<flags>] <vcy program>"
-  
+
   let debug = ref false
 
   let time_servois = ref false
 
   let quiet = ref false
+  let silent_flag = ref false
 
   let anons = ref []
 
   let anon_fun (v : string) =
     anons := v :: !anons
 
+  (* Servois2 options *)
   let prover_name = ref ""
   let output_file = ref ""
   let timeout = ref None
   let lattice = ref false
   let lattice_timeout = ref (Some 30.)
+  let use_ae = ref false
   let stronger_pred_first = ref false
   let no_cache = ref true
+  let diagram = ref false
+  let generate_html = ref false
+  let open_html = ref false
 
   let rewrite_commute = ref false
   let print = ref false
@@ -495,11 +586,12 @@ module RunInfer : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--time",  Arg.Set time_servois, " Output time of Servois execution to stderr"
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
+    ; "--silent", Arg.Set silent_flag, " Suppress all stdout output from the interpreter"
     (* ; "--poke", Arg.Unit (fun () -> Choose.choose := Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Choose.choose := Choose.poke2), " Use improved poke heuristic (default: simple)" *)
     ;"--poke", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke), " Use servois poke heuristic (default: simple)"
     ; "--poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.poke2), " Use improved poke heuristic (default: simple)"
-    ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"    
+    ; "--mcpeak-bisect", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_bisect), " Use model counting based synthesis with strategy: bisection"
     ; "--mcpeak-max", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max), " Use model counting based synthesis with strategy: maximum-coverage"
     ; "--mcpeak-max-poke2", Arg.Unit (fun () -> Servois2.Choose.choose := Servois2.Choose.mc_max_poke), " Use model counting based synthesis with strategy: maximum-coverage, then poke2"
     ; "--lattice-timeout", Arg.Float (fun f -> lattice_timeout := Some f), " Set the time limit for lattice construction"
@@ -507,11 +599,16 @@ module RunInfer : Runner = struct
     ; "--lattice", Arg.Unit (fun () -> lattice := true), " Create and use lattice of predicate implication"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), " Set time limit for execution"
     ; "--auto-terms", Arg.Unit (fun () -> Servois2.Predicate.autogen_terms := true), " Automatically generate terms from method specifications"
-    ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice" 
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
+    ; "--diagram", Arg.Unit (fun () -> diagram := true), " Write Servois2 diagrams and SMT query files to disk"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
+    ; "--cache", Arg.Unit (fun () -> no_cache := false), " Use cached implication lattice"
     
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
+    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--force", Arg.Set Interp.force_infer, " Force inference of all commutativity conditions (even when one is provided)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "-o",      Arg.Set_string output_file, "<file> Output transformed program to file. Default is stdout."
@@ -525,11 +622,12 @@ module RunInfer : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
-  let infer_phis prog_name =
+  let infer_phis prog_name prover =
     if !debug then begin
       Printexc.record_backtrace true;
       Util.debug := true;
@@ -541,8 +639,11 @@ module RunInfer : Runner = struct
     Interp.time_servois := !time_servois;
     Interp.emit_inferred_phis := true; (*not @@ !Interp.time_servois;*)
     Interp.emit_quiet := !quiet;
+    Interp.silent := !silent_flag;
 
     let prog = Driver.parse_oat_file prog_name in
+    if Analyze.prog_has_havoc prog && not !use_ae then
+      failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     
 
     let prog =
@@ -555,7 +656,7 @@ module RunInfer : Runner = struct
     else ();
 
     let env = Interp.initialize_env prog true in
-
+    ignore (Analyze.check_asserts_in_prog prog prover);
     let open Ast in
     if !output_file != "" then begin
       let gmdecls = List.map (fun (name, tmethod) -> Gmdecl(no_loc @@ mdecl_of_tmethod name tmethod)) env.g.methods in
@@ -572,15 +673,48 @@ module RunInfer : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let synth_options = {
-      Servois2.Synth.default_synth_options with prover = get_prover (); timeout = !timeout; 
-                                        lattice = !lattice;
-                                        lattice_timeout = !lattice_timeout;
-                                         no_cache = !no_cache;
-                                         stronger_predicates_first = !stronger_pred_first;
+      Servois2.Synth.default_synth_options with
+        prover = get_prover ();
+        timeout = !timeout; 
+        lattice = !lattice;
+        lattice_timeout = !lattice_timeout;
+        no_cache = !no_cache;
+        stronger_predicates_first = !stronger_pred_first;
+        use_ae = !use_ae
     } in
     Util.servois2_synth_option := synth_options;
+    let html = !generate_html in
+    if html then begin
+      (* --html implies diagram output; create a fresh session dir *)
+      Servois2.Util.diagram    := true;
+      Servois2.Util.dump_queries := true;
+      let sdir = Html_output.create_session_dir () in
+      Util.session_dir     := Some sdir;
+      Util.commute_counter := 0;
+      Util.commute_records := [];
+      Printf.eprintf "Session directory: %s\n" sdir
+    end else begin
+      Servois2.Util.diagram      := !diagram;
+      Servois2.Util.dump_queries := !diagram
+    end;
+    let generate_html_report prog =
+      if html then begin
+        match !Util.session_dir with
+        | Some sdir ->
+          let out = Html_output.generate
+            ~source_file:prog
+            ~session_dir:sdir
+            ~records:!Util.commute_records
+          in
+          Printf.printf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
+        | None -> ()
+      end
+    in
     match anons with
-    | [prog] -> infer_phis prog
+    | [prog] ->
+      Fun.protect ~finally:(fun () -> generate_html_report prog)
+        (fun () -> infer_phis prog (get_prover ()))
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 
@@ -588,16 +722,22 @@ module RunVerify : Runner = struct
   open Ast_print
   let usage_msg exe_name =
     "Usage: " ^ exe_name ^ " verify [<flags>] <vcy program>"
-  
+
   let debug = ref false
   let time_servois = ref false
   let quiet = ref false
+  let silent_flag = ref false
   let anons = ref []
-  let cond = ref false 
+  let cond = ref false
+  let generate_html = ref false
+  let open_html = ref false
+
 
   let anon_fun (v : string) =
     anons := v :: !anons
 
+  (* Servois2 options *)
+  let use_ae = ref false
   let prover_name = ref ""
 
   let rewrite_commute = ref false
@@ -608,10 +748,15 @@ module RunVerify : Runner = struct
     ; "--debug", Arg.Set debug, " Display verbose debugging info during interpretation"
     ; "--time",  Arg.Set time_servois, " Display time of Servois execution instead of inference"
     ; "-q", Arg.Set quiet, " Quiet - just display conditions"
+    ; "--silent", Arg.Set silent_flag, " Suppress all stdout output from the interpreter"
     ; "--verbose", Arg.Set Servois2.Util.verbosity, " Servois2 verbose output"
     ; "--very-verbose", Arg.Set Servois2.Util.very_verbose, " Very verbose output and print smt query files"
-    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC4)"
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
+    ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
+    ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
+    ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
+    ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
     ; "--rewrite-commute", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
     ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises"
     ] |>
@@ -622,7 +767,8 @@ module RunVerify : Runner = struct
       | "cvc4" -> (module Servois2.Provers.ProverCVC4)
       | "cvc5" -> (module Servois2.Provers.ProverCVC5)
       | "z3"   -> (module Servois2.Provers.ProverZ3)
-      | ""     -> (module Servois2.Provers.ProverCVC4)
+      | "yices"   -> (module Servois2.Provers.ProverYices)
+      | ""     -> (module Servois2.Provers.ProverCVC5)
       | "mathsat" -> (module Servois2.Provers.ProverMathSAT)
       | s      -> raise @@ Invalid_argument (sp "Unknown/unsupported prover '%s'" s)
 
@@ -634,9 +780,12 @@ module RunVerify : Runner = struct
 
     Interp.emit_inferred_phis := true;
     Interp.emit_quiet := !quiet;
+    Interp.silent := !silent_flag;
     Interp.print_cond := !cond;
 
     let prog = Driver.parse_oat_file prog_name in
+    if Analyze.prog_has_havoc prog && not !use_ae then
+      failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
 
     let prog =
       if !rewrite_commute then
@@ -658,53 +807,178 @@ module RunVerify : Runner = struct
     Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
     let anons = List.rev (!anons) in
     let verify_options = {
-      Servois2.Verify.default_verify_options with prover = get_prover ();
+      Servois2.Verify.default_verify_options with
+         prover = get_prover ();
+         use_ae = !use_ae
     } in
     Util.servois2_verify_option := verify_options;
+    let html = !generate_html in
+    if html then begin
+      Servois2.Util.diagram      := true;
+      Servois2.Util.dump_queries := true;
+      let sdir = Html_output.create_session_dir () in
+      Util.session_dir     := Some sdir;
+      Util.commute_counter := 0;
+      Util.commute_records := [];
+      Printf.eprintf "Session directory: %s\n" sdir
+    end;
+    let generate_html_report prog =
+      if html then begin
+        match !Util.session_dir with
+        | Some sdir ->
+          let out = Html_output.generate
+            ~source_file:prog
+            ~session_dir:sdir
+            ~records:!Util.commute_records
+          in
+          Printf.printf "HTML report: %s\n" out;
+          if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
+        | None -> ()
+      end
+    in
     match anons with
-    | [prog] -> verify prog
+    | [prog] ->
+      let commute_failed = ref false in
+      Fun.protect ~finally:(fun () -> generate_html_report prog)
+        (fun () ->
+          try verify prog
+          with Ast.CommuteFailure _ -> commute_failed := true);
+      if !commute_failed then exit 1
+    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+end
+
+module RunAssertions : Runner = struct
+  let usage_msg exe_name =
+    "Usage: " ^ exe_name ^ " assertions [<flags>] <vcy program>"
+
+  let anons = ref []
+  let prover_name = ref ""
+
+  let anon_fun (v : string) = anons := v :: !anons
+
+  let speclist =
+    [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
+    ] |> Arg.align
+
+  let get_prover () : (module Servois2.Provers.Prover) =
+    match !prover_name |> String.lowercase_ascii with
+    | "cvc4"    -> (module Servois2.Provers.ProverCVC4)
+    | "cvc5"    -> (module Servois2.Provers.ProverCVC5)
+    | "z3"      -> (module Servois2.Provers.ProverZ3)
+    | "yices"      -> (module Servois2.Provers.ProverYices)
+    | ""        -> (module Servois2.Provers.ProverCVC5)
+    | s         -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
+
+  let run () =
+    Arg.current := 1;
+    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
+    match List.rev !anons with
+    | [prog_name] ->
+        let prog = Driver.parse_oat_file prog_name in
+        let prover = get_prover () in
+        if not (Analyze.check_asserts_in_prog prog prover) then exit 1
+    | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
+end
+
+module RunInvariants : Runner = struct
+  let usage_msg exe_name =
+    "Usage: " ^ exe_name ^ " invariants [<flags>] <vcy program>"
+
+  let anons = ref []
+  let prover_name = ref ""
+  let use_ae = ref false
+  let silent_flag = ref false
+
+  let anon_fun (v : string) = anons := v :: !anons
+
+  let speclist =
+    [ "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
+    ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
+    ; "--silent", Arg.Set silent_flag, " Suppress interpreter stdout"
+    ] |> Arg.align
+
+  let get_prover () : [ `CVC4 | `CVC5 | `Z3 | `Yices ] =
+    match !prover_name |> String.lowercase_ascii with
+    | "cvc4" -> `CVC4
+    | "cvc5" -> `CVC5
+    | "z3"   -> `Z3
+    | "yices"   -> `Yices
+    | ""     -> `CVC5
+    | s      -> raise @@ Invalid_argument (sp "Unknown prover '%s'" s)
+
+  let run () =
+    Arg.current := 1;
+    Arg.parse speclist anon_fun (usage_msg Sys.argv.(0));
+    match List.rev !anons with
+    | [prog_name] ->
+        let opts = Vcy.Veracity.{
+          default_options with
+          prover  = get_prover ();
+          use_ae  = !use_ae;
+          silent  = !silent_flag;
+        } in
+        (match Vcy.Veracity.check_invariants ~opts (Vcy.Veracity.File prog_name) with
+         | Ok () ->
+             Printf.printf "All loop invariants verified.\n"
+         | Error (Vcy.Veracity.VerifyError msg) ->
+             Printf.printf "Invariant failures:\n%s\n" msg;
+             exit 1
+         | Error e ->
+             Printf.printf "Error: %s\n"
+               (match e with
+                | Vcy.Veracity.ParseError  m -> "parse error: "  ^ m
+                | Vcy.Veracity.InterpError m -> "interp error: " ^ m
+                | Vcy.Veracity.InferError  m -> "infer error: "  ^ m
+                | Vcy.Veracity.VerifyError m -> m);
+             exit 1)
     | _ -> Arg.usage speclist (usage_msg Sys.argv.(0))
 end
 
 type command =
-  | CmdHelp (* Show help info *)
-  | CmdParse (* Parse program *)
-  | CmdInterp (* Interpret program *)
-  | CmdInterface (* Generate interface *)
-  | CmdYaml (* Generate YAML for Servois *)
-  | CmdPhi (* Generate commutativity condition *)
-  | CmdInfer (* Infer commute conditions *)
+  | CmdHelp
+  | CmdParse
+  | CmdInterp
+  | CmdInterface
+  | CmdYaml
+  | CmdPhi
+  | CmdInfer
   | CmdVerify
-  (* | CmdTranslate *)
-  | CmdCompile (* Compile to C program implementing global commutativity PDG-base SWP *)
+  | CmdTranslate
+  | CmdAssertions
+  | CmdInvariants
+  | CmdCompile
 
 let command_map =
-  [ "help",      CmdHelp
-  ; "parse",     CmdParse
-  ; "interp",    CmdInterp
+  [ "help",       CmdHelp
+  ; "parse",      CmdParse
+  ; "interp",     CmdInterp
   (*; "interpret", CmdInterp*)
-  ; "interface", CmdInterface
+  ; "interface",  CmdInterface
   (*; "yaml",      CmdYaml*)
   (*; "phi",       CmdPhi*)
-  ; "infer",     CmdInfer
-  ; "verify",    CmdVerify
-  (* ; "translate", CmdTranslate *)
-  ; "compile",   CmdCompile
+  ; "infer",      CmdInfer
+  ; "verify",     CmdVerify
+  ; "translate",  CmdTranslate
+  ; "assertions", CmdAssertions
+  ; "invariants", CmdInvariants
+  ; "compile",    CmdCompile
   ]
 
 let runner_map : (command * (module Runner)) list =
-  [ CmdInterp,    (module RunInterp)
-  ; CmdParse,     (module RunParse)
+  [ CmdInterp,     (module RunInterp)
+  ; CmdParse,      (module RunParse)
   (*; CmdInterface, (module RunInterface)*)
   (*; CmdYaml,      (module RunYaml)*)
   (*; CmdPhi,       (module RunPhi)*)
-  ; CmdInfer,     (module RunInfer)
-  ; CmdVerify,    (module RunVerify)
-  (* ; CmdTranslate, (module RunTranslate) *)
-  ; CmdCompile,   (module RunCompile)
+  ; CmdInfer,      (module RunInfer)
+  ; CmdVerify,     (module RunVerify)
+  ; CmdTranslate,  (module RunTranslate)
+  ; CmdAssertions, (module RunAssertions)
+  ; CmdInvariants, (module RunInvariants)
+  ; CmdCompile,    (module RunCompile)
   ]
 
-let display_help_message exe_name = 
+let display_help_message exe_name =
   let details =
     "Commands:\n" ^
     "  help        Display this message\n" ^
@@ -715,7 +989,9 @@ let display_help_message exe_name =
     (*"  phi         Generate commutativty condition between two methods\n" ^*)
     "  infer       Infer and emit all blank commutativity conditions\n" ^
     "  verify      Verify all provided commutativity conditions\n" ^
-    (* "  translate   Translate program to C\n "^ *)
+    "  assertions  Check all assert() statements in a program\n" ^
+    "  invariants  Check all annotated while-loop invariants\n" ^
+    "  translate   Translate program to C\n" ^
     "  compile     Compile (to C) via global commutativity and task parallelism\n "
   in Printf.eprintf "Usage: %s <command> [<flags>] [<args>]\n%s" exe_name details
 

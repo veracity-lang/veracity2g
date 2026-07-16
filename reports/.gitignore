@@ -1,2 +1,4 @@
 *.csv
 *.tex
+!tasks_appendix.tex
+!tasks_appendix_standalone.tex

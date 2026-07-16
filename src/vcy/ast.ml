@@ -42,6 +42,7 @@ type binop =
 
 | Lt   | Lte | Gt | Gte
 | And  | Or
+| Implies
 | IAnd | IOr (* Bitwise ops *)
 | Shl  | Shr | Sar
 | Concat
@@ -57,10 +58,13 @@ type ty =
 | THashTable of ty * ty
 | TChanR | TChanW
 | TStruct of id
+| TLoc
+| THeapValue of ty * ty
 
 
 let rec sty_of_ty = function
   | TInt -> Smt.TInt
+  | TLoc -> Smt.TInt
   | TBool -> Smt.TBool
   | TStr -> Smt.TString
   | TArr t -> Smt.TArray (Smt.TInt, sty_of_ty t)
@@ -100,6 +104,12 @@ type exp =
 | Ternary of exp node * exp node * exp node
 | CStruct of id * exp node bindlist
 | Proj of exp node * id
+| HeapAlloc of exp node * exp node
+| HeapValue of exp node * exp node
+| HDerefValue of exp node
+| HDerefNext of exp node
+| Exists of id * ty * exp node
+| Forall of id * ty * exp node
 
 and tmethod =
   { pure : bool
@@ -123,6 +133,11 @@ and commute_condition =
 and commute_variant =
 | CommuteVarSeq
 | CommuteVarPar
+| CommuteVarLM
+| CommuteVarRM
+| CommuteVarRMCtx of exp node
+| CommuteVarLMCtx of exp node
+
 
 and block = stmt node list
 
@@ -134,18 +149,18 @@ and stmt =
 | SCall of method_variant * exp node list
 | If of exp node * block node * block node
 | For of vdecl list * exp node option * stmt node option * block node
-| While of exp node * block node
+| While of exp node * exp node option * block node
 | Raise of exp node
 | Commute of commute_variant * commute_condition * block node list * commute_pre_cond option * commute_post_cond option
 | Assert of exp node
 | Assume of exp node
-| Havoc of id
+| Havoc of exp node
 | Require of exp node
 | SBlock of blocklabel option * block node
 | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
 | SendEOP of int
 
-and commute_pre_cond = exp node 
+and commute_pre_cond = exp node
 
 and commute_post_cond = exp node
 
@@ -179,8 +194,7 @@ and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tm
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
-  ; ret_ty : ty
-  ; pc : (int * int * ety * sexp list -> post_condition) option
+  ; pc : (int * ety * sexp list -> post_condition) option
   }
 
 and post_condition =
@@ -189,7 +203,6 @@ and post_condition =
   ; asserts  : sexp list                (* Any additional assertions made *)
   ; terms    : (sexp * sty) list        (* Terms *)
   ; preds    : (string * (sty list)) list (* Any particular predicates *)
-  ; updates_rw : bool (* Does the method update the realWorld SMT variables *)
   }
 
 (*and method_spec = (* TODO For inlining procedure *)
@@ -209,6 +222,8 @@ and value =
   | VChanR  of string * in_channel * int
   | VChanW  of string * out_channel
   | VStruct of id * value ref bindlist
+  | VLoc       of int64 option
+  | VHeapValue of int64 * int64 option
 
 and hashtable = ty * ty * ht_variant
 
@@ -339,6 +354,8 @@ let type_of_value : value -> ty =
   | VArr (ty,_)    -> TArr ty
   | VStruct (id,_) -> TStruct id
   | VHashTable (tyk, tyv, _) -> THashTable (tyk, tyv)
+  | VLoc _             -> TLoc
+  | VHeapValue _       -> THeapValue (TInt, TLoc)
 
 (* Is a type passed by reference (sort of)? 
  * Technically everything is passed by value.
@@ -365,6 +382,9 @@ let rec ty_eq (env : env) ty1 ty2 =
     ty_eq env v1 v2
   | TStruct id1, TStruct id2 ->
     id1 = id2
+  | TLoc, TLoc -> true
+  | THeapValue (t1a, t1b), THeapValue (t2a, t2b) ->
+    ty_eq env t1a t2a && ty_eq env t1b t2b
   | _ -> false
 
 let ty_match env v ty =
@@ -381,6 +401,8 @@ let ty_default_value (env : env) : ty -> value =
   | TArr ty    -> VNull (TArr ty)
   | TStruct id -> VNull (TStruct id)
   | THashTable (tyk, tyv) -> VNull (THashTable (tyk, tyv))
+  | TLoc -> VNull TLoc
+  | THeapValue (tyi, tyl) -> VNull (THeapValue (tyi, tyl))
 
 let value_of_htdata : value Hashtables.htdata -> value =
   function
@@ -395,7 +417,7 @@ let htdata_of_value : value -> value Hashtables.htdata =
 let init_mangle_id : id -> Smt.exp Smt.binding = fun i ->
   let [@warning "-8"] Smt.EVar mangled = (mangle_servois_id i 1) in
     (mangled, Smt.EVar (Var i))
-  
+
 let init_mangle : ety -> Smt.exp Smt.bindlist = function
   | ETInt i | ETBool i | ETStr i | ETArr (i, _) | ETChannel i ->
     [init_mangle_id i]
@@ -469,6 +491,7 @@ let smt_bop_to_binop (op: Smt.bop) : binop =
   | Smt.Gt -> Gt
   | Smt.Lte -> Lte
   | Smt.Gte -> Gte
+  | Smt.Imp -> Implies
   | _ -> failwith "undefined op"
 
 let smt_lop_to_binop (op: Smt.lop) : binop =

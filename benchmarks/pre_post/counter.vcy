@@ -1,0 +1,38 @@
+int main(int argc, string[] argv) {
+
+/* Simple version:
+
+    { phi /\ B } C2 { phi }
+    phi => C1 |><| C2
+    { phi } C1 { phi }
+    ------------------------------------------------------------
+    B /\ phi => C1 |><| (while B do C2)
+*/
+
+/* Specialized to this example:
+
+    H1:   rdi := ctr |><| (rdj := ctr  |  retj)
+    H2:   { phi } (rdj := ctr  |  retj) { phi }
+    ------------------------------------------------------------
+    rdi := ctr |><| (rdj := ctr  |  retj)*
+*/
+
+    int ctr  = int_of_string(argv[1]);
+    int rdi  = int_of_string(argv[2]);
+    int rdj  = int_of_string(argv[3]);
+    int reti = int_of_string(argv[4]);
+    int retj = int_of_string(argv[5]);
+    int casi_fail = int_of_string(argv[5]);
+    int casj_fail = int_of_string(argv[5]);
+    int testj_vjEQc=-1; int testj_vjNEc=-1; int testi_viEQc=-1; int testi_viNEc=-1;
+    int nondet = int_of_string(argv[6]);
+
+    /* this example is easy because there is no "phi" to carry around */
+    commute (true) { { rdi = ctr; } { rdj = ctr; } }
+    commute (true) { { rdi = ctr; } { retj = 1 ; } }
+    commute (true) { { rdi = ctr; } { casj_fail = ctr ; } }
+    /* tests: thread j reads the counter */
+    commute (true) { { rdi = ctr; } { if(rdj == ctr) {testj_vjEQc=1;testj_vjNEc=0;} else {testj_vjEQc=0;testj_vjNEc=1;} } }
+   
+}
+

@@ -1,0 +1,44 @@
+From 275f0a137c0e7570be3bbef3c99268a0ce279e67 Mon Sep 17 00:00:00 2001
+From: Eric Koskinen <eric.koskinen@stevens.edu>
+Date: Wed, 24 Jun 2026 11:29:47 -0400
+Subject: [PATCH 6/6] Propagate commute_variant to set Solve.mode for
+ one-direction AE bowtie
+
+verify_of_block now sets Solve.mode to LeftMover or RightMover before
+calling Verify.verify, so generate_bowtie_ae emits a single exists block
+for the correct direction rather than reusing a stale Bowtie formula.
+Mode is reset to Bowtie after the call.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ src/analysis/analyze.ml | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/analysis/analyze.ml b/src/analysis/analyze.ml
+index 36c409f..4588958 100644
+--- a/src/analysis/analyze.ml
++++ b/src/analysis/analyze.ml
+@@ -225,9 +225,17 @@ let check_asserts_in_prog (prog: Ast.prog)
+     | _ -> ()
+   ) prog
+ 
+-let verify_of_block e genv _ blks vars pre post : bool option * bool option =
++let verify_of_block e genv cv blks vars pre post : bool option * bool option =
+   let embedding = generate_embedding_map vars in
+   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
+   let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
+-  Servois2.Verify.verify ~options:!Util.servois2_verify_option spec m1 m2 cond,
+-  Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
++  begin match cv with
++  | CommuteVarLM -> Servois2.Solve.mode := Servois2.Solve.LeftMover
++  | CommuteVarRM -> Servois2.Solve.mode := Servois2.Solve.RightMover
++  | _ -> () end;
++  let result =
++    Servois2.Verify.verify ~options:!Util.servois2_verify_option spec m1 m2 cond,
++    Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
++  in
++  Servois2.Solve.mode := Servois2.Solve.Bowtie;
++  result
+-- 
+2.50.1 (Apple Git-155)
+

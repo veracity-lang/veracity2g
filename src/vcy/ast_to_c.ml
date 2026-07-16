@@ -56,10 +56,16 @@ and c_of_stmt = function
         end
     | If(guard, t, e) -> sp "if(%s) %s%selse %s" (c_of_expnode guard) (c_of_blocknode t) (mk_newline ()) (c_of_blocknode e)
     | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (c_of_ty ty) (!mangle id) (c_of_expnode rhs)) inits) (guard |> Option.map c_of_expnode |> Option.value ~default:"") (update |> Option.map c_of_stmtnode |> Option.value ~default:"") (c_of_blocknode body)
-    | While(guard, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
+    | While(guard, _inv, body) -> sp "while(%s) %s" (c_of_expnode guard) (c_of_blocknode body)
     | Raise(e) -> raise @@ NotImplemented "c_of_stmt Raise"
-    | Commute(var, phi, bodies, _, _) -> !handle_comm phi bodies
-    | Havoc(id) -> sp "/* %s = __VERIFIER_nondet_int() */" (!mangle id)
+    | Commute(var, phi, bodies, pre, post) -> !handle_comm phi bodies
+    | Havoc(e) ->
+      let rec base_id = function
+        | {elt=Id n;_} -> n | {elt=Index(b,_);_} -> base_id b
+        | {elt=HDerefValue b;_} | {elt=HDerefNext b;_} -> base_id b
+        | _ -> failwith "havoc: unsupported lvalue"
+      in
+      sp "/* %s = __VERIFIER_nondet_int() */" (!mangle (base_id e))
     | Assume(e) -> sp "/* assume%s */" (c_of_expnode e)
     | SBlock(blocklabel,block) -> sp "%s" (c_of_blocknode block) (* TODO: check *)
     | _ -> raise @@ NotImplemented "c_of_stmt: unimplemented."
