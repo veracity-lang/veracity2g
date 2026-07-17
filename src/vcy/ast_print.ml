@@ -335,13 +335,13 @@ module AstPP = struct
                   end;
                   ppnl ();
                   pp_open_vbox fmt 0;
-                  (match pre with
+                  (* (match pre with
                    | Some e -> pps "pre: "; print_exp_aux 0 fmt e; ppnl ()
-                   | None -> ());
+                   | None -> ()); *)
                   List.iter (Util.compose ppnl (print_block_aux fmt)) bodies;
-                  (match post with
+                  (* (match post with
                    | Some e -> ppnl (); pps "post: "; print_exp_aux 0 fmt e
-                   | None -> ());
+                   | None -> ()); *)
                   (match variant with
                    | CommuteVarRMCtx ctx | CommuteVarLMCtx ctx ->
                        ppnl (); pps "context: "; print_exp_aux 0 fmt ctx
