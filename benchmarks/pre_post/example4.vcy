@@ -1,0 +1,28 @@
+int main(int argc, string[] argv) {
+    int balance = int_of_string(argv[1]);
+    int fee     = int_of_string(argv[2]);
+    int i       = int_of_string(argv[3]);
+    int n       = int_of_string(argv[4]);
+
+    commute _ {
+
+        {
+            if (balance > fee) {
+                balance = balance - fee;
+            }
+        }
+
+        {
+            while(i < n) {
+
+                if(i % 2 == 0) {
+                    balance = balance + 5;
+                } else {
+                    balance = balance + 2;
+                }
+
+                i = i + 1;
+            }
+        }
+    }
+}

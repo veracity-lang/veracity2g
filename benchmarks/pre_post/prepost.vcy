@@ -1,0 +1,23 @@
+int main(int argc, string[] argv) {
+
+    int n = int_of_string(argv[1]);
+
+    int len_a = int_of_string(argv[2]);
+
+    int[] a = new int[len_a];
+
+    int i = 0;
+
+    commute _ {
+        pre: (n > 0 && n < len_a)
+
+        { i = n; if (a[i] > 0) { a[i] = -1; } else { a[i] = 1; }  }
+
+        { /* skip */ }
+
+        post: (n >0 && n < len_a && a[n] <= 1 )
+        }
+
+    return 0;
+
+}

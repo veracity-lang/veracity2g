@@ -1,0 +1,64 @@
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    
+  
+    commute _ { /* (c > 0) */
+        pre: (true)
+        { 
+            c = c * -1;
+        } 
+        { 
+            
+        }
+        post: (c < 0)
+    }
+    
+    return 0;
+}
+
+
+
+
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int[] files = new int[10];
+    int c = int_of_string(argv[2]);
+    int n = int_of_string(argv[3]);
+  
+
+    commute _ {
+        { 
+            while(x<n) { c = c + 1; x = x + 1; }
+        } 
+        { 
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+    }
+}
+
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int[] files = new int[10];
+    int c = int_of_string(argv[2]);
+    int n = int_of_string(argv[3]);
+  
+
+    commute _ {
+        pre: (c > 0)
+        { 
+            c = c + 1;
+            x = x + 1;
+            
+        } 
+        { 
+            if (c > 0){
+                c = c - 1;
+            }
+        }
+        post: (c > 0)
+    }
+}
+
+

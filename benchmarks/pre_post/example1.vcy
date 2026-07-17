@@ -1,0 +1,23 @@
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    int n = 10;
+    
+    int x_init = x;
+    int c_init = c;
+
+    commute _ {
+        { 
+            if(c > 0){
+                c = c - 1;
+            }
+        } 
+        { 
+            while(x<n) { c = c + 1; x = x + 1; }
+        }
+    }
+    
+    return 0;
+}
+
+

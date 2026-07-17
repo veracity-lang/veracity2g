@@ -1,0 +1,26 @@
+int main(int argc, string[] argv) {
+    int c = int_of_string(argv[1]);
+    int x = int_of_string(argv[2]);
+    int n = 10;
+    
+    int x_init = x;
+    int c_init = c;
+
+    assert(n == 10);
+    commute (true) {
+        pre: (c <= c_init + x - x_init)
+        { 
+            if(c > 0){
+                c = c - 1;
+            }
+        } 
+        { 
+            
+        }
+        post: (c <= c_init + x - x_init)
+    }
+    
+    return 0;
+}
+
+
