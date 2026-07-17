@@ -200,7 +200,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         let ty = match typ with
                 | (TArr t) -> t
                 | THashTable (t1,t2) -> t2
-                | _ -> failwith "not implemented"
+                | _ -> failwith "Index of a non-Arr, non-HT is not implemented"
         in
 
         let t2, _ = get_exp_term e2 in
