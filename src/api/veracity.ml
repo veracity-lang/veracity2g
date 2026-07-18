@@ -130,7 +130,8 @@ let infer ?(opts = default_options) input =
             Some (Html_output.generate
               ~source_file
               ~session_dir:sdir
-              ~records:!Util.commute_records)
+              ~records:!Util.commute_records
+              ~rewritten_source:None)
         in
         Ok (env.g, html_path)
        with e ->
@@ -185,7 +186,8 @@ let verify ?(opts = default_options) input =
             Some (Html_output.generate
               ~source_file
               ~session_dir:sdir
-              ~records:!Util.commute_records)
+              ~records:!Util.commute_records
+              ~rewritten_source:None)
         in
         Ok ((), html_path)
        with e ->
@@ -239,7 +241,8 @@ let check_assertions ?(opts = default_options) input =
           Some (Html_output.generate
             ~source_file
             ~session_dir:sdir
-            ~records:!Util.commute_records)
+            ~records:!Util.commute_records
+            ~rewritten_source:None)
       in
       (match failures with
       | []   -> Ok ((), html_path)

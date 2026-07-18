@@ -180,7 +180,7 @@ let create_session_dir () =
   Servois2.Rundir.resolve ~root:Util.output_root ~tool:"veracity"
     ~env_var:"VERACITY_OUT"
 
-let generate ~source_file ~session_dir ~records =
+let generate ?(rewritten_source : string option = None) ~source_file ~session_dir ~records =
   (* 1. Read source *)
   let source_text =
     try read_file source_file
@@ -260,7 +260,22 @@ let generate ~source_file ~session_dir ~records =
   ) records;
   Buffer.add_string js_buf "};\n";
 
-  (* 6. Assemble the full page *)
+  (* 6. Optional rewritten-program section *)
+  let rewritten_section = match rewritten_source with
+    | None -> ""
+    | Some text ->
+      Printf.sprintf
+        {|<section style="margin-top:28px">
+<h2 style="color:#569cd6;border-bottom:1px solid #3c3c3c;padding-bottom:6px;margin-bottom:12px">
+  Rewritten Program
+  <span style="font-size:.72em;color:#888;font-weight:normal">&nbsp;(--rewrite-commute)</span>
+</h2>
+<pre style="background:#252526;border-radius:6px;padding:14px 18px;font-family:'Consolas','Monaco',monospace;font-size:.85em;overflow-x:auto;color:#d4d4d4;line-height:1.45;margin:0">%s</pre>
+</section>|}
+        (html_escape text)
+  in
+
+  (* 7. Assemble the full page *)
   let html = Printf.sprintf {|<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -285,6 +300,7 @@ let generate ~source_file ~session_dir ~records =
 %s
 %s
 %s
+%s
 </body>
 </html>|}
     (Filename.basename source_file)
@@ -292,6 +308,7 @@ let generate ~source_file ~session_dir ~records =
     (html_escape source_file)
     (html_escape session_dir)
     (Buffer.contents src_buf)
+    rewritten_section
     js_prefix
     (Buffer.contents js_buf)
     js_suffix

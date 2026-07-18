@@ -705,6 +705,7 @@ module RunInfer : Runner = struct
             ~source_file:prog
             ~session_dir:sdir
             ~records:!Util.commute_records
+            ~rewritten_source:None
           in
           Printf.printf "HTML report: %s\n" out;
           if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
@@ -742,6 +743,7 @@ module RunVerify : Runner = struct
 
   let rewrite_commute = ref false
   let print = ref false
+  let rewritten_source : string option ref = ref None
 
   let speclist =
     [ "-d",      Arg.Set debug, " Display verbose debugging info during interpretation"
@@ -788,11 +790,13 @@ module RunVerify : Runner = struct
       failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
 
     let prog =
-      if !rewrite_commute then
-        Loop_induction.rewrite_program prog_name prog "verify"
-      else prog
+      if !rewrite_commute then begin
+        let p = Loop_induction.rewrite_program prog_name prog "verify" in
+        if !generate_html then rewritten_source := Some (AstPP.string_of_prog p);
+        p
+      end else prog
     in
-    if !print then 
+    if !print then
       Printf.printf "%s \n" (AstPP.string_of_prog prog);
 
     let env = Interp.initialize_env prog false in
@@ -830,6 +834,7 @@ module RunVerify : Runner = struct
             ~source_file:prog
             ~session_dir:sdir
             ~records:!Util.commute_records
+            ~rewritten_source:!rewritten_source
           in
           Printf.printf "HTML report: %s\n" out;
           if !open_html then ignore (Sys.command ("open " ^ Filename.quote out))
