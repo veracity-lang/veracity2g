@@ -110,6 +110,17 @@ function openModal(n){
   var panel = document.getElementById('diag-panel');
   var content = document.getElementById('diag-content');
   var d = commuteData[n];
+  if(!d){
+    content.innerHTML =
+      '<span class="closebtn" onclick="closePanel()">&times;</span>' +
+      '<h2>Commute Block ' + n + '</h2>' +
+      '<div class="mloc" style="color:#888">No query data &mdash; verification did not reach this block.</div>';
+    panel.style.display = 'block';
+    if(_activeRow){ _activeRow.classList.remove('active'); }
+    var rows = document.querySelectorAll('tr.cm');
+    rows.forEach(function(r){ if(r.getAttribute('data-cid')==String(n)){ _activeRow=r; r.classList.add('active'); } });
+    return;
+  }
   content.innerHTML =
     '<span class="closebtn" onclick="closePanel()">&times;</span>' +
     '<h2>Commute Block ' + n + '</h2>' +
@@ -176,6 +187,38 @@ table.src td{padding:1px 8px;white-space:pre;vertical-align:top}
    tool (or --out-dir) wins; otherwise $VERACITY_OUT; otherwise a fresh
    ./veracity_output/run_NNNN/ in the CWD.  Output lands next to the user's
    work rather than in /tmp, where it used to be reaped and unfindable. *)
+(* Scan pretty-printed VCY text for commute block line ranges.
+   Returns [(start_line, end_line)] in appearance order (1-indexed).
+   Relies on the pretty-printer always emitting "commute_" as a line prefix. *)
+let find_commute_line_ranges text =
+  let lines = String.split_on_char '\n' text in
+  let ranges  = ref [] in
+  let depth   = ref 0 in
+  let active  = ref false in
+  let c_start = ref 0 in
+  let c_base  = ref 0 in
+  List.iteri (fun i line ->
+    let lineno  = i + 1 in
+    let trimmed = String.trim line in
+    let n       = String.length trimmed in
+    if (not !active) && n >= 8 && String.sub trimmed 0 8 = "commute_" then begin
+      active  := true;
+      c_start := lineno;
+      c_base  := !depth
+    end;
+    String.iter (function
+      | '{' -> incr depth
+      | '}' ->
+        decr depth;
+        if !active && !depth = !c_base then begin
+          ranges := (!c_start, lineno) :: !ranges;
+          active := false
+        end
+      | _ -> ()
+    ) line
+  ) lines;
+  List.rev !ranges
+
 let create_session_dir () =
   Servois2.Rundir.resolve ~root:Util.output_root ~tool:"veracity"
     ~env_var:"VERACITY_OUT"
@@ -260,19 +303,52 @@ let generate ?(rewritten_source : string option = None) ~source_file ~session_di
   ) records;
   Buffer.add_string js_buf "};\n";
 
-  (* 6. Optional rewritten-program section *)
+  (* 6. Optional rewritten-program section with interactive commute highlighting *)
   let rewritten_section = match rewritten_source with
     | None -> ""
     | Some text ->
+      let rw_lines  = String.split_on_char '\n' text in
+      let rw_ranges = find_commute_line_ranges text in
+      (* Build line → commute-index map (same semantics as the original line_map) *)
+      let rw_lmap : (int, int) Hashtbl.t = Hashtbl.create 16 in
+      List.iteri (fun idx (sl, el) ->
+        for l = sl to el do Hashtbl.replace rw_lmap l idx done
+      ) rw_ranges;
+      let rw_buf = Buffer.create 4096 in
+      Buffer.add_string rw_buf "<table class=\"src\">\n";
+      List.iteri (fun i line ->
+        let lineno = i + 1 in
+        match Hashtbl.find_opt rw_lmap lineno with
+        | None ->
+          Buffer.add_string rw_buf
+            (Printf.sprintf
+               "<tr><td class=\"ln\">%d</td><td class=\"code\">%s</td></tr>\n"
+               lineno (html_escape line))
+        | Some cid ->
+          let is_first = match List.nth_opt rw_ranges cid with
+            | Some (sl, _) -> sl = lineno | None -> false in
+          let badge = if is_first then
+            Printf.sprintf "<span class=\"badge\">&#128269; commute %d</span>" cid
+            else "" in
+          Buffer.add_string rw_buf
+            (Printf.sprintf
+               "<tr class=\"cm\" data-cid=\"%d\" onclick=\"openModal(%d)\">\
+                <td class=\"ln\">%d</td>\
+                <td class=\"code\">%s%s</td></tr>\n"
+               cid cid lineno (html_escape line) badge)
+      ) rw_lines;
+      Buffer.add_string rw_buf "</table>\n";
       Printf.sprintf
         {|<section style="margin-top:28px">
 <h2 style="color:#569cd6;border-bottom:1px solid #3c3c3c;padding-bottom:6px;margin-bottom:12px">
   Rewritten Program
   <span style="font-size:.72em;color:#888;font-weight:normal">&nbsp;(--rewrite-commute)</span>
 </h2>
-<pre style="background:#252526;border-radius:6px;padding:14px 18px;font-family:'Consolas','Monaco',monospace;font-size:.85em;overflow-x:auto;color:#d4d4d4;line-height:1.45;margin:0">%s</pre>
+<div class="src-panel">
+%s
+</div>
 </section>|}
-        (html_escape text)
+        (Buffer.contents rw_buf)
   in
 
   (* 7. Assemble the full page *)
