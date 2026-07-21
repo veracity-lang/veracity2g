@@ -50,11 +50,19 @@ let fragment_env : (id, block node) Hashtbl.t =
 
 let gc_list = ref []
 
+let inferred_phi : exp node option ref = ref None
+
+let reset () =
+  infer := false;
+  verify := false;
+  new_commute_blocks := [];
+  Hashtbl.clear fragment_env;
+  gc_list := [];
+  inferred_phi := None
+
 (* -------------------------------------------------- *)
 (* Invariant setup *)
 (* -------------------------------------------------- *)
-
-let file_name = ref ""
 
 type examples_spec =
   {
@@ -62,57 +70,14 @@ type examples_spec =
     phi : exp node;
   }
 
-(* let benchmarks : (string, examples_spec) Hashtbl.t =
-  Hashtbl.create 20 *)
-
-let example1 = {invariant = mk_bin Gte (mk_id "c") zero; phi = mk_bin Neq (mk_id "c") zero}
-
-(* let _ = Hashtbl.add benchmarks "example1" example1 *)
-
-(* phi: !(0 == i) && !(1 == a[0]) || 1 == a[0] *)
-let example2 = {invariant = mk_bin Gte (mk_id "i") zero; phi = mk_bin Gt (mk_id "i") zero}
-
-(* let _ = Hashtbl.add benchmarks "example2" example2 *)
-
-(* I: i % 2 = 0 ∧ i ≥ 0
-  phi: (i % 2 == 0 && (ctr > 0 && amt > 0 || ctr <= 0 && amt < -ctr)) *)
-let example3 = {
-  invariant = mk_bin And
-  (mk_bin Eq
-     (mk_bin Mod (mk_id "i") (mk_int 2))
-     zero)
-  (mk_bin Gte (mk_id "i") zero);
-  phi = mk_bin And
-  (mk_bin Eq
-     (mk_bin Mod (mk_id "i") (mk_int 2))
-     zero)
-  (mk_bin Or
-     (mk_bin And
-        (mk_bin Gt (mk_id "ctr") zero)
-        (mk_bin Gt (mk_id "amt") zero))
-     (mk_bin And
-        (mk_bin Lte (mk_id "ctr") zero)
-        (mk_bin Lt (mk_id "amt")
-          (mk_un Neg (mk_id "ctr")))))}
-
-(* let _ = Hashtbl.add benchmarks "example3" example3 *)
-
-let example4 = {
-  invariant = mk_bin And (mk_bin Gte (mk_id "i") zero) (mk_bin Lte (mk_id "i") (mk_id "n")); 
-  phi = mk_bin Gt (mk_id "balance") (mk_id "fee")}
-
-(* let _ = Hashtbl.add benchmarks "example4" example4 *)
-
-(* let exp_I = (Hashtbl.find benchmarks !file_name).invariant
-let exp_phi' = (Hashtbl.find benchmarks !file_name).phi *)
-let exp_I = example1.invariant
-let exp_phi' = example1.phi
 (* -------------------------------------------------- *)
 (* Utility helpers *)
 (* -------------------------------------------------- *)
 
 let choose_cond default phi =
-  if !verify then PhiExp phi else default
+  if !verify then PhiExp phi
+  else if !infer then default
+  else failwith "This works only with Infer or Verify"
 
 let find_fragment id =
   match Hashtbl.find_opt fragment_env id with
@@ -139,19 +104,22 @@ let block_has_loop (b : block node) =
 
 let extract_loop_body (b : block node) =
   match b.elt with
-  | [ { elt = While (cond, _, body); _ } ] -> (** TODO: used Inv in while *)
-      (cond, body)
+  | [ { elt = While (cond, invariant, body); _ } ] ->
+      begin match invariant with
+      | None -> failwith "You need to provide the loop invariant"
+      | Some inv -> (cond, inv, body)
+      end
   | _ ->
       failwith "Expected a single While loop block"
 
 let split_S_C1 = function
   | [b1; b2] ->
       if block_has_loop b1 then
-        let cond, body = extract_loop_body b1 in
-        (cond, body, b2)
+        let cond, invariant, body = extract_loop_body b1 in
+        (cond, invariant, body, b2)
       else if block_has_loop b2 then
-        let cond, body = extract_loop_body b2 in
-        (cond, body, b1)
+        let cond, invariant, body = extract_loop_body b2 in
+        (cond, invariant, body, b1)
       else
         failwith "Expected one loop block"
 
@@ -166,8 +134,15 @@ let mk_commute cv cc b1 b2 pre post loc =
   { elt = Commute (cv, cc, [b1; b2], pre, post); loc }
 
 let commute_premises cv cc blocks loc =
-  let loop_cond, block_S, block_C1 =
+  let loop_cond, loop_invariant, block_S, block_C1 =
     split_S_C1 blocks
+  in
+  let exp_I = loop_invariant in
+
+  let exp_phi =
+    match !inferred_phi with
+    | Some p -> p
+    | None   -> failwith "Cannot synthesize the phi for phi => C1 |><| S"
   in
 
   let cond_true =
@@ -175,7 +150,7 @@ let commute_premises cv cc blocks loc =
   in
 
   let cond_phi =
-    choose_cond cc exp_phi'
+    choose_cond cc exp_phi
   in
 
   let mk_local_commute pre post =
@@ -193,7 +168,7 @@ let commute_premises cv cc blocks loc =
       empty_blk
       block_S
       (Some (mk_and exp_I loop_cond))
-      (Some (mk_and exp_I exp_phi'))
+      (Some (mk_and exp_I exp_phi))
       loc
   in
 
@@ -370,8 +345,27 @@ let rewrite_decl = function
   | other ->
       other
 
-let rewrite_program (p_name: string) (p : prog) mode =
-  (* Printf.printf "-> %s \n" p_name; *)
-  file_name := p_name;
+(* Build a minimal program for pass 1 of two-pass verify: replace each
+   Commute with a single `commute PhiInf { {C1} {S} }` (no pre/post).
+   This lets us infer φ from just C1 ⋈ S without needing φ itself. *)
+let extract_for_phi_infer (p : prog) : prog =
+  let rewrite_stmt_for_phi (s : stmt node) =
+    match s.elt with
+    | Commute (cv, _cc, blocks, _pre, _post) ->
+        let _loop_cond, _loop_inv, block_S, block_C1 = split_S_C1 blocks in
+        [ { s with elt = Commute (cv, PhiInf, [block_C1; block_S], None, None) } ]
+    | _ -> [s]
+  in
+  let rewrite_block_for_phi b =
+    node_app (fun stmts -> stmts |> List.map rewrite_stmt_for_phi |> List.flatten) b
+  in
+  let rewrite_method_for_phi m =
+    node_app (fun m -> { m with body = rewrite_block_for_phi m.body }) m
+  in
+  List.map (function
+    | Gmdecl m -> Gmdecl (rewrite_method_for_phi m)
+    | other -> other) p
+
+let rewrite_program (p : prog) mode =
   set_mode mode;
   List.map rewrite_decl p

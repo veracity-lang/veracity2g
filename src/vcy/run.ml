@@ -612,8 +612,8 @@ module RunInfer : Runner = struct
     ; "--force", Arg.Set Interp.force_infer, " Force inference of all commutativity conditions (even when one is provided)"
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "-o",      Arg.Set_string output_file, "<file> Output transformed program to file. Default is stdout."
-    ; "--rewrite-commute", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
-    ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises"
+    (* ; "--inductive-loops", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof" *)
+    (* ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises" *)
     ] |>
     Arg.align
 
@@ -646,14 +646,14 @@ module RunInfer : Runner = struct
       failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
     
 
-    let prog =
+    (* let prog =
       if !rewrite_commute then
-        Loop_induction.rewrite_program prog_name prog "infer"
+        Loop_induction.rewrite_program prog "infer"
       else prog
     in
     if !print then 
       Printf.printf "%s \n" (AstPP.string_of_prog prog)
-    else ();
+    else (); *)
 
     let env = Interp.initialize_env prog true in
     ignore (Analyze.check_asserts_in_prog prog prover);
@@ -759,7 +759,7 @@ module RunVerify : Runner = struct
     ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
     ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"
-    ; "--rewrite-commute", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
+    ; "--inductive-loops", Arg.Set rewrite_commute, " Rewrite commute statements for loop induction proof"
     ; "--print", Arg.Set print, " Display the result code after rewriting the commute block into loop induction premises"
     ] |>
     Arg.align
@@ -788,10 +788,29 @@ module RunVerify : Runner = struct
     let prog = Driver.parse_oat_file prog_name in
     if Analyze.prog_has_havoc prog && not !use_ae then
       failwith "Program contains havoc (nondeterminism); forall/exists reasoning is required. Re-run with the -ae flag.";
-
+      
     let prog =
       if !rewrite_commute then begin
-        let p = Loop_induction.rewrite_program prog_name prog "verify" in
+        (* Pass 1: infer φ from just C1 ⋈ S — no pre/post, no phi needed.
+           Run silently with no session dir so HTML output stays clean. *)
+        Loop_induction.reset ();
+        let prog_infer = Loop_induction.extract_for_phi_infer prog in
+        let saved_session = !Util.session_dir in
+        let saved_silent  = !Interp.silent in
+        Util.session_dir := None;
+        Interp.silent    := true;
+        Util.servois2_synth_option := {
+          Servois2.Synth.default_synth_options with prover = get_prover ()
+        };
+        (try ignore (Interp.initialize_env prog_infer true) with _ -> ());
+        Interp.silent    := saved_silent;
+        Util.session_dir := saved_session;
+        let phi = !Analyze.last_inferred_phi in
+        Analyze.last_inferred_phi := None;
+        (* Pass 2: rewrite for verify, injecting the inferred φ *)
+        Loop_induction.reset ();
+        Loop_induction.inferred_phi := phi;
+        let p = Loop_induction.rewrite_program prog "verify" in
         if !generate_html then rewritten_source := Some (AstPP.string_of_prog p);
         p
       end else prog

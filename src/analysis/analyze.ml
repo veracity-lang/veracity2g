@@ -1,5 +1,6 @@
 open Ast
 open Util
+open Ast_print
 
 let rec assoc_servois_ty (id : id) : embedding_map -> ty binding =
   function
@@ -114,6 +115,8 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
 let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
   
+let last_inferred_phi : exp node option ref = ref None
+
 let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node list) (vars : ty bindlist) pre post =
   let embedding = generate_embedding_map vars in
   (* Point Servois2 at this commute's subdir *before* compiling the spec:
@@ -146,7 +149,9 @@ let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node lis
   Servois2.Solve.mode := Servois2.Solve.Bowtie;
   Servois2.Util.output_dir := None;
   Util.pending_subdir := commute_subdir;
-  exp_of_phi phi embedding
+  let result = exp_of_phi phi embedding in
+  last_inferred_phi := Some (no_loc result);
+  result
 
 let rec block_has_havoc (b : block) =
   List.exists stmt_has_havoc b

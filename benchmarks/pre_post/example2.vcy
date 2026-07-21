@@ -10,7 +10,7 @@ int main(int argc, string[] argv) {
             t = a[0];
         }
         {
-            while(i < n){
+            while(i < n) invariant i >= 0{
                 a[i] = 1;
                 i = i + 1;
             }

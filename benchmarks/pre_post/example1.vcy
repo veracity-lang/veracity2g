@@ -13,7 +13,10 @@ int main(int argc, string[] argv) {
             }
         } 
         { 
-            while(x<n) { c = c + 1; x = x + 1; }
+            while(x<n) invariant c >= 0 {
+                c = c + 1; 
+                x = x + 1; 
+            }
         }
     }
     
