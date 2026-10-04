@@ -110,7 +110,7 @@ def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     args = fargs(n)
 
     command_seq = [vcy_exe, 'interp', '--time',           '--timeout', str(timeout), '../' + prog] + args # TODO: More time for inference?
-    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--timeout', str(timeout), '../' + prog] + args
+    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), '../' + prog] + args
 
     def f(command : List[str], floatize : bool):
         popen = subprocess.Popen(

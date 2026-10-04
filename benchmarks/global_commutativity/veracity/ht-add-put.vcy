@@ -14,11 +14,11 @@ int main(int argc, string[] argv) {
 
 	f1(tbl,y,u):{ 	
 		busy_wait(n);
-		mutex_lock(0); y = u + 1;
-		ht_put(tbl, y, u); mutex_unlock(0); 
+		y = u + 1;
+		ht_put(tbl, y, u);
 	}
 	f2(tbl,z):{ 	
-		mutex_lock(0); y = ht_get(tbl, z); mutex_unlock(0);
+		y = ht_get(tbl, z);
 		busy_wait(n);
 	}
 	

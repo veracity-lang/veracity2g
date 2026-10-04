@@ -11,15 +11,13 @@ int main(int argc, string[] argv) {
 
 	f1(x,y,z):{ 
 		busy_wait(size);
-		mutex_lock(1);
 		if (y > 0) {
 			x = x + 2;
 		} else {
 			x = z;
 		}
-		mutex_unlock(1);
 	}
-	f2(x,y):{ mutex_lock(1); x = x + 1; y = y + 1; mutex_unlock(1); busy_wait(size); }
+	f2(x,y):{ x = x + 1; y = y + 1; busy_wait(size); }
 	
 
 	print(

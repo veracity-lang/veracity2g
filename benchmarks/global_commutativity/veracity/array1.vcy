@@ -9,11 +9,11 @@ int main(int argc, string[] argv) {
     int[] r = new int[1];
     r[0] = x;
 
-    f1(r):{ mutex_lock(0); r[0] = r[0] + 1; mutex_unlock(0); busy_wait(n); } 
-    f2(y,r):{ mutex_lock(0); if(r[0] > 1) { r[0] = y; } mutex_unlock(0);
+    f1(r):{ r[0] = r[0] + 1; busy_wait(n); } 
+    f2(y,r):{ if(r[0] > 1) { r[0] = y; }
       busy_wait(n);
     }
     
     
-    return 0;
+    return r[0];
 }

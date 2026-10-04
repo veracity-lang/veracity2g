@@ -12,10 +12,10 @@ int main(int argc, string[] argv) {
 
 
 	f1:{ 
-		mutex_lock(1); x = x + 2*w + u; mutex_unlock(1); busy_wait(size); 
+		x = x + 2*w + u; busy_wait(size); 
 	}
 	f2:{ 
-		busy_wait(size); mutex_lock(1); x = x + y + 3*z; mutex_unlock(1); 
+		busy_wait(size); x = x + y + 3*z;
 	}
 	
 	return 0;

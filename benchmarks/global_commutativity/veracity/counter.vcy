@@ -8,10 +8,10 @@ int main(int argc, string[] argv) {
 
 
 	f1(c):{ 
-		mutex_lock(0); c = c + 1; mutex_unlock(0); busy_wait(x);
+		c = c + 1; busy_wait(x);
 	}
 	f2(c):{ 
-		mutex_lock(0); if (c > 0) { c = c - 1; mutex_unlock(0); busy_wait(x); } else { mutex_unlock(0); }
+		if (c > 0) { c = c - 1; busy_wait(x); } else { }
 	}
 
 	print(string_of_int(c) ^ "\n");

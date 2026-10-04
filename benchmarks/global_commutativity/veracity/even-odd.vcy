@@ -8,16 +8,15 @@ int main(int argc, string[] argv) {
     int y = int_of_string(argv[3]);
 
     f1(x,y):{ 
-      busy_wait(n); mutex_lock(0); 
+      busy_wait(n);
       if (x % 2 == 0){
         x = x + y;
-      } mutex_unlock(0); 
+      } 
     }
     f2(x,y):{ 
-      mutex_lock(0); 
       if(x % 2 == 1){
         x = x + y;
-      } mutex_unlock(0); 
+      }
       busy_wait(n);
     }
     

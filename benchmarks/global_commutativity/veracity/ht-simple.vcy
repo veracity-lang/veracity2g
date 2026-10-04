@@ -15,16 +15,16 @@ int main(int argc, string[] argv) {
 	tbl[z] = 3;
 
 	f1(tbl,v,g,a,x):{ 
-		busy_wait(n); mutex_lock(0); 
+		busy_wait(n);
 		v = ht_get(tbl, z);
 		v = v + 3;
 		g = x + a;
-		ht_put(tbl, g, v); mutex_unlock(0); 
+		ht_put(tbl, g, v);
 	}
 	f2(tbl,v,z,y):{ 
-		mutex_lock(0); v = ht_get(tbl, z);
+		v = ht_get(tbl, z);
 		v = v * 2;
-		ht_put(tbl, y, v); mutex_unlock(0); 
+		ht_put(tbl, y, v); 
 		busy_wait(n); 
 	}
 

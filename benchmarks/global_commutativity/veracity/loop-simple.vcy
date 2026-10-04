@@ -8,10 +8,10 @@ int main(int argc, string[] argv) {
     int x = 0;
 
     f1:{
-        mutex_lock(0); while(y>0) { x = x + 1; y = y - 1; } mutex_unlock(0); 
+        while(y>0) { x = x + 1; y = y - 1; }
     }
     f2:{
-        mutex_lock(0); while(z>0) { x = x + 1; z = z - 1; } mutex_unlock(0); 
+        while(z>0) { x = x + 1; z = z - 1; }
     }
     
     return 0;

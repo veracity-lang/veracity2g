@@ -17,7 +17,7 @@ int main(int argc, string[] argv) {
     f1(b,c,a,t):{
         t = /*compute1(c > b);*/
             ((c > b) ? 2 : 1); busy_wait(n);
-        mutex_lock(0); a = a - ((t < 0) ? -t : t); mutex_unlock(0); 
+        a = a - ((t < 0) ? -t : t); 
     }
     f2(u,c,a):{
         u = /*compute2(c > a);*/

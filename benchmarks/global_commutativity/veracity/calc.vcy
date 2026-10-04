@@ -13,13 +13,13 @@ int main(int argc, string[] argv) {
     f1(x,a,c):{ 
         busy_wait(size);
         x = /* calc1 */ (a);
-        mutex_lock(0); c = c + (x*x); mutex_unlock(0); 
+        c = c + (x*x); 
     } 
     f2(c,z,y):{ 
-        mutex_lock(0); if (c>0 && y<0)
-            { c = c - 1; mutex_unlock(0); busy_wait(size); z = /* calc2 */ (y); }
+        if (c>0 && y<0)
+            { c = c - 1; busy_wait(size); z = /* calc2 */ (y); }
         else
-            { mutex_unlock(0); busy_wait(size); z = /* calc3 */ (y); }
+            { busy_wait(size); z = /* calc3 */ (y); }
     }
     
 

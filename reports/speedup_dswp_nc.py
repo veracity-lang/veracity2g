@@ -161,7 +161,7 @@ def run_benchmark(index: int, n: int, b: Benchmark) -> Result:
 
         # Run the benchmark using the temporary file
         command_seq = [vcy_exe, 'interp', '--time', '--timeout', str(timeout), temp_file_path] + args
-        command_par = [vcy_exe, 'interp', '--time', '--dswp', '--timeout', str(timeout), temp_file_path] + args
+        command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), temp_file_path] + args
 
         def f(command: List[str], floatize: bool):
             popen = subprocess.Popen(

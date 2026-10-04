@@ -17,18 +17,14 @@ int main(int argc, string[] argv) {
 
 	f1(y):{ 
 		t = r; /* t = */ busy_wait(n);
-		mutex_lock(1);
 		z = z * t;
 		y = 2 * y;
 		x = x + y; 
-		mutex_unlock(1); 
 	}
 	f2(y):{ 
-		mutex_lock(1);
 		z = 3 * z;
 		x = x + y; 
 		u = x; 
-		mutex_unlock(1); 
 		busy_wait(n); o = u /* busy_wait(n, u) */; }
 	
 	

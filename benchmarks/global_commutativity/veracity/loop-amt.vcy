@@ -19,11 +19,11 @@ int main(int argc, string[] argv) {
             }
             i = i - 2;
         }
-        mutex_lock(0); ctr = ctr + amt; mutex_unlock(0); 
+        ctr = ctr + amt; 
         
     }
     f2(ctr):{   
-        mutex_lock(0); if (ctr > 0) { ctr = ctr - 1; } mutex_unlock(0); busy_wait(n);
+        if (ctr > 0) { ctr = ctr - 1; } busy_wait(n);
     }
     
     

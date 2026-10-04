@@ -53,7 +53,7 @@ int main(int argc, string[] argv){
                     print(string_of_int(deposit_amount));
                     print(" to account ");
                     print(string_of_int(acc_id));
-                    print("NEWLINE");
+                    print("\n");
                     
                     busy_wait(scalingfactor); 
                     
@@ -62,7 +62,7 @@ int main(int argc, string[] argv){
                     print(string_of_int(acc_id));
                     print(" new balance: ");
                     print(string_of_int(accounts[acc_id]));
-                    print("NEWLINE");
+                    print("\n");
                 }
             } else {
                 /* Process withdrawal */
@@ -73,7 +73,7 @@ int main(int argc, string[] argv){
                     print(string_of_int(withdrawal_amount));
                     print(" from account ");
                     print(string_of_int(acc_id));
-                    print("NEWLINE");
+                    print("\n");
                     
                     busy_wait(scalingfactor); 
                     
@@ -84,11 +84,11 @@ int main(int argc, string[] argv){
                         print(string_of_int(acc_id));
                         print(" new balance: ");
                         print(string_of_int(accounts[acc_id]));
-                        print("NEWLINE");
+                        print("\n");
                     } else {
                         print("Insufficient funds in account ");
                         print(string_of_int(acc_id));
-                        print("NEWLINE");
+                        print("\n");
                     }
                 }
             }
@@ -109,7 +109,7 @@ int main(int argc, string[] argv){
         print(string_of_int(from_account));
         print(" to account ");
         print(string_of_int(to_account));
-        print("NEWLINE");
+        print("\n");
         
         busy_wait(scalingfactor); 
         
@@ -125,11 +125,11 @@ int main(int argc, string[] argv){
             print(string_of_int(to_account));
             print(": ");
             print(string_of_int(accounts[to_account]));
-            print("NEWLINE");
+            print("\n");
         } else {
             print("Transfer failed: Insufficient funds in account ");
             print(string_of_int(from_account));
-            print("NEWLINE");
+            print("\n");
         }
     }
 
@@ -147,15 +147,15 @@ int main(int argc, string[] argv){
         i = i + 1;
     }
     
-    print("NEWLINEFinal Statistics:NEWLINE");
+    print("\nFinal Statistics:\n");
     print("Total funds in bank: ");
     print(string_of_int(total_balance));
-    print("NEWLINE");
+    print("\n");
     print("Account with highest balance: Account ");
     print(string_of_int(max_account));
     print(" with ");
     print(string_of_int(max_balance));
-    print("NEWLINE");
+    print("\n");
     
     return 0;
 }
