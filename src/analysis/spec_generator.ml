@@ -539,7 +539,8 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let preamble = generate_spec_preamble genv in 
 
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = pre; postcond = post; state = state; methods= methods; smt_fns = !smt_fn_list} in
+              precond = pre; postcond = post; state = state; methods= methods; smt_fns = !smt_fn_list;
+              tloc_arr_names = [] } in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls 
   in
 
