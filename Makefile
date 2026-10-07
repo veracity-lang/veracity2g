@@ -1,6 +1,6 @@
 # Override to match your opam switch, or set to empty to skip opam env setup:
 #   make OPAM_SWITCH= all
-OPAM_SWITCH ?= 5.2.0+trunk
+OPAM_SWITCH ?= 5.2.2+trunk
 
 ifneq ($(OPAM_SWITCH),)
   OPAM_SETUP := eval $$(opam env --switch=$(OPAM_SWITCH)) &&
