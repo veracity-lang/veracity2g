@@ -49,33 +49,33 @@ def geo_mean(values):
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    ("benchmarks/global_commutativity/veracity/array1.vcy", lambda n : [str(n), str(1), str(2)]),
-    ("benchmarks/global_commutativity/veracity/array2.vcy", lambda n : [str(n), str(1)]),
-    ("benchmarks/global_commutativity/veracity/array3.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/veracity/conditional.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/veracity/ht-cond-mem-get.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
-    ("benchmarks/global_commutativity/veracity/loop-inter.vcy", lambda n : [str(1), str(2), str(n)]),
-    ("benchmarks/global_commutativity/veracity/array-disjoint.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
-    # ("benchmarks/global_commutativity/veracity/basic-matrix.vcy", lambda n : [str(n), str(1), str(0), str(3)]),
-    ("benchmarks/global_commutativity/veracity/ht-add-put.vcy", lambda n : [str(n), str(1), str(2), str(2)]),
-    ("benchmarks/global_commutativity/veracity/ht-cond-size-get.vcy", lambda n : [str(n), str(1), str(2)]),
-    ("benchmarks/global_commutativity/veracity/ht-simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5), str(6)]),
-    ("benchmarks/global_commutativity/veracity/calc.vcy", lambda n : [str(n), str(1), str(2), str(1)]),
-    ("benchmarks/global_commutativity/veracity/matrix.vcy", lambda n : [str(n), str(1), str(0), str(2)]), # TODO: Inference times out with valid condition
-    ("benchmarks/global_commutativity/veracity/counter.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/veracity/dict.vcy", lambda n : [str(n)]),
-    # ("benchmarks/global_commutativity/veracity/dihedral.vcy", lambda n : [str(n), str(3), str(1), str(n//2), str(0)]),
-    ("benchmarks/global_commutativity/veracity/loop-disjoint.vcy", lambda n : [str(n//2), str(n//2)]),
-    ("benchmarks/global_commutativity/veracity/loop-simple.vcy", lambda n : [str(n//2), str(n//2)]),
-    ("benchmarks/global_commutativity/veracity/linear.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/veracity/nonlinear.vcy", lambda n : [str(n), str(1), str(2), str(3), str(0)]), # TODO: Inference times out with valid condition
-    ("benchmarks/global_commutativity/veracity/simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5)]),
-    ("benchmarks/global_commutativity/veracity/even-odd.vcy", lambda n : [str(n), str(69), str(42)]),
-    ("benchmarks/global_commutativity/veracity/linear-bool.vcy", lambda n : [str(n), str(3), str(42)]),
-    ("benchmarks/global_commutativity/veracity/linear-cond.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
-    # ("benchmarks/global_commutativity/veracity/ht-fizz-buzz.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/veracity/dot-product.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
-    ("benchmarks/global_commutativity/veracity/loop-amt.vcy", lambda n : [str(n), str(1)])
+    ("benchmarks/ncb/veracity/array1.vcy", lambda n : [str(n), str(1), str(2)]),
+    ("benchmarks/ncb/veracity/array2.vcy", lambda n : [str(n), str(1)]),
+    ("benchmarks/ncb/veracity/array3.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/veracity/conditional.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/veracity/ht-cond-mem-get.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
+    ("benchmarks/ncb/veracity/loop-inter.vcy", lambda n : [str(1), str(2), str(n)]),
+    ("benchmarks/ncb/veracity/array-disjoint.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
+    # ("benchmarks/ncb/veracity/basic-matrix.vcy", lambda n : [str(n), str(1), str(0), str(3)]),
+    ("benchmarks/ncb/veracity/ht-add-put.vcy", lambda n : [str(n), str(1), str(2), str(2)]),
+    ("benchmarks/ncb/veracity/ht-cond-size-get.vcy", lambda n : [str(n), str(1), str(2)]),
+    ("benchmarks/ncb/veracity/ht-simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5), str(6)]),
+    ("benchmarks/ncb/veracity/calc.vcy", lambda n : [str(n), str(1), str(2), str(1)]),
+    ("benchmarks/ncb/veracity/matrix.vcy", lambda n : [str(n), str(1), str(0), str(2)]), # TODO: Inference times out with valid condition
+    ("benchmarks/ncb/veracity/counter.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/veracity/dict.vcy", lambda n : [str(n)]),
+    # ("benchmarks/ncb/veracity/dihedral.vcy", lambda n : [str(n), str(3), str(1), str(n//2), str(0)]),
+    ("benchmarks/ncb/veracity/loop-disjoint.vcy", lambda n : [str(n//2), str(n//2)]),
+    ("benchmarks/ncb/veracity/loop-simple.vcy", lambda n : [str(n//2), str(n//2)]),
+    ("benchmarks/ncb/veracity/linear.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/veracity/nonlinear.vcy", lambda n : [str(n), str(1), str(2), str(3), str(0)]), # TODO: Inference times out with valid condition
+    ("benchmarks/ncb/veracity/simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5)]),
+    ("benchmarks/ncb/veracity/even-odd.vcy", lambda n : [str(n), str(69), str(42)]),
+    ("benchmarks/ncb/veracity/linear-bool.vcy", lambda n : [str(n), str(3), str(42)]),
+    ("benchmarks/ncb/veracity/linear-cond.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
+    # ("benchmarks/ncb/veracity/ht-fizz-buzz.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/veracity/dot-product.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
+    ("benchmarks/ncb/veracity/loop-amt.vcy", lambda n : [str(n), str(1)])
 ]
 
 #    ("benchmarks/inference_output/overview-matrix.vcy", lambda n : [str(n)]),

@@ -1,5 +1,5 @@
 /*
-./vcy.exe infer ../benchmarks/global_commutativity/vote-infer.vcy --debug --prover cvc5
+./vcy.exe infer ../benchmarks/ncb/vote-infer.vcy --debug --prover cvc5
 */
 commutativity {
    {vote1}, {vote2}: _

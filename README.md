@@ -49,13 +49,13 @@
 
   The loop body is the NCB `dot(i)`. The prelude says that two instances of
   `dot` commute whenever they were entered with different values of `i`, i.e.
-  for different iterations. (`benchmarks/global_commutativity/ncb_dot_product.vcy`)
+  for different iterations. (`benchmarks/ncb/ncb_dot_product.vcy`)
 
   ```bash
-  ./vcy verify   benchmarks/global_commutativity/ncb_dot_product.vcy            # check the condition
-  ./vcy interp   benchmarks/global_commutativity/ncb_dot_product.vcy 4          # sequential run
+  ./vcy verify   benchmarks/ncb/ncb_dot_product.vcy            # check the condition
+  ./vcy interp   benchmarks/ncb/ncb_dot_product.vcy 4          # sequential run
   ./vcy interp --dswp --synthesize-locks \
-                 benchmarks/global_commutativity/ncb_dot_product.vcy 4          # parallel run
+                 benchmarks/ncb/ncb_dot_product.vcy 4          # parallel run
   ```
 
   Under `--dswp` the iterations become concurrent jobs; lock synthesis wraps only
@@ -118,7 +118,7 @@
   ### 1. Verify the commutativity conditions
 
   ```bash
-  ./vcy verify benchmarks/global_commutativity/banking.vcy --prover cvc5
+  ./vcy verify benchmarks/ncb/banking.vcy --prover cvc5
   ```
 
   Each prelude entry is translated into a Servois2 ADT whose state is split into
@@ -137,7 +137,7 @@
   Write `_` as the condition and run:
 
   ```bash
-  ./vcy infer benchmarks/global_commutativity/vote-infer.vcy --prover cvc5
+  ./vcy infer benchmarks/ncb/vote-infer.vcy --prover cvc5
   ```
 
   Inference of NCB conditions is experimental; on larger blocks it frequently
@@ -178,7 +178,7 @@
 
   ## Examples
 
-  NCB examples live in `benchmarks/global_commutativity/`. These are the ones
+  NCB examples live in `benchmarks/ncb/`. These are the ones
   exercised by `scripts/run_tests.sh`:
 
   | Benchmark | Illustrates | Example args |
@@ -198,8 +198,8 @@
   Typical session:
 
   ```bash
-  ./vcy verify benchmarks/global_commutativity/motivation.vcy
-  ./vcy interp --dswp --synthesize-locks benchmarks/global_commutativity/motivation.vcy 100 10
+  ./vcy verify benchmarks/ncb/motivation.vcy
+  ./vcy interp --dswp --synthesize-locks benchmarks/ncb/motivation.vcy 100 10
   ```
 
   ## Building
@@ -246,7 +246,7 @@
 
   | Path | Contents |
   |------|----------|
-  | `benchmarks/global_commutativity/` | NCB programs |
+  | `benchmarks/ncb/` | NCB programs (`test/`: small feature/regression programs; `CLEANUP.md`: deletion candidates) |
   | `benchmarks/lock_synth/` | Lock-synthesis tests (NCB and non-NCB) |
   | `benchmarks/inferred/`, `verify/`, `loops/`, … | Adjacent `commute`-block benchmarks from the original Veracity |
   | `scripts/` | `run_tests.sh` and `emit_tasks.sh` |

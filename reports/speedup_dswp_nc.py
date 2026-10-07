@@ -92,18 +92,18 @@ def prep_potrace(n):
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    ("benchmarks/global_commutativity/sollve_dotprod.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/simple-vector.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/2d-array.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/vote-run.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/commset.vcy", prep_commset),
-    ("benchmarks/global_commutativity/multi-blocks.vcy", lambda n : [str(n)]),
-    ("benchmarks/global_commutativity/simple-io.vcy", prep_simpleio),
-    ("benchmarks/global_commutativity/motivation.vcy", lambda n : [str(n * 100), "10"]),
-    ("benchmarks/global_commutativity/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
-    ("benchmarks/global_commutativity/banking.vcy", lambda n : [str(n), "100", "1000"]),
-    ("benchmarks/global_commutativity/commset-potrace.vcy", prep_potrace),
-    ("benchmarks/global_commutativity/commset-kmeans.vcy", lambda n : [str(n)])
+    ("benchmarks/ncb/sollve_dotprod.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/simple-vector.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/2d-array.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/vote-run.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/commset.vcy", prep_commset),
+    ("benchmarks/ncb/multi-blocks.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/simple-io.vcy", prep_simpleio),
+    ("benchmarks/ncb/motivation.vcy", lambda n : [str(n * 100), "10"]),
+    ("benchmarks/ncb/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
+    ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "100", "1000"]),
+    ("benchmarks/ncb/commset-potrace.vcy", prep_potrace),
+    ("benchmarks/ncb/commset-kmeans.vcy", lambda n : [str(n)])
 ]
     
 def replace_commutativity_predicate_in_memory(code: str) -> str:

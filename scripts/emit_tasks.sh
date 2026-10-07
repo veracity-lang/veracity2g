@@ -12,7 +12,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VCY="$REPO_ROOT/src/vcy.exe"
-GC="$REPO_ROOT/benchmarks/global_commutativity"
+GC="$REPO_ROOT/benchmarks/ncb"
 OUT="$REPO_ROOT/reports/tasks_appendix.tex"
 
 if [[ ! -x "$VCY" ]]; then

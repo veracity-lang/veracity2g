@@ -94,7 +94,7 @@ run_synth() {
 echo ""
 echo "=== speedup_dswp benchmarks (n=1, sequential) ==="
 
-GC="../benchmarks/global_commutativity"
+GC="../benchmarks/ncb"
 
 run_once "sollve_dotprod"       "$GC/sollve_dotprod.vcy"           1
 run_once "simple-vector"        "$GC/simple-vector.vcy"            1

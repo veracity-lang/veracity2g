@@ -19,7 +19,7 @@ int main(int argc, string[] argv) {
 }
 
 /*
-parpar@Parisas-MacBook-Pro src % ./vcy.exe interp ../benchmarks/global_commutativity/veracity/array3.vcy 1000000000  --dswp --time            
+parpar@Parisas-MacBook-Pro src % ./vcy.exe interp ../benchmarks/ncb/veracity/array3.vcy 1000000000  --dswp --time            
 0.275139
 parpar@Parisas-MacBook-Pro src % ./vcy.exe interp ../benchmarks/inferred/array3.vcy 1000000000  --time
 0.471143

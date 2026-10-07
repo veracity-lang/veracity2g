@@ -1,5 +1,5 @@
 /*
-./vcy.exe interp ../benchmarks/global_commutativity/vote-infer.vcy --dswp --debug
+./vcy.exe interp ../benchmarks/ncb/vote-infer.vcy --dswp --debug
 */
 commutativity {
    {vote1(voterID_1,proposal_1)}, {vote2(voterID_2,proposal_2)}: (voterID_1 != voterID_2);
