@@ -27,8 +27,8 @@ par_times = []
 for n in n_values:
     mk_files(mb * n)
     
-    command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '--force-sequential', '../examples/io5.vcy']
-    command_par = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../examples/io5.vcy']
+    command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '--force-sequential', '../benchmarks/io/io5.vcy']
+    command_par = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../benchmarks/io/io5.vcy']
 
     def f(command : List[str], floatize : bool):
         popen = subprocess.Popen(

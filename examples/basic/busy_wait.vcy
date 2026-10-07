@@ -1,4 +1,0 @@
-int main(int argc, string[] argv) {
-    busy_wait(int_of_string(argv[1]));
-    return 0;
-}
