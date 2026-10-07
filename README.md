@@ -246,7 +246,7 @@
 
   | Path | Contents |
   |------|----------|
-  | `benchmarks/ncb/` | NCB programs (`test/`: small feature/regression programs; `CLEANUP.md`: deletion candidates) |
+  | `benchmarks/ncb/` | NCB programs (`test/`: small feature/regression programs; `CLEANUP.md`: one open deletion candidate) |
   | `benchmarks/lock_synth/` | Lock-synthesis tests (NCB and non-NCB) |
   | `benchmarks/inferred/`, `verify/`, `loops/`, … | Adjacent `commute`-block benchmarks from the original Veracity |
   | `scripts/` | `run_tests.sh` and `emit_tasks.sh` |

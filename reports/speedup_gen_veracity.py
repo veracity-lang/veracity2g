@@ -56,7 +56,6 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/ncb/veracity/ht-cond-mem-get.vcy", lambda n : [str(n), str(1), str(2), str(3)]),
     ("benchmarks/ncb/veracity/loop-inter.vcy", lambda n : [str(1), str(2), str(n)]),
     ("benchmarks/ncb/veracity/array-disjoint.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4)]),
-    # ("benchmarks/ncb/veracity/basic-matrix.vcy", lambda n : [str(n), str(1), str(0), str(3)]),
     ("benchmarks/ncb/veracity/ht-add-put.vcy", lambda n : [str(n), str(1), str(2), str(2)]),
     ("benchmarks/ncb/veracity/ht-cond-size-get.vcy", lambda n : [str(n), str(1), str(2)]),
     ("benchmarks/ncb/veracity/ht-simple.vcy", lambda n : [str(n), str(1), str(2), str(3), str(4), str(5), str(6)]),
