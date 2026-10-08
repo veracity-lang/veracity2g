@@ -12,9 +12,9 @@ dependency carries and its commute condition, and dotted arrows from the
 Init task to the tasks it spawns.
 
 Usage (from anywhere):
-    python reports/tasks_to_jpg.py benchmarks/global_commutativity/intro.vcy
-    python reports/tasks_to_jpg.py benchmarks/global_commutativity/ -o reports/tasks-img
-    python reports/tasks_to_jpg.py a.vcy b.vcy some_dir/ --save-txt
+    python3 reports/tasks_to_jpg.py benchmarks/global_commutativity/intro.vcy
+    python3 reports/tasks_to_jpg.py benchmarks/global_commutativity/ -o reports/tasks-img
+    python3 reports/tasks_to_jpg.py a.vcy b.vcy some_dir/ --save-txt
 """
 
 import argparse

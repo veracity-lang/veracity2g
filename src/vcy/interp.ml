@@ -395,7 +395,7 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | None -> raise @@ ValueFailure ("Struct does not have field " ^ fid, loc)
       end
     | env, VLoc (Some(loc_id)) ->
-      begin failwith "not here2"; match Hashtbl.find_opt Vcylib.heap_store loc_id with
+      begin (*failwith "not here2";*) match Hashtbl.find_opt Vcylib.heap_store loc_id with
       | None -> raise @@ ValueFailure ("heap proj: unallocated location " ^ Int64.to_string loc_id, loc)
       | Some (n, next) ->
         begin match fid with
@@ -476,7 +476,7 @@ and interp_stmt_assn env loc (lhs : exp node) (rhs : exp node) : env =
       | TLoc, VHeapValue (n, next) ->
         begin match !r with
         | VLoc Some(loc_id) ->
-          failwith "not here.";
+          (* failwith "not here."; *)
           Hashtbl.replace Vcylib.heap_store loc_id (n, next); env
         | _ -> raise @@ ValueFailure ("heap write: variable is not an initialized loc", loc)
         end
@@ -759,6 +759,7 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
       if commute
       then interp_commute_blocks env (shuffle blocks), None
       else interp_commute_blocks env blocks, None
+    | _ -> failwith "should be CommuteVarPar or CommuteVarSeq"
     end
   | Raise e ->
     let env, v = interp_exp env e in
@@ -1182,6 +1183,13 @@ let infer_phi (g : global_env) (var : commute_variant) (bl : block node list) (g
 let labeled_blocks = ref []
 let global_defs = ref []
 
+let find_labeled_block id =
+  match List.find_map (fun s -> match s.elt with
+      | SBlock (Some (i, args), bl) when String.equal i id -> Some (args, bl)
+      | _ -> None) !labeled_blocks with
+  | Some found -> found
+  | None -> failwith ("No block labelled " ^ id)
+
 let find_blocks_by_label labels = 
   let blks = ref [] in
   List.iter (fun ls -> List.iter (fun (id, args) -> 
@@ -1191,7 +1199,7 @@ let find_blocks_by_label labels =
   !blks
 
 (* Find the index of the first occurrence of x in list l *)
-let rec find_index x l =
+let find_index x l =
   let rec aux x l idx =
     match l with
     | [] -> -1 (* x not found *)
@@ -1268,13 +1276,10 @@ let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : g
         fun ls -> 
           List.iter (
             fun (id, args) ->
-            let {elt=SBlock(Some(i,args'),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in
+            let args', bl = find_labeled_block id in
             let bl' = match args, args' with 
             | Some a, Some a' -> 
-            (* List.iter (fun x -> Printf.printf "args: %s \n" (AstML.string_of_exp x)) a;
-            List.iter (fun x -> Printf.printf "args': %s \n" (AstML.string_of_exp x)) a'; *)
             let b' = node_up bl (substitute_vars_block a a' bl.elt) in
-            (* Printf.printf "==> %s \n" (AstML.string_of_block b'); *)
             b'
             | _, _ -> bl
             in 
@@ -1403,7 +1408,7 @@ let verify_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : 
         fun ls -> 
           List.iter (
             fun (id, args) ->
-            let {elt=SBlock(Some(i,args'),bl);_} = List.find (fun {elt=SBlock(Some(i,_),a);_} -> String.equal i id) !labeled_blocks in
+            let args', bl = find_labeled_block id in
             let bl' = match args, args' with 
             | Some a, Some a' -> 
             node_up bl (substitute_vars_block a a' bl.elt)
@@ -1660,7 +1665,7 @@ let cook_calls (g : global_env) : global_env =
       | HDerefNext  l -> HDerefNext(cook_calls_of_exp l)
       | Exists (id, ty, body) -> Exists (id, ty, cook_calls_of_exp body)
       | Forall (id, ty, body) -> Forall (id, ty, cook_calls_of_exp body)
-      | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e))
+      (* | _ -> failwith ("cook_calls_of_exp: match failed for " ^ (AstPP.string_of_exp e)) *)
     in
     node_up e e'
   in
@@ -1744,7 +1749,20 @@ let cook_calls (g : global_env) : global_env =
     g.methods
   in
 
-  { g with methods = methods }
+  let group_commute =
+    List.map
+    begin fun (gc : group_commute node) ->
+      let labels, c = gc.elt in
+      let c = match c with
+        | PhiExp e -> PhiExp (cook_calls_of_exp e)
+        | PhiInf -> PhiInf
+      in
+      node_up gc (labels, c)
+    end
+    g.group_commute
+  in
+
+  { g with methods = methods; group_commute = group_commute }
 
 let evaluate_globals (g : global_env) (es : texp_list) : global_env =
   let vs = List.map 

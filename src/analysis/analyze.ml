@@ -110,6 +110,7 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
     | _ -> failwith @@ "Function "^s^" not recognized or supported or improper arguments applied"
     end
   | EExists(binding, exp) -> raise @@ Failure "Cannot translate existential quantifier back from smt"
+  | _ -> failwith "undefined statement"
 
 let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
@@ -303,7 +304,10 @@ let rec subst_sfx sfx names (smt : Servois2.Smt.exp) : Servois2.Smt.exp =
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
-  let cond = (fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
+  let cond =
+    Spec_generator.translating_condition := true;
+    Fun.protect ~finally:(fun () -> Spec_generator.translating_condition := false)
+      (fun () -> fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
   let state_types =
     List.map (fun (v, t) -> (Servois2.Smt.string_of_var v, t)) spec.state in
   let state_names = List.map fst state_types in

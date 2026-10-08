@@ -1,6 +1,7 @@
 open Ast
 open Ast_print
 open Util
+open Digest
 
 let sp = Printf.sprintf
 
@@ -27,6 +28,7 @@ let lib_string : method_library =
       | env, [VStr v] -> env, VInt (Int64.of_int @@ String.length v)
       | _ -> raise @@ TypeFailure ("length_of_string arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ; "string_of_int",
@@ -35,6 +37,7 @@ let lib_string : method_library =
       | env, [VInt v] -> env, VStr (Int64.to_string v)
       | _ -> raise @@ TypeFailure ("string_of_int arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "string_of_loc",
@@ -44,6 +47,7 @@ let lib_string : method_library =
       | env, [VLoc None] -> env, VStr "NULL"
       | _ -> raise @@ TypeFailure ("string_of_loc arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "string_of_bool",
@@ -53,6 +57,7 @@ let lib_string : method_library =
         env, if v then VStr "true" else VStr "false"
       | _ -> raise @@ TypeFailure ("string_of_bool arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "int_of_string",
@@ -62,6 +67,31 @@ let lib_string : method_library =
         env, VInt (Int64.of_string s)
       | _ -> raise @@ TypeFailure ("int_of_string arguments", Range.norange)
       end
+    ; ret_ty = TInt
+    ; pc = None
+    }
+    ; "md5_lower", 
+    { pure = true
+    ; func = begin function
+      | env, [VStr s] ->
+        env, VInt (s |> string |> to_hex |> 
+          fun s -> let l = String.length s in
+            Int64.of_string ("0x" ^ String.sub s (l - 16) 16))
+      | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
+      end
+    ; ret_ty = TInt
+    ; pc = None
+    }
+  ; "md5_upper", 
+    { pure = true
+    ; func = begin function
+      | env, [VStr s] ->
+        env, VInt (s |> string |> to_hex |> 
+          fun s -> let l = String.length s in
+            Int64.of_string ("0x" ^ String.sub s 0 (min (l - 16) 16)))
+      | _ -> raise @@ TypeFailure ("md5_lower arguments", Range.norange)
+      end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -78,6 +108,7 @@ let lib_counter : method_library =
           env, VVoid
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_incr",
@@ -92,6 +123,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_incr arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_decr",
@@ -106,6 +138,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_decr arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "counter_read",
@@ -119,6 +152,7 @@ let lib_counter : method_library =
         end
       | _ -> raise @@ TypeFailure ("counter_read arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -138,6 +172,7 @@ let lib_array : method_library =
         in env, VStr s
       | _ -> raise @@ TypeFailure ("string_of_array arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "array_of_string",
@@ -148,6 +183,7 @@ let lib_array : method_library =
         env, VArr (TInt, Array.init (String.length s) f)
       | _ -> raise @@ TypeFailure ("array_of_string arguments", Range.norange)
       end
+    ; ret_ty = TArr TInt
     ; pc = None
     }
   ; "length_of_array",
@@ -157,6 +193,7 @@ let lib_array : method_library =
         env, VInt (Array.length a |> Int64.of_int)
       | _ -> raise @@ TypeFailure ("length_of_array arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -170,6 +207,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("debug_display arguments", Range.norange) 
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "debug_value",
@@ -180,6 +218,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("debug_value arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "busy_wait",
@@ -193,6 +232,7 @@ let lib_debug : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("busy_wait arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "random",
@@ -205,6 +245,7 @@ let lib_debug : method_library =
         env, VInt d
       | _ -> raise @@ TypeFailure ("random arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = None
     }
   ]
@@ -232,8 +273,9 @@ let lib_hashtable : method_library =
         env, VInt (Int64.of_int size)
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
+    ; ret_ty = TInt
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, _, {ht;keys;size}), []) ->
+      (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), []) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -246,6 +288,7 @@ let lib_hashtable : method_library =
       ; asserts = []
       ; terms = []
       ; preds = []
+      ; updates_rw = false
       }
     )
     }
@@ -265,8 +308,9 @@ let lib_hashtable : method_library =
         env, VBool mem
       | _ -> raise @@ TypeFailure ("hashtable_size arguments", Range.norange)
       end
+    ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, _, {ht;keys;size}), [k]) ->
+      (mangle, _, ETHashTable (tyk, _, {ht;keys;size}), [k]) ->
       let ht0, ht1 = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -288,6 +332,7 @@ let lib_hashtable : method_library =
       ; terms = []
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
+      ; updates_rw = false
       }
     )
     }
@@ -310,8 +355,9 @@ let lib_hashtable : method_library =
           env, VBool res
       | _ -> raise @@ TypeFailure ("hashtable put arguments", Range.norange)
       end
+    ; ret_ty = TBool
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, tyv, {ht;keys;size}), [k;v]) ->
+      (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k;v]) ->
       let ht0, ht1   = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -361,6 +407,7 @@ let lib_hashtable : method_library =
         ]
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
+      ; updates_rw = false
       }
     )
     }
@@ -381,8 +428,9 @@ let lib_hashtable : method_library =
         end
       | _ -> raise @@ TypeFailure ("hashtable put arguments", Range.norange)
       end
+    ; ret_ty = TVoid (* TODO: revise *)
     ; pc = Some (fun [@warning "-8"]
-      (mangle, ETHashTable (tyk, tyv, {ht;keys;size}), [k]) ->
+      (mangle, _, ETHashTable (tyk, tyv, {ht;keys;size}), [k]) ->
       let ht0, ht1     = mangle_servois_id_pair ht mangle in
       let keys0, keys1 = mangle_servois_id_pair keys mangle in
       let size0, size1 = mangle_servois_id_pair size mangle in
@@ -409,10 +457,36 @@ let lib_hashtable : method_library =
         pure_id ht, Smt.TArray (tyk,tyv)
       ]
       ; preds = []
+      ; updates_rw = false
       }
     )
     }
   ]
+
+let array_update ar k f = let open Smt in EFunc("store", [ar; k; f(EFunc("select", [ar; k]))])
+(* Read only / write only channels are enforced at type level so we can have the same underlying spec for them. *)
+let open_spec = Some (fun [@warning "-8"]
+    (mangle, rw_mangle, ETStr fname, []) ->
+    let f0, f1 = mangle_servois_id_pair fname mangle in
+    let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+    let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+    let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+    { bindings = 
+      [ var_of_string @@ smt_e f1,
+          f0
+      ; var_of_string @@ smt_e rw_d1,
+          rw_d0
+      ; var_of_string @@ smt_e rw_ln1,
+          array_update rw_ln0 f0 (fun _ -> EConst (CInt 0))
+      ; var_of_string @@ smt_e rw_o1,
+          EFunc ("insert", [f0; rw_o0])
+      ]
+    ; ret_exp = f1
+    ; asserts = [EUop(Not, EFunc("member", [f0; rw_o0]))] (* TODO: see below note *)
+    ; terms = [pure_id fname, Smt.TString]
+    ; preds = []
+    ; updates_rw = true
+    })
 
 let lib_io : method_library =
   [ "print", 
@@ -426,6 +500,7 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("print arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "read_stdin",
@@ -435,6 +510,7 @@ let lib_io : method_library =
         env, VStr (read_line ())
       | _ -> raise @@ TypeFailure ("read_stdin arguments", Range.norange)
       end
+    ; ret_ty = TStr
     ; pc = None
     }
   ; "open_read",
@@ -445,7 +521,8 @@ let lib_io : method_library =
         env, VChanR (s, chan, in_channel_length chan)
       | _ -> raise @@ TypeFailure ("open_read arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TChanR
+    ; pc = open_spec
     }
   ; "open_write",
     { pure = false
@@ -454,7 +531,8 @@ let lib_io : method_library =
         env, VChanW (s, open_out s)
       | _ -> raise @@ TypeFailure ("open_write arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TChanW
+    ; pc = open_spec
     }
   ; "close", 
     { pure = false
@@ -467,7 +545,29 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("close arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TVoid
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            EConst (CString "")
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            rw_ln0
+        ; var_of_string @@ smt_e rw_o1,
+            EFunc ("setminus", [rw_o0; EFunc("singleton", [c0])])
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: Probs a better way to encode this than an assert? A precondition possibly? *)
+      ; terms = [pure_id chan, Smt.TString]
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ; "read_line", 
     { pure = false
@@ -476,7 +576,29 @@ let lib_io : method_library =
         env, VStr (input_line chan)
       | _ -> raise @@ TypeFailure ("read_line arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TStr
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc("store", [rw_ln0; c0; ELop(Add, [EFunc("select", [rw_ln0; c0]); EConst (CInt 1)])])
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
+      ; terms = []
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ; "has_line",
     { pure = false
@@ -485,7 +607,25 @@ let lib_io : method_library =
         env, VBool (pos_in chan < len)
       | _ -> raise @@ TypeFailure ("has_line arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TBool
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, []) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, _ = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, _ = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ]
+      ; ret_exp = EUop(Not, EForall([Smt.Var "realWorld_line", TInt], 
+          EITE(EBop(Gte, EVar (Var "realWorld_line"), EFunc("select", [rw_ln0; c0])),
+            EBop(Eq, EFunc("select", [EFunc("select", [rw_d0; c0]); EVar (Var "realWorld_line")]), EConst (CString "")),
+            EConst (CBool true))))
+      ; asserts = []
+      ; terms = [pure_id chan, Smt.TString]
+      ; preds = []
+      ; updates_rw = false (* We do use the vars but we don't update their bindings. *)
+      })
     }
   ; "write",
     { pure = false
@@ -496,7 +636,96 @@ let lib_io : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("write arguments", Range.norange)
       end
-    ; pc = None
+    ; ret_ty = TVoid
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, [line]) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            array_update rw_d0 c0 (fun f -> array_update f (EFunc("select", [rw_ln0; c0])) (fun _ -> line))
+        ; var_of_string @@ smt_e rw_ln1,
+            array_update rw_ln0 c0 (fun v -> ELop(Add, [v; EConst (CInt 1)]))
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: see above note *)
+      ; terms = [pure_id @@ smt_e line, Smt.TString]
+      ; preds = []
+      ; updates_rw = true
+      })
+    }
+    ; "lseek",
+    { pure = false
+    ; func = begin function
+      | env, [VChanR (_,chan,_); VInt lnum] ->
+        (* There's not a real better way to seek based on lines other than just reading that many lines. *)
+        seek_in chan 0;
+        repeat (fun () -> const () (input_line chan); ()) (Int64.to_int lnum);
+        env, VVoid
+      | _ -> raise @@ TypeFailure ("lseek arguments", Range.norange)
+      end
+    ; ret_ty = TVoid
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETChannel chan, [i]) ->
+      let c0, c1 = mangle_servois_id_pair chan mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e c1,
+            c0
+        ; var_of_string @@ smt_e rw_d1,
+            rw_d0
+        ; var_of_string @@ smt_e rw_ln1,
+            EFunc("store", [rw_ln0; c0; pure_id @@ smt_e i])
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
+      ; terms = [pure_id chan, Smt.TString; pure_id @@ smt_e i, Smt.TInt]
+      ; preds = []
+      ; updates_rw = true
+      })
+    }
+  ; "cp",
+    { pure = false
+    ; func = begin function
+      | env, [VStr from_fname; VStr to_fname] ->
+        (* Not the most elegant or robust solution, but should work on Unix machines *)
+        const () @@ Sys.command ("cp \"" ^ from_fname ^ "\" \"" ^ to_fname ^ "\"");
+        env, VVoid
+      | _ -> raise @@ TypeFailure ("cp arguments", Range.norange)
+      end
+    ; ret_ty = TVoid
+    ; pc = Some (fun [@warning "-8"]
+      (mangle, rw_mangle, ETStr from_fname, [to_fname]) ->
+      let f0, f1 = mangle_servois_id_pair from_fname mangle in
+      let rw_d0, rw_d1 = mangle_servois_id_pair "realWorld_data" rw_mangle in
+      let rw_ln0, rw_ln1 = mangle_servois_id_pair "realWorld_linenum" rw_mangle in
+      let rw_o0, rw_o1 = mangle_servois_id_pair "realWorld_opened" rw_mangle in
+      { bindings = 
+        [ var_of_string @@ smt_e f1,
+            f0
+        ; var_of_string @@ smt_e rw_d1,
+            array_update rw_d0 to_fname (const @@ Smt.EFunc("select", [rw_d0; f0]))
+        ; var_of_string @@ smt_e rw_ln1,
+            rw_ln0
+        ; var_of_string @@ smt_e rw_o1,
+            rw_o0
+        ]
+      ; ret_exp = EConst (CBool true)
+      ; asserts = []
+      ; terms = [pure_id from_fname, Smt.TString; pure_id @@ smt_e to_fname, Smt.TString]
+      ; preds = []
+      ; updates_rw = true
+      })
     }
   ]
 
@@ -543,6 +772,7 @@ let lib_heap : method_library =
         env, VLoc (Some (heap_next_gen ()))
       | _ -> raise @@ TypeFailure ("heap_alloc arguments", Range.norange)
       end
+    ; ret_ty = TVoid (*TODO:revise*)
     ; pc = None
     }
   ; "heap_write",
@@ -553,6 +783,7 @@ let lib_heap : method_library =
         env, VVoid
       | _ -> raise @@ TypeFailure ("heap_write arguments", Range.norange)
       end
+    ; ret_ty = TVoid (*TODO:revise*)
     ; pc = None
     }
   ; "heap_read_next",
@@ -566,6 +797,7 @@ let lib_heap : method_library =
         end
       | _ -> raise @@ TypeFailure ("heap_read_next arguments", Range.norange)
       end
+    ; ret_ty = TVoid (*TODO:revise*)
     ; pc = None
     }
   ]
@@ -582,6 +814,7 @@ let lib_mutex : method_library =
           env, VVoid
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "mutex_lock",
@@ -596,6 +829,7 @@ let lib_mutex : method_library =
         end
       | _ -> raise @@ TypeFailure ("mutex_lock arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ; "mutex_unlock",
@@ -610,6 +844,7 @@ let lib_mutex : method_library =
         end
       | _ -> raise @@ TypeFailure ("mutex_unlock arguments", Range.norange)
       end
+    ; ret_ty = TVoid
     ; pc = None
     }
   ]

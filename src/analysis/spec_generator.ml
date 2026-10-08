@@ -22,6 +22,9 @@ let variable_ctr_list = (Hashtbl.create 50)
 (* Allocation-validity conditions accumulated during exp_to_smt_exp for heap
    dereferences; consumed statement-by-statement in compile_block_to_smt. *)
 let deref_conds : sexp list ref = ref []
+(* Set while translating a commutativity condition: calls there only observe
+   the pre-state, so they must not advance the version counters. *)
+let translating_condition = ref false
 
 (*
   heap_alloc : Int (next fresh ID)
@@ -75,6 +78,12 @@ and stmt_uses_heap (s : stmt node) = match s.elt with
       || (match cpre  with None -> false | Some e -> exp_uses_heap e)
       || (match cpost with None -> false | Some e -> exp_uses_heap e)
   | Havoc _ -> false
+  | SBlock (lbl, b) ->
+      (match lbl with
+       | Some (_, Some args) -> List.exists exp_uses_heap args
+       | _ -> false)
+      || block_uses_heap b.elt
+  | SendDep _ | SendEOP _ -> false
 
 and block_uses_heap b = List.exists stmt_uses_heap b
 
@@ -207,7 +216,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         terms := !terms @ [(EFunc ("select", [t1; t2]), ty)];
         (EFunc ("select", [t1; t2]), ty)
       | HeapAlloc (e1, e2) ->
-          let t1, ty1 = get_exp_term e1 in
+          let _, _ = get_exp_term e1 in
           let t2, ty2 = get_exp_term e2 in
           (t2, ty2)
       | HDerefValue ( l ) -> get_exp_term l
@@ -491,10 +500,14 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
       let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
       (* let fun_args = (embedding_type_index, ety, List.fold_left (fun acc x -> acc @ [Smt.Smt_ToMLString.exp x]) [] (List.tl args_rtn)) in *)
-      let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
-      let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
+      let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
+      let fun_args = (embedding_type_index, rw_version, ety, (List.tl args_rtn)) in
+      let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_rw} = pc fun_args in
 
-      Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ; 
+      if not !translating_condition then begin
+        if updates_rw then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) realWorld_vars;
+        Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1))
+      end;
       predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
       terms_list := !terms_list @ t;
       rtn, List.concat args_binds @ binds
@@ -748,10 +761,15 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           let ((_,_),ety) = List.find (fun ((gid,_),_) -> String.equal gid dst_id) !gstates in 
 
           let embedding_type_index = match (Hashtbl.find_opt vctrs dst_id) with | None -> 0 | Some i -> !i in
-          let fun_args = (embedding_type_index, ety, (List.tl args_rtn)) in
-          let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p} = pc fun_args in
+          let rw_version = !(Hashtbl.find vctrs (List.hd realWorld_vars)) in
+          let fun_args = (embedding_type_index, rw_version, ety, (List.tl args_rtn)) in
+                              
+          let {bindings=binds; ret_exp=rtn; asserts= asts; terms= t; preds = p; updates_rw} = pc fun_args in
+          
           predicates_list := !predicates_list @ (List.map (fun (x,y) -> Smt.PredSig (x,y)) p);
           terms_list := !terms_list @ t;
+          begin if updates_rw then List.iter (fun id -> Hashtbl.replace vctrs id (ref(!(Hashtbl.find vctrs id) + 1))) realWorld_vars
+          else () end;
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
           bind binds @@ compile_block_to_smt tl vctrs
@@ -940,14 +958,6 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
   else
   ELet (!ety_init_list, res), local_variable_ctr_list
 
-let generate_spec_pre_post_condition pre post =
-  let vctrs = variable_ctr_list in
-  match pre, post with 
-  | Some pre, Some post -> (fst @@ exp_to_smt_exp pre right vctrs),(fst @@ exp_to_smt_exp post right vctrs)
-  | None, None -> (Smt.EConst (CBool true)),(Smt.EConst (CBool true))
-  | None, Some post -> (Smt.EConst (CBool true)),(fst @@ exp_to_smt_exp post right vctrs)
-  | Some pre, None -> (fst @@ exp_to_smt_exp pre right vctrs),(Smt.EConst (CBool true))
-  
 
 let generate_method_spec_postcondition (genv: global_env) (b : block) : sexp =
     let block_to_exp, local_variable_ctr_list = (compile_block_to_smt_exp genv b) in

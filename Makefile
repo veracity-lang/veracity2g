@@ -12,7 +12,7 @@ endif
 
 all:
 	$(OPAM_SETUP) dune build --root src
-	cp src/_build/default/run.exe ./vcy
+	rm -f ./vcy && cp src/_build/default/run.exe ./vcy
 
 test: all
 	$(OPAM_SETUP) bash scripts/run_tests.sh

@@ -1,7 +1,7 @@
 open Vcy
 open Util
 
-exception BadCommandLine of string
+(* exception BadCommandLine of string *)
 
 module type Runner = sig
   val run : unit -> unit (* Uses all of argv *)
@@ -907,8 +907,8 @@ type command =
   | CmdParse
   | CmdInterp
   | CmdInterface
-  | CmdYaml
-  | CmdPhi
+  (* | CmdYaml
+  | CmdPhi *)
   | CmdInfer
   | CmdVerify
   | CmdTranslate

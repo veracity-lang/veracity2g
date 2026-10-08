@@ -194,7 +194,8 @@ and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tm
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
-  ; pc : (int * ety * sexp list -> post_condition) option
+  ; ret_ty : ty
+  ; pc : (int * int * ety * sexp list -> post_condition) option
   }
 
 and post_condition =
@@ -203,6 +204,7 @@ and post_condition =
   ; asserts  : sexp list                (* Any additional assertions made *)
   ; terms    : (sexp * sty) list        (* Terms *)
   ; preds    : (string * (sty list)) list (* Any particular predicates *)
+  ; updates_rw : bool (* Does the method update the realWorld SMT variables *)
   }
 
 (*and method_spec = (* TODO For inlining procedure *)
