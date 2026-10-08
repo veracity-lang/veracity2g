@@ -3,17 +3,19 @@
 #
 # Runs each benchmark from reports/speedup_dswp.py once (n=1, sequential
 # mode) and each lock_synth benchmark twice (plain + --synthesize-locks),
-# comparing the two outputs.
+# comparing the two outputs.  Then runs `vcy verify` on the NCB examples
+# (skipped if cvc5 is not installed).
 #
 # Usage: bash scripts/run_tests.sh
 # Usually invoked via:  make test
+# Set VCY=/path/to/binary to test a binary other than ./vcy.
 #
 # Exit code: 0 if all tests pass, 1 if any fail.
 
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VCY="$REPO_ROOT/vcy"
+VCY="${VCY:-$REPO_ROOT/vcy}"
 
 if [[ ! -x "$VCY" ]]; then
     echo "ERROR: $VCY not found or not executable. Run 'make' first." >&2
@@ -37,7 +39,7 @@ for letter in a b c d e f; do
 done
 printf 'acontent\n' > "$SIMPLEIO_A"
 
-PASS=0; FAIL=0
+PASS=0; FAIL=0; XFAIL=0
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -206,14 +208,84 @@ check_lock_count "ls_noncb_3 pre-DSWP locks" "$LS/ls_noncb_3.vcy"  0
 check_lock_count "ls_noncb_4 pre-DSWP locks" "$LS/ls_noncb_4.vcy"  0
 
 # ---------------------------------------------------------------------------
+# NCB verify — every commutativity condition must verify as correct
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== NCB verify benchmarks (vcy verify --prover cvc5) ==="
+
+# run_verify LABEL BENCH_PATH NCONDS
+#   Pass if verify exits 0 and reports exactly NCONDS conditions as correct
+#   and none as incorrect.  An incorrect condition does not change the exit
+#   code, so the output is what we check.  Pinning NCONDS catches a condition
+#   that is silently dropped.
+run_verify() {
+    local label="$1" file="$2" nconds="$3"
+    local out rc ok bad
+    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 2>&1); rc=$?
+    ok=$(printf '%s\n' "$out" | grep -c 'verified as correct')
+    bad=$(printf '%s\n' "$out" | grep -c 'verified as incorrect')
+    if [[ "$rc" -eq 0 && "$bad" -eq 0 && "$ok" -eq "$nconds" ]]; then
+        _record pass "$label" "[$ok/$nconds correct]"
+    elif [[ "$rc" -ne 0 ]]; then
+        local snippet; snippet=$(printf '%s\n' "$out" | grep -v '^\s*$' | tail -1 | cut -c1-72)
+        _record fail "$label" "[exit $rc: $snippet]"
+    else
+        _record fail "$label" "[$ok correct, $bad incorrect, want $nconds correct]"
+    fi
+}
+
+# known_verify_failure LABEL BENCH_PATH REASON
+#   An NCB example that verify cannot handle yet.  Reported but not counted
+#   as a failure; if it starts verifying, move it to run_verify.
+known_verify_failure() {
+    local label="$1" file="$2" reason="$3"
+    local out rc
+    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 2>&1); rc=$?
+    if [[ "$rc" -eq 0 ]] && ! printf '%s\n' "$out" | grep -q 'verified as incorrect' \
+        && printf '%s\n' "$out" | grep -q 'verified as correct'; then
+        printf '  XPASS %-28s  %s\n' "$label" "[now verifies: move to run_verify]"
+    else
+        printf '  XFAIL %-28s  %s\n' "$label" "[$reason]"
+    fi
+    XFAIL=$((XFAIL + 1))
+}
+
+# Servois2 looks for cvc5 only at fixed paths (see Provers.ProverCVC5), so
+# being on $PATH is not enough.
+if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
+    run_verify "banking"            "$GC/banking.vcy"                  5
+    run_verify "blockchain-erc20"   "$GC/blockchain-erc20-1dArray.vcy" 3
+    run_verify "commset-kmeans"     "$GC/commset-kmeans.vcy"           1
+    run_verify "motivation"         "$GC/motivation.vcy"               1
+    run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
+    run_verify "simple-io"          "$GC/simple-io.vcy"                1
+    run_verify "simple-vector"      "$GC/simple-vector.vcy"            1
+    run_verify "simple-vector-err"  "$GC/simple-vector-err.vcy"        1
+    run_verify "sollve_dotprod"     "$GC/sollve_dotprod.vcy"           1
+
+    known_verify_failure "commset"         "$GC/commset.vcy"         "Index of a non-Arr, non-HT"
+    known_verify_failure "commset-potrace" "$GC/commset-potrace.vcy" "Index of a non-Arr, non-HT"
+    known_verify_failure "ncb_dot_product" "$GC/ncb_dot_product.vcy" "Cannot 'new' a method argument"
+    known_verify_failure "ncb_histogram"   "$GC/ncb_histogram.vcy"   "i_1 not declared in SMT query"
+    known_verify_failure "ncb_max_reduce"  "$GC/ncb_max_reduce.vcy"  "i_1 not declared in SMT query"
+    known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
+    # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
+    # uses `_` (infer, not verify).
+else
+    echo "  SKIP  cvc5 not found in /usr/local/bin, /usr/bin or /opt/homebrew/bin"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 echo ""
 TOTAL=$((PASS + FAIL))
+XNOTE=""
+[[ "$XFAIL" -gt 0 ]] && XNOTE=" (${XFAIL} known failures not counted)"
 if [[ "$FAIL" -eq 0 ]]; then
-    echo "=== All ${TOTAL} tests passed. ==="
+    echo "=== All ${TOTAL} tests passed${XNOTE}. ==="
 else
-    echo "=== ${PASS}/${TOTAL} passed, ${FAIL} FAILED. ==="
+    echo "=== ${PASS}/${TOTAL} passed, ${FAIL} FAILED${XNOTE}. ==="
 fi
 echo ""
 
