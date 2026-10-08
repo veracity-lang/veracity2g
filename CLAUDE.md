@@ -75,7 +75,7 @@ Servois2 is a git submodule at `src/servois2`. It is built by the same dune invo
 
 ### Parallelism (`src/parallel/`)
 
-`parallel.mli` defines a two-function interface (`create`, `join`). `src/dune` uses a `(select parallel.ml from (domainslib -> parallel_multicore.ml) (-> parallel_singlecore.ml))` stanza inside `(libraries)` to pick the Domain-based implementation when `domainslib` is available (OCaml 5) and fall back to Thread-based otherwise. `parallel_multicore` and `parallel_singlecore` are excluded from the module list; only the selected `parallel.ml` is compiled.
+`parallel.mli` defines a two-function interface (`create`, `join`). `src/dune` uses a `(select parallel.ml from (domainslib -> parallel/parallel.multicore.ml) (-> parallel/parallel.singlecore.ml))` stanza inside `(libraries)` to pick the Domain-based implementation when `domainslib` is available (OCaml 5) and fall back to Thread-based otherwise. Dune requires select branch files to be named `parallel.<name>.ml`; the dotted names also keep them out of module discovery, so only the selected `parallel.ml` is compiled.
 
 ### OCaml API (`src/api/`)
 
@@ -86,7 +86,7 @@ Servois2 is a git submodule at `src/servois2`. It is built by the same dune invo
 ### Key dune files
 
 - `src/dune-project` — project root, requires dune ≥ 3.6 and menhir 2.1
-- `src/dune` — `(include_subdirs unqualified)` pulls in all subdirectories; excludes `parallel_multicore`, `parallel_singlecore`, and `run` from the library; `run` becomes a standalone executable
+- `src/dune` — `(include_subdirs unqualified)` pulls in all subdirectories; excludes `run` from the library; `run` becomes a standalone executable
 - `src/vcy/dune` — declares `ocamllex` and `menhir` rules
 - `src/test/dune` — two OUnit2 test executables (`test`, `api_test`) with `LD_LIBRARY_PATH` set for the C hashtable library
 

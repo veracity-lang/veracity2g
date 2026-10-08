@@ -5,9 +5,9 @@
  (public_name vcy)
  (libraries unix threads str servois2
             (select parallel.ml from
-             (domainslib -> parallel/parallel_multicore.ml)
-             (-> parallel/parallel_singlecore.ml)))
- (modules (:standard \ parallel_multicore parallel_singlecore run))
+             (domainslib -> parallel/parallel.multicore.ml)
+             (-> parallel/parallel.singlecore.ml)))
+ (modules (:standard \ run))
  (wrapped true)
  (library_flags -linkall)
  (synopsis "Veracity language"))

@@ -13,7 +13,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VCY="$REPO_ROOT/src/vcy.exe"
+VCY="$REPO_ROOT/vcy"
 
 if [[ ! -x "$VCY" ]]; then
     echo "ERROR: $VCY not found or not executable. Run 'make' first." >&2
