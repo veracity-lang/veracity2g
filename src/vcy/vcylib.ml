@@ -18,6 +18,7 @@ let suppress_print = ref false
 let counters : (int64 * Concurrent_counter.t) list ref = ref []
 
 let mutexes : (int64 * Mutex.t) list ref = ref []
+let mutexes_mutex = Mutex.create ()
 
 type method_library = lib_method bindlist
 
@@ -807,11 +808,12 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt v] ->
+        Mutex.protect mutexes_mutex begin fun () ->
         if List.mem_assoc v !mutexes
         then raise @@ ValueFailure ("mutex " ^ Int64.to_string v ^ " already exists", Range.norange)
         else
           mutexes := (v, Mutex.create ()) :: !mutexes;
-          env, VVoid
+          env, VVoid end
       | _ -> raise @@ TypeFailure ("counter_init arguments", Range.norange)
       end
     ; ret_ty = TVoid
@@ -821,12 +823,19 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt index] ->
-        begin match List.assoc_opt index !mutexes with
-        | None -> raise @@ ValueFailure ("unknown mutex " ^ Int64.to_string index, Range.norange)
-        | Some m ->
-          Mutex.lock m;
-          env, VVoid
-        end
+        (* Lock synthesis emits mutex_lock without a matching mutex_init,
+           so create the mutex on first use. *)
+        let m = Mutex.protect mutexes_mutex begin fun () ->
+          match List.assoc_opt index !mutexes with
+          | Some m -> m
+          | None ->
+            debug_print (lazy (Printf.sprintf "Warning: mutex %d not initialized. Auto-initializing.\n" (Int64.to_int index)));
+            let m = Mutex.create () in
+            mutexes := (index, m) :: !mutexes;
+            m
+        end in
+        Mutex.lock m;
+        env, VVoid
       | _ -> raise @@ TypeFailure ("mutex_lock arguments", Range.norange)
       end
     ; ret_ty = TVoid
@@ -836,7 +845,7 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt index] ->
-        begin match List.assoc_opt index !mutexes with
+        begin match Mutex.protect mutexes_mutex (fun () -> List.assoc_opt index !mutexes) with
         | None -> raise @@ ValueFailure ("unknown mutex " ^ Int64.to_string index, Range.norange)
         | Some m ->
           Mutex.unlock m;
