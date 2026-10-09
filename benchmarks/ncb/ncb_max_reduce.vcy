@@ -24,6 +24,8 @@ int[] data       = new int[64];
 int[] local_max  = new int[8];
 int   global_max = 0;
 int   block_size = 8;
+int i_1 = 0;
+int i_2 = 0;
 
 int main(int argc, string[] argv) {
     int n = int_of_string(argv[1]);

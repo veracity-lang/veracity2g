@@ -21,6 +21,9 @@ int   nbuckets = 4;
 int main(int argc, string[] argv) {
     int n = int_of_string(argv[1]);
     int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    
     while (i < n) {
         update(i): {
             busy_wait(10);

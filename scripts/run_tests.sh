@@ -262,12 +262,12 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "simple-vector"      "$GC/simple-vector.vcy"            1
     run_verify "simple-vector-err"  "$GC/simple-vector-err.vcy"        1
     run_verify "sollve_dotprod"     "$GC/sollve_dotprod.vcy"           1
+    run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
+    run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
+    run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
+    run_verify "ncb_max_reduce"     "$GC/ncb_max_reduce.vcy"           1
 
     known_verify_failure "commset"         "$GC/commset.vcy"         "Index of a non-Arr, non-HT"
-    known_verify_failure "commset-potrace" "$GC/commset-potrace.vcy" "Index of a non-Arr, non-HT"
-    known_verify_failure "ncb_dot_product" "$GC/ncb_dot_product.vcy" "Cannot 'new' a method argument"
-    known_verify_failure "ncb_histogram"   "$GC/ncb_histogram.vcy"   "i_1 not declared in SMT query"
-    known_verify_failure "ncb_max_reduce"  "$GC/ncb_max_reduce.vcy"  "i_1 not declared in SMT query"
     known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
     # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).

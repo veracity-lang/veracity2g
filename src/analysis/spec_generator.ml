@@ -1048,9 +1048,16 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
+let generate_spec_preamble { methods; globals; structs; lib_methods} = Some begin
+  let fun_def_of_method (id, {rty = rty; args = args; _}) =
+    let string_of_ty = compose string_of_sty sty_of_ty in
+    sp "(declare-fun %s (%s) %s)" id (String.concat " " (List.map (compose string_of_ty snd) args)) (string_of_ty rty)
+  in
+  String.concat "\n" @@ List.map fun_def_of_method methods end
+  
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   deref_conds := [];
-  let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in
+  (* let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in *)
   gstates := embedding_vars;
 
   let has_loc_vars = List.exists (fun ((_, ty), _) -> ty = TLoc) embedding_vars in
@@ -1076,7 +1083,7 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
 
   let pre, post = generate_spec_pre_post_condition pre post in
 
-  let preamble = None in
+  let preamble = generate_spec_preamble genv in
 
   let tloc_arr_names = List.filter_map (fun ((id, ty), _) ->
       if ty = TArr TLoc then Some id else None) embedding_vars in
