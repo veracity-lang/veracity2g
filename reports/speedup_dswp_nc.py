@@ -13,6 +13,7 @@ import functools
 import re
 import tempfile
 import shutil
+import statistics
 
 Benchmark = Tuple[str, Callable[[int],List[str]]]
 Data = Tuple[float, float]
@@ -202,10 +203,12 @@ def build_table(rs : List[Row]) -> str:
 
 def build_file():
     results_ratio : List[Row] = []
+    results_ratio_std: List[Row] = []
     results_seq : List[Row]   = []
     results_par : List[Row]   = []
     for i, n in enumerate(map(int, n_values)):
         row_ratio = []
+        row_ratio_std = []
         row_seq = []
         row_par = []
         for j, b in enumerate(benchmarks):
@@ -221,18 +224,28 @@ def build_file():
                 row_seq.append(mean(test_seq))
                 row_par.append(mean(test_par))
                 row_ratio.append(geo_mean(test_ratio))
+
+                # Standard deviation of the num_trials speedup measurements
+                if len(test_ratio) > 1:
+                    row_ratio_std.append(statistics.stdev(test_ratio))
+                else:
+                    row_ratio_std.append(0.0)
             except VcyError as err:
                 sys.stdout.write(f'\nFailure: {err.msg}\n')
                 row_seq.append(None)
                 row_par.append(None)
                 row_ratio.append(None)
+                row_ratio_std.append(None)
         results_seq.append((n, row_seq))
         results_par.append((n, row_par))
         results_ratio.append((n, row_ratio))
+        results_ratio_std.append((n, row_ratio_std))
 
     os.makedirs(dir, exist_ok=True)
     with open(f'{dir}/ratio.csv', 'w') as file:
         file.write(build_table(results_ratio))
+    with open(f'{dir}/ratio_std.csv', 'w') as file:
+        file.write(build_table(results_ratio_std))
     with open(f'{dir}/seq.csv', 'w') as file:
         file.write(build_table(results_seq))
     with open(f'{dir}/par.csv', 'w') as file:
