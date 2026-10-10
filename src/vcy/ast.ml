@@ -87,6 +87,7 @@ type arglist = ty bindlist
 
 type tstruct = ty bindlist
 
+[@@@warning "-30"] (* "pure" is a field of both tmethod and lib_method *)
 type exp =
 | CNull of ty
 | CBool of bool
@@ -190,7 +191,7 @@ and env =
   ; l : callstk     (* Local environment *)
   ; tid : int option
   }
-and [@warning "-30"] lib_method = (* complains that "pure" is also defined in tmethod *)
+and lib_method =
   { pure : bool
   (*; spec : method_spec *) (* TODO reintroduce *)
   ; func : env * value list -> env * value
@@ -234,6 +235,8 @@ and ht_variant =
   | VHTNaive of value Hashtables.Hashtable_naive.t
 
 (* VCY type <=> mangle index, servois type *)
+[@@@warning "+30"]
+
 type embedding_map = (ty binding * ety) list
 
 

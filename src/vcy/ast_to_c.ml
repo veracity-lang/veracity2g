@@ -19,6 +19,8 @@ let rec c_of_ty = function
     | TChanR -> raise @@ NotImplemented "c_of_ty TChanR"
     | TChanW -> raise @@ NotImplemented "c_of_ty TChanW"
     | TStruct(id) -> raise @@ NotImplemented "c_of_ty TStruct"
+    | TLoc -> raise @@ NotImplemented "c_of_ty TLoc"
+    | THeapValue _ -> raise @@ NotImplemented "c_of_ty THeapValue"
 
 let rec c_of_expnode x = c_of_exp x.elt
 and c_of_exp = function
@@ -41,6 +43,8 @@ and c_of_exp = function
     | Ternary(g,t,e) -> sp "(%s?%s:%s)" (c_of_expnode g) (c_of_expnode t) (c_of_expnode e)
     | CStruct(id, e) -> raise @@ NotImplemented "c_of_exp CStruct"
     | Proj(e, id) -> raise @@ NotImplemented "c_of_exp Call.Proj"
+    | HeapAlloc _ | HeapValue _ | HDerefValue _ | HDerefNext _ -> raise @@ NotImplemented "c_of_exp heap"
+    | Exists _ | Forall _ -> raise @@ NotImplemented "c_of_exp quantifier"
 
 and c_of_stmt = function
     | Assn(lhs, rhs) -> sp "%s = %s" (c_of_expnode lhs) (c_of_expnode rhs)

@@ -184,7 +184,6 @@ ty:
   | t=ty LBRACKET RBRACKET { TArr t }
   | HASHTABLE LBRACKET tyk=ty COMMA tyv=ty RBRACKET { THashTable (tyk,tyv) }
   | id=UIDENT { TStruct id }
-  | TLOC { TLoc }
   | THEAP_VALUE LBRACKET tyi=ty COMMA tyl=ty RBRACKET { THeapValue (tyi, tyl) }
 
 %inline bop:
@@ -332,9 +331,6 @@ stmt:
 block_label:
   | i=IDENT { (i, None) }
   | i=IDENT LPAREN il=separated_list(COMMA,exp) RPAREN { (i, Some il) }
-
-label:
-  | i=IDENT {i}
 
 %inline commute_variant:
   | COMMUTE_SEQ { CommuteVarSeq }

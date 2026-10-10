@@ -654,7 +654,7 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           with_conds conds @@ ELet([(path_name_exp_smt, store_smt)], compile_block_to_smt tl vctrs)
         
         (* Heap Allocation *)
-        | Assn (exp, {elt = HeapAlloc ({ elt = val_exp; loc=l1 }, { elt = loc_exp; loc=l2}) as alloce; loc = ll }) ->
+        | Assn (exp, {elt = HeapAlloc ({ elt = val_exp; loc=l1 }, { elt = loc_exp; loc=l2}); loc = ll }) ->
             let path_smt, _ = begin match exp_to_smt_exp exp left vctrs with
                             | EVar e, b -> e, b
                             | _, _ -> failwith "left of HeapAlloc should be variable"
@@ -1048,7 +1048,7 @@ let compile_method_to_methodSpec (genv: global_env) (m:mdecl) : method_spec =
 
     method_spec
 
-let generate_spec_preamble { methods; globals; structs; lib_methods} = Some begin
+let generate_spec_preamble { methods; globals; structs; lib_methods; _ } = Some begin
   let fun_def_of_method (id, {rty = rty; args = args; _}) =
     let string_of_ty = compose string_of_sty sty_of_ty in
     sp "(declare-fun %s (%s) %s)" id (String.concat " " (List.map (compose string_of_ty snd) args)) (string_of_ty rty)

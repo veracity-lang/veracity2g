@@ -442,14 +442,16 @@ and interp_exp (env : env) ({elt;loc} : exp node) : env * value =
       | VLoc None -> failwith "HDerefValue on a null location"
       | VLoc Some(i) ->
         let v = Vcylib.heap_get_value i in 
-          (env',VInt v) end
+          (env',VInt v)
+      | _ -> failwith "HDerefValue on a non-location value" end
   | HDerefNext (eloc) ->
       let env',  l = interp_exp env eloc in
       begin match l with 
       | VLoc None -> failwith "HDerefNext on a null location"
       | VLoc Some(i) ->
         let l' = Vcylib.heap_get_next i in 
-          (env',VLoc l') end
+          (env',VLoc l')
+      | _ -> failwith "HDerefNext on a non-location value" end
   | CallRaw (id, args) ->
     let env, args = interp_exp_seq env args in
     begin match find_binding id env BindM with

@@ -29,6 +29,8 @@ let rec gen_ty = function
     | TChanR -> "TChanR"
     | TChanW -> "TChanW"
     | TStruct(id) -> raise @@ NotImplemented "gen_ty TStruct"
+    | TLoc -> raise @@ NotImplemented "gen_ty TLoc"
+    | THeapValue _ -> raise @@ NotImplemented "gen_ty THeapValue"
 
 let rec gen_expnode x = gen_exp x.elt
 and gen_of_bool = function true -> "1" | _ -> "0"
@@ -52,6 +54,8 @@ and gen_exp = function
     | Ternary(g,t,e) -> sp "(%s?%s:%s)" (gen_expnode g) (gen_expnode t) (gen_expnode e)
     | CStruct(id, e) -> raise @@ NotImplemented "gen_exp CStruct"
     | Proj(e, id) -> raise @@ NotImplemented "gen_exp Call.Proj"
+    | HeapAlloc _ | HeapValue _ | HDerefValue _ | HDerefNext _ -> raise @@ NotImplemented "gen_exp heap"
+    | Exists _ | Forall _ -> raise @@ NotImplemented "gen_exp quantifier"
 
 and gen_stmt tsk = function
     | Assn(lhs, rhs) -> sp "%s = %s" (gen_expnode lhs) (gen_expnode rhs)
@@ -69,6 +73,8 @@ and gen_stmt tsk = function
     | For(inits, guard, update, body) -> sp "for(%s; %s; %s) %s" (String.concat ", " @@ List.map (fun (id, (ty, rhs)) -> sp "%s %s = %s" (gen_ty ty) (!mangle id) (gen_expnode rhs)) inits) (guard |> Option.map gen_expnode |> Option.value ~default:"") (update |> Option.map (gen_stmtnode tsk) |> Option.value ~default:"") (gen_blocknode tsk body)
     | While(guard, _, body) -> sp "while(%s) %s" (gen_expnode guard) (gen_blocknode tsk body)
     | Raise(e) -> raise @@ NotImplemented "gen_stmt Raise"
+    | Assert(e) -> raise @@ NotImplemented "gen_stmt Assert"
+    | Require(e) -> raise @@ NotImplemented "gen_stmt Require"
     | Commute(var, phi, bodies, pre, post) -> raise @@ TaskCodeGenErr "gen_stmt should not have Commute stmts"
     | Havoc(e) -> sp "/* %s = __VERIFIER_nondet_int() */" (gen_expnode e)
     | Assume(e) -> sp "/* assume%s */" (gen_expnode e)
@@ -126,6 +132,7 @@ let gen_decl tsk = function
     | Gvdecl(dnode) -> let d = dnode.elt in sp "%s %s = %s;" (gen_ty d.ty) d.name (gen_expnode d.init)
     | Gmdecl(dnode) -> let d = dnode.elt in sp "%s %s(%s) %s" (gen_ty d.mrtyp) d.mname (String.concat ", " @@ List.map (fun (ty, id) -> sp "%s %s" (gen_ty ty) id) d.args) (gen_blocknode tsk d.body)
     | Gsdecl(d) -> raise @@ NotImplemented "gen_decl Gsdecl"
+    | Commutativity(_) -> raise @@ NotImplemented "gen_decl Commutativity"
 
 let gen_prog tsk prog =
     String.concat "\n\n" @@ List.map (gen_decl tsk) prog

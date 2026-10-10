@@ -538,8 +538,8 @@ let find_neighbors pdg node : pdg_node list =
 
 let is_separate_node (node: pdg_node) : bool =
   match node.src with
-  | Some{elt=(SBlock ((Some _), _))} -> true
-  | Some{elt=(SBlock (None, _))} -> if !commutativity_spec_exist then true else false
+  | Some{elt=(SBlock ((Some _), _)); _} -> true
+  | Some{elt=(SBlock (None, _)); _} -> if !commutativity_spec_exist then true else false
   | _ -> false
 
 let rec dfs_util pdg (curr: pdg_node) (visited: visited ref) : pdg_node list =
@@ -578,7 +578,7 @@ let find_sccs pdg : pdg_node list list =
         sccs := !sccs @ [dfs_util reversed_pdg s visited]
   done;
 
-  let find_min li = List.fold_left (fun acc {l=(_,p,_)} -> Int.min acc (Range.line_of_pos p)) Int.max_int li in
+  let find_min li = List.fold_left (fun acc {l=(_,p,_); _} -> Int.min acc (Range.line_of_pos p)) Int.max_int li in
   sccs := List.sort (fun n1 n2 -> Int.compare (find_min n1) (find_min n2)) !sccs;
 
   !sccs
@@ -767,7 +767,7 @@ let rec all_in_list_a_in_b list_a list_b =
       false
 
 let is_return_node (node : dag_node) =
-  List.exists (fun {l=loc;n=_;src = Some s} -> match s.elt with | Ret _ -> true | _ -> false) node.n
+  List.exists (fun ({src; _} : pdg_node) -> match src with Some {elt = Ret _; _} -> true | _ -> false) node.n
 
 let rec find_ancestors ancestors visited edges src_node =
   List.fold_left (fun acc edge ->
@@ -986,8 +986,9 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
     List.filter (fun s -> not (List.mem s new_block)) old_block.elt
     |> List.map (fun s ->
       let removed_loc = Range.string_of_range_nofn s.loc in
-      let [tid] = find_taskIDs_from_node_list dag [removed_loc] in
-      (s.loc, tid)
+      match find_taskIDs_from_node_list dag [removed_loc] with
+      | [tid] -> (s.loc, tid)
+      | tids -> failwith (sp "remove_and_find_nodes: expected one task for %s, found %d" removed_loc (List.length tids))
     )
   in 
   let augment_block new_block removed_nodes =
@@ -1247,8 +1248,8 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let tasks = generate_tasks_from_dag dag_scc block in
   debug_print (lazy (Printf.sprintf "Number of tasks: %d\n" (List.length tasks)));
   let init_task = generate_init_task () in 
-  let new_edges = List.filter (fun {dag_src= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
-  let new_edges = List.filter (fun {dag_dst= s} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
+  let new_edges = List.filter (fun {dag_src= s; _} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) dag_scc.edges in
+  let new_edges = List.filter (fun {dag_dst= s; _} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
   let tasks = List.map (fun t-> {t with deps_in = combine_dependencies t.deps_in; deps_out = combine_dependencies t.deps_out}) tasks in
   init_task, tasks

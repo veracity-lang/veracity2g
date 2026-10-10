@@ -189,7 +189,6 @@ module AstPP = struct
           pps "forall "; pps id; pps " : "; print_ty_aux fmt ty; pps " . ";
           print_exp_aux 0 fmt body;
           pp_close_box fmt ()
-      | _ -> failwith ("print_exp_aux: match failed for ")
 
     end; if this_level < level then pps ")"
 
@@ -352,6 +351,8 @@ module AstPP = struct
         pps "assume("; print_exp_aux 0 fmt e; pps ");"
       | Havoc(e) ->
         pps "havoc "; print_exp_aux 0 fmt e; pps ";"
+      | Require(e) ->
+        pps "require("; print_exp_aux 0 fmt e; pps ");"
       | SBlock(blocklabel, block) -> begin match blocklabel with
           | None -> ()
           | Some bl -> print_blocklabel_aux fmt bl
@@ -585,9 +586,6 @@ module AstML = struct
           id
           (string_of_list string_of_field l)
       | Proj(exp, id) -> sp "Proj (%s, %s)" (string_of_exp exp) (string_of_id id)
-      | HeapValue (eval , eloc ) -> sp "HeapVal (%s, %s)" (string_of_exp eval) (string_of_exp eloc)
-      | HDerefValue (e1) -> sp "HDerefValue (%s)" (string_of_exp e1)
-      | HDerefNext (e1) -> sp "HDerefNext (%s)" (string_of_exp e1)
       | Exists (id, ty, body) ->
           sp "Exists (%s, %s, %s)" (string_of_id id) (string_of_ty ty) (string_of_exp body)
       | Forall (id, ty, body) ->
