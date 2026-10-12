@@ -1,0 +1,13 @@
+/* Conditional commutativity: phi mentions only variables neither block
+   writes, so it holds before every iteration.  Expect: correct. */
+int main(int argc, string[] argv) {
+    int k = 0;
+    int[] a = new int[10];
+    int p = int_of_string(argv[1]);
+    int q = int_of_string(argv[2]);
+    commute (p != q) {
+        { while (k < 10) { a[p] = a[p] + 1; k = k + 1; } }
+        { a[q] = 0; }
+    }
+    return 0;
+}

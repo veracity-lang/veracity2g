@@ -1,0 +1,10 @@
+/* A for loop with a locally declared counter.  Expect: correct. */
+int main(int argc, string[] argv) {
+    int x = 0;
+    int y = 0;
+    commute (true) {
+        { for (int i = 0; i < 10; i = i + 1;) { x = x + 3; } }
+        { y = y - 1; }
+    }
+    return 0;
+}

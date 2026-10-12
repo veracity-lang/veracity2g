@@ -1,0 +1,12 @@
+/* The body reads the counter, so it is not a pure counter and the
+   abstraction must not fire. */
+int main(int argc, string[] argv) {
+    int k = 0;
+    int x = 0;
+    int y = 0;
+    commute (true) {
+        { while (k < 10) { x = x + k; k = k + 1; } }
+        { y = y + 1; }
+    }
+    return 0;
+}

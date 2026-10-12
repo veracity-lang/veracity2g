@@ -1,0 +1,13 @@
+/* Both blocks are counter loops: the two bodies commute pairwise.
+   Expect: correct. */
+int main(int argc, string[] argv) {
+    int k = 0;
+    int z = 0;
+    int x = 0;
+    int y = 0;
+    commute (true) {
+        { while (k < 10) { k = k + 1; x = x + 1; } }
+        { while (z < 5) { z = z + 1; y = y * 2; } }
+    }
+    return 0;
+}

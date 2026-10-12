@@ -304,6 +304,12 @@ let rec subst_sfx sfx names (smt : Servois2.Smt.exp) : Servois2.Smt.exp =
 
 let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
+  (* A block that is just a loop over an iteration counter is checked one
+     iteration at a time; see Loop_abstract for when that is sound. *)
+  let blks, abstracted = Loop_abstract.abstract ~globals:vars ~cv ~phi:e ~pre ~post blks in
+  if abstracted <> [] then
+    Printf.eprintf "Loop abstraction: verifying one iteration of the loop(s) over %s\n%!"
+      (String.concat ", " abstracted);
   let [@warning "-8"] spec , [m1;m2] = Spec_generator.compile_blocks_to_spec genv blks embedding pre post in
   let cond =
     Spec_generator.translating_condition := true;
@@ -341,6 +347,8 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
     let main = Servois2.Verify.verify ~options:!Util.servois2_verify_option ~ctx_post_12:ctx_12_opt spec m1 m2 cond in
     let compl = match cv with
       | CommuteVarLM | CommuteVarRM | CommuteVarLMCtx _ | CommuteVarRMCtx _ -> None
+      (* A non-commuting iteration says nothing about the whole loop. *)
+      | _ when abstracted <> [] -> None
       | _ -> Servois2.Verify.verify ~options:{(!Util.servois2_verify_option) with ncom = true} spec m1 m2 (EUop(Not, cond))
     in
     (main, compl)

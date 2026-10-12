@@ -1,0 +1,12 @@
+/* The loop body changes x, which f2 reads: one iteration already fails to
+   commute, so the whole loop does too.  Expect: incorrect. */
+int main(int argc, string[] argv) {
+    int k = 0;
+    int x = 0;
+    int y = 0;
+    commute (true) {
+        { while (k < 10) { k = k + 1; x = x + 1; } }
+        { y = x; }
+    }
+    return 0;
+}

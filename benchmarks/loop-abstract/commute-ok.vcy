@@ -1,0 +1,12 @@
+/* f1 is a counter loop whose body commutes with f2: verified one
+   iteration at a time.  Expect: correct. */
+int main(int argc, string[] argv) {
+    int k = 0;
+    int x = 0;
+    int y = 0;
+    commute (true) {
+        { while (k < 10) { x = x + 1; k = k + 1; } }
+        { y = y + 2; }
+    }
+    return 0;
+}

@@ -250,6 +250,23 @@ known_verify_failure() {
     XFAIL=$((XFAIL + 1))
 }
 
+# run_loop_abs LABEL BENCH_PATH EXPECT
+#   EXPECT is correct or incorrect (the loop abstraction must fire and give
+#   that verdict) or nofire (a side condition fails, so it must not fire).
+run_loop_abs() {
+    local label="$1" file="$2" expect="$3"
+    local out fired verdict
+    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 2>&1)
+    fired=$(printf '%s\n' "$out" | grep -c '^Loop abstraction:')
+    verdict=$(printf '%s\n' "$out" | grep -o 'verified as [a-z]*' | head -1 | cut -d' ' -f3)
+    if [[ "$expect" == nofire && "$fired" -eq 0 ]] \
+        || [[ "$expect" != nofire && "$fired" -eq 1 && "$verdict" == "$expect" ]]; then
+        _record pass "$label" "[$expect]"
+    else
+        _record fail "$label" "[fired=$fired verdict=${verdict:-none}, want $expect]"
+    fi
+}
+
 # Servois2 looks for cvc5 only at fixed paths (see Provers.ProverCVC5), so
 # being on $PATH is not enough.
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
@@ -271,6 +288,18 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
     # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).
+
+    echo ""
+    echo "=== Counter-loop abstraction (vcy verify --prover cvc5) ==="
+    LA="../benchmarks/loop-abstract"
+    run_loop_abs "la commute-ok"     "$LA/commute-ok.vcy"     correct
+    run_loop_abs "la commute-cond"   "$LA/commute-cond.vcy"   correct
+    run_loop_abs "la both-loops"     "$LA/both-loops.vcy"     correct
+    run_loop_abs "la for-loop"       "$LA/for-loop.vcy"       correct
+    run_loop_abs "la commute-bad"    "$LA/commute-bad.vcy"    incorrect
+    run_loop_abs "la guard-unstable" "$LA/guard-unstable.vcy" nofire
+    run_loop_abs "la phi-unstable"   "$LA/phi-unstable.vcy"   nofire
+    run_loop_abs "la counter-read"   "$LA/counter-read.vcy"   nofire
 else
     echo "  SKIP  cvc5 not found in /usr/local/bin, /usr/bin or /opt/homebrew/bin"
 fi
