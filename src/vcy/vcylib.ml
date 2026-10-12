@@ -11,6 +11,10 @@ let smt_e e = match e with | Smt.EVar (Var v) ->  v | _ -> failwith "bad input"
 let var_of_string s = Smt.Var s
 
 let pure_id = fun x -> Smt.EVar (Var (remove_index x))
+(* A key or value argument as an inference term.  Unlike [pure_id @@ smt_e e]
+   this accepts any expression, not just a variable: ht_put(h, k, 1) and
+   ht_put(h, k, a + b) are ordinary calls. *)
+let pure_term (e : sexp) : sexp = Servois2.Predicate.remove_index_exp e
 
 (* Only applies to stdout printing, not debug printing *)
 let suppress_print = ref false
@@ -251,15 +255,18 @@ let lib_debug : method_library =
     }
   ]
  
+(* CVC5 spells the set theory operations with a "set." prefix and its own
+   names; Z3 and CVC4 use the bare ones. *)
+let set_func (op : string) : string =
+  let module P = (val check_prover ()) in
+  match P.name, op with
+  | "CVC5", "setminus" -> "set.minus"
+  | "CVC5", _ -> "set." ^ op
+  | _ -> op
+
 let lib_hashtable : method_library =
-  let member_func () = let module P = (val check_prover ()) in
-    match P.name with 
-    | "CVC5" -> "set.member"
-    | _ -> "member"
-  in let insert_func () = let module P = (val check_prover ()) in
-    match P.name with 
-    | "CVC5" -> "set.insert"
-    | _ -> "insert"
+  let member_func () = set_func "member"
+  in let insert_func () = set_func "insert"
   in
   let open Hashtables in
   [ "ht_size", 
@@ -398,13 +405,13 @@ let lib_hashtable : method_library =
         (Smt.EConst (CInt 1)), Smt.TInt;
         pure_id size, Smt.TInt;
         ELop (Add, [pure_id size; EConst(CInt 1)]), Smt.TInt;
-        pure_id @@ smt_e v, tyv;
-        pure_id @@ smt_e k, tyk;
-        EFunc ("select", [pure_id ht; pure_id @@ smt_e k]), tyk;
+        pure_term v, tyv;
+        pure_term k, tyk;
+        EFunc ("select", [pure_id ht; pure_term k]), tyk;
         pure_id keys, Smt.TSet tyk;
-        EFunc (insert_func (), [pure_id @@ smt_e k; pure_id keys]), Smt.TSet tyk;
+        EFunc (insert_func (), [pure_term k; pure_id keys]), Smt.TSet tyk;
         pure_id ht, Smt.TArray (tyk,tyv);
-        EFunc ("store", [pure_id ht; pure_id @@ smt_e k; pure_id @@ smt_e v]), Smt.TArray (tyk,tyv)
+        EFunc ("store", [pure_id ht; pure_term k; pure_term v]), Smt.TArray (tyk,tyv)
         ]
       ; preds =
         [ member_func (), [tyk; Smt.TSet tyk] ]
@@ -452,8 +459,8 @@ let lib_hashtable : method_library =
       ; asserts = []
       ; terms = [
         pure_id size, Smt.TInt;
-        pure_id @@ smt_e k, tyk;
-        EFunc ("select", [pure_id ht; pure_id @@ smt_e k]), tyv;
+        pure_term k, tyk;
+        EFunc ("select", [pure_id ht; pure_term k]), tyv;
         pure_id keys, Smt.TSet tyk;
         pure_id ht, Smt.TArray (tyk,tyv)
       ]
@@ -480,10 +487,10 @@ let open_spec = Some (fun [@warning "-8"]
       ; var_of_string @@ smt_e rw_ln1,
           array_update rw_ln0 f0 (fun _ -> EConst (CInt 0))
       ; var_of_string @@ smt_e rw_o1,
-          EFunc ("insert", [f0; rw_o0])
+          EFunc (set_func "insert", [f0; rw_o0])
       ]
     ; ret_exp = f1
-    ; asserts = [EUop(Not, EFunc("member", [f0; rw_o0]))] (* TODO: see below note *)
+    ; asserts = [EUop(Not, EFunc(set_func "member", [f0; rw_o0]))] (* TODO: see below note *)
     ; terms = [pure_id fname, Smt.TString]
     ; preds = []
     ; updates_rw = true
@@ -561,10 +568,10 @@ let lib_io : method_library =
         ; var_of_string @@ smt_e rw_ln1,
             rw_ln0
         ; var_of_string @@ smt_e rw_o1,
-            EFunc ("setminus", [rw_o0; EFunc("singleton", [c0])])
+            EFunc (set_func "setminus", [rw_o0; EFunc(set_func "singleton", [c0])])
         ]
       ; ret_exp = EConst (CBool true)
-      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: Probs a better way to encode this than an assert? A precondition possibly? *)
+      ; asserts = [EFunc(set_func "member", [c0; rw_o0])] (* TODO: Probs a better way to encode this than an assert? A precondition possibly? *)
       ; terms = [pure_id chan, Smt.TString]
       ; preds = []
       ; updates_rw = true
@@ -595,7 +602,7 @@ let lib_io : method_library =
             rw_o0
         ]
       ; ret_exp = EFunc("select", [EFunc("select", [rw_d0; c0]); EFunc("select", [rw_ln0; c0])])
-      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
+      ; asserts = [EFunc(set_func "member", [c0; rw_o0])] (* TODO see above note *)
       ; terms = []
       ; preds = []
       ; updates_rw = true
@@ -655,7 +662,7 @@ let lib_io : method_library =
             rw_o0
         ]
       ; ret_exp = EConst (CBool true)
-      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO: see above note *)
+      ; asserts = [EFunc(set_func "member", [c0; rw_o0])] (* TODO: see above note *)
       ; terms = [pure_id @@ smt_e line, Smt.TString]
       ; preds = []
       ; updates_rw = true
@@ -689,7 +696,7 @@ let lib_io : method_library =
             rw_o0
         ]
       ; ret_exp = EConst (CBool true)
-      ; asserts = [EFunc("member", [c0; rw_o0])] (* TODO see above note *)
+      ; asserts = [EFunc(set_func "member", [c0; rw_o0])] (* TODO see above note *)
       ; terms = [pure_id chan, Smt.TString; pure_id @@ smt_e i, Smt.TInt]
       ; preds = []
       ; updates_rw = true
