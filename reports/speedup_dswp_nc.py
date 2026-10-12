@@ -101,7 +101,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/ncb/multi-blocks.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/simple-io.vcy", prep_simpleio),
     ("benchmarks/ncb/motivation.vcy", lambda n : [str(n * 100), "10"]),
-    ("benchmarks/ncb/blockchain-erc20-1dArray.vcy", lambda n : [str(n), str(1), str(2)]),
+    ("benchmarks/ncb/erc2.vcy", lambda n : [str(n), str(1), str(2)]),
     ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "100", "1000"]),
     ("benchmarks/ncb/commset-potrace.vcy", prep_potrace),
     ("benchmarks/ncb/commset-kmeans.vcy", lambda n : [str(n)])

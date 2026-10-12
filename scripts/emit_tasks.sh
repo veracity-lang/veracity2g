@@ -134,9 +134,9 @@ HEADER
 
 echo "Emitting tasks for:"
 
-echo -n "  ps-dswp-ek ... "
-output=$(emit_tasks "ps-dswp-ek" "$GC/ps-dswp-ek.vcy" 1 1)
-append_benchmark "ps-dswp-ek" "ps-dswp-ek" "$output"
+echo -n "  ps-dswp ... "
+output=$(emit_tasks "ps-dswp" "$GC/ps-dswp.vcy" 1 1)
+append_benchmark "ps-dswp" "ps-dswp" "$output"
 echo "done"
 
 echo -n "  commset (md5) ... "
@@ -178,9 +178,9 @@ output=$(emit_tasks "vote-run" "$GC/vote-run.vcy" 1)
 append_benchmark "vote" "vote" "$output"
 echo "done"
 
-echo -n "  blockchain-erc20 ... "
-output=$(emit_tasks "blockchain-erc20" "$GC/blockchain-erc20-1dArray.vcy" 1 1 2)
-append_benchmark "blockchain-erc20" "blockchain-erc20" "$output"
+echo -n "  erc20 ... "
+output=$(emit_tasks "erc20" "$GC/erc20.vcy" 1 1 2)
+append_benchmark "erc20" "erc20" "$output"
 echo "done"
 
 echo -n "  banking ... "

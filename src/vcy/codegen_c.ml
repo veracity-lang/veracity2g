@@ -139,7 +139,7 @@ let gen_prog tsk prog =
 
 (* 
 test this as:
-  ./vcy.exe interp ../benchmarks/ncb/ps-dswp-ek.vcy    
+  ./vcy.exe interp ../benchmarks/ncb/ps-dswp.vcy    
 *)
 let gen tsk b : unit = 
   let str = gen_block tsk b in 

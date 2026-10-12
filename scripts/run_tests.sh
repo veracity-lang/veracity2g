@@ -108,7 +108,7 @@ run_once "multi-blocks"         "$GC/multi-blocks.vcy"             1
 run_once "simple-io"            "$GC/simple-io.vcy" \
     "$TMPF/a.txt" "$TMPF/b.txt" "$TMPF/c.txt" "$TMPF/d.txt"
 run_once "motivation"           "$GC/motivation.vcy"               100 10
-run_once "blockchain-erc20"     "$GC/blockchain-erc20-1dArray.vcy" 1 1 2
+run_once "erc20"                "$GC/erc20.vcy" 1 1 2
 run_once "banking"              "$GC/banking.vcy"                  1 100 1000
 run_once "commset-potrace"      "$GC/commset-potrace.vcy" \
     1 "$TMPF/a.txt" "$TMPF/b.txt" "$TMPF/c.txt" \
@@ -138,9 +138,9 @@ run_synth "ls_ncb_5"            "$LS/ls_ncb_5.vcy"     6
 run_synth "ls_ncb_6"            "$LS/ls_ncb_6.vcy"     8
 
 # New NCB benchmarks demonstrating three distinct lock patterns
-run_synth "ncb_histogram"       "$GC/ncb_histogram.vcy"   8
-run_synth "ncb_dot_product"     "$GC/ncb_dot_product.vcy" 4
-run_synth "ncb_max_reduce"      "$GC/ncb_max_reduce.vcy"  10
+run_synth "ncb_histogram"       "$GC/test/ncb_histogram.vcy"   8
+run_synth "ncb_dot_product"     "$GC/test/ncb_dot_product.vcy" 4
+run_synth "ncb_max_reduce"      "$GC/test/ncb_max_reduce.vcy"  10
 
 # Non-NCB: pre-DSWP synthesis may or may not add locks; output unchanged
 run_synth "ls_noncb_1"          "$LS/ls_noncb_1.vcy"   4
@@ -273,13 +273,13 @@ run_loop_abs() {
 # being on $PATH is not enough.
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
     run_verify "banking"            "$GC/banking.vcy"                  5
-    run_verify "blockchain-erc20"   "$GC/blockchain-erc20-1dArray.vcy" 3
+    run_verify "erc20"              "$GC/erc20.vcy" 3
     run_verify "motivation"         "$GC/motivation.vcy"               1
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
     run_verify "vote-run"           "$GC/vote-run.vcy"                 6
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
-    run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
-    run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
+    run_verify "ncb_dot_product"    "$GC/test/ncb_dot_product.vcy"          1
+    run_verify "ncb_histogram"      "$GC/test/ncb_histogram.vcy"            1
     # md5_lower and string_of_int have no model: uninterpreted functions.
     run_verify "commset-verify"     "$GC/test/commset-verify.vcy"      1
 
@@ -291,9 +291,9 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     known_verify_failure "simple-vector-err" "$GC/simple-vector-err.vcy" "$LOOPMSG"
     known_verify_failure "sollve_dotprod"    "$GC/sollve_dotprod.vcy"    "$LOOPMSG"
     known_verify_failure "commset-potrace"   "$GC/commset-potrace.vcy"   "$LOOPMSG"
-    known_verify_failure "ncb_max_reduce"    "$GC/ncb_max_reduce.vcy"    "$LOOPMSG"
+    known_verify_failure "ncb_max_reduce"    "$GC/test/ncb_max_reduce.vcy"    "$LOOPMSG"
     known_verify_failure "commset"           "$GC/commset.vcy"           "$LOOPMSG"
-    # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
+    # 2d-array and ps-dswp have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).
 
     echo ""
