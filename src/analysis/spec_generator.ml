@@ -273,6 +273,12 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
         (t2, typ2) (* TODO: make sure if it's enough to return *)
 
       | Call (MethodL (id, {pc=Some pc;_}), el) -> (EConst(CInt 0), TInt) (* TODO: make it work when it doesn't have any involved terms *)
+      (* A call with no model (e.g. md5_lower, string_of_int) is an
+         uninterpreted function: its arguments may still be useful terms. *)
+      | Call (MethodL (id, {pc=None; ret_ty; _}), el) ->
+          (EFunc (id, List.map (fun e -> fst (get_exp_term e)) el), ret_ty)
+      | Call (MethodM (id, {rty; _}), el) ->
+          (EFunc (id, List.map (fun e -> fst (get_exp_term e)) el), rty)
       | Exists (_, _, body) | Forall (_, _, body) -> get_exp_term body
       | _ -> failwith @@ sp "get_exp_terms: undefined exp: %s" @@ AstML.string_of_exp e
   in
@@ -512,10 +518,10 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
       terms_list := !terms_list @ t;
       rtn, List.concat args_binds @ binds
     
-    | Call (MethodL (id, {pc=None; _}), el) ->
+    | Call (MethodL (id, {pc=None; ret_ty; _}), el) ->
       let args_rtn, args_binds = List.split @@ List.map (fun exp -> exp_to_smt_exp exp right ~indexed vctrs) el in
       let args_types = List.map (fun e -> sty_of_ty (infer_gstates_type e)) el in
-      let smt_fn = { name = id ; args= args_types; ret = Smt.TInt} in
+      let smt_fn = { name = id ; args= args_types; ret = sty_of_ty ret_ty} in
       if not (List.mem smt_fn !smt_fn_list) then
         smt_fn_list := !smt_fn_list @ [smt_fn];
 
@@ -1065,6 +1071,7 @@ let generate_spec_preamble { methods; globals; structs; lib_methods; _ } = Some 
   
 let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding_vars : (ty binding * ety) list) pre post =
   deref_conds := [];
+  smt_fn_list := [];
   (* let embedding_vars = List.filter (fun ((id, _),_) -> not (String.equal id "argv") ) embedding_vars in *)
   gstates := embedding_vars;
 
@@ -1096,7 +1103,10 @@ let compile_blocks_to_spec (genv: global_env) (blks: block node list) (embedding
   let tloc_arr_names = List.filter_map (fun ((id, ty), _) ->
       if ty = TArr TLoc then Some id else None) embedding_vars in
   let spec = { name = "test"; preamble = preamble; preds = predicates; state_eq = state_equal;
-              precond = pre; postcond = post; state = state; methods= methods; smt_fns = [];
+              precond = pre; postcond = post; state = state; methods= methods;
+              (* Library calls without a model, collected while compiling
+                 the methods above; Servois2 declares them. *)
+              smt_fns = !smt_fn_list;
               tloc_arr_names } in
   let mnames = List.map (fun ({mname = name; _}) -> name) mdecls
   in

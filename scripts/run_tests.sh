@@ -280,6 +280,8 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
     run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
     run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
+    # md5_lower and string_of_int have no model: uninterpreted functions.
+    run_verify "commset-verify"     "$GC/test/commset-verify.vcy"      1
 
     # These loops read their counter or share the block with other code, so
     # they need an invariant; until now verify silently dropped them.
