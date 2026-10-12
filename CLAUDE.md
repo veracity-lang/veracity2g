@@ -9,12 +9,13 @@ make          # build everything → installs ./vcy
 make clean    # remove build artifacts
 ```
 
-The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. The benchmark test suite lives in `test.sh` (invoked by `make test`).
+The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. `make test` runs `scripts/run_tests.sh` (DSWP interp runs, lock synthesis, and NCB/loop verify benchmarks). An older suite, `test.sh` (inferred, verify, prepost, movers, invariants), is not run by `make test`; run it with `bash test.sh`.
 
 ## Tests
 
 ```bash
-make test     # benchmark suite (inferred, verify, prepost, movers) + OUnit2 unit tests
+make test     # scripts/run_tests.sh
+bash test.sh  # older suite: inferred, verify, prepost, movers, invariants
 ```
 
 Requires `cvc5` on `$PATH`. Individual benchmark suites can be run manually:
