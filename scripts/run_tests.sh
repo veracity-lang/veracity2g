@@ -276,11 +276,11 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "blockchain-erc20"   "$GC/blockchain-erc20-1dArray.vcy" 3
     run_verify "motivation"         "$GC/motivation.vcy"               1
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
+    run_verify "vote-run"           "$GC/vote-run.vcy"                 6
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
     run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
     run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
 
-    known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
     # These loops read their counter or share the block with other code, so
     # they need an invariant; until now verify silently dropped them.
     LOOPMSG="loop needs an invariant"
