@@ -8,3 +8,9 @@ src/vcy/vcy_parser.conflicts
 
 # per-run output trees (Rundir)
 veracity_output/
+# stray Servois2 output when no out_dir is set
+servois2_output/
+
+# build outputs installed by make
+/vcy
+/src/run.exe
