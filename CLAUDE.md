@@ -70,7 +70,7 @@ Veracity is an OCaml project built with dune. The source lives entirely under `s
 - `analyze.ml` — translates Veracity ASTs into Servois2 specs and calls the Servois2 library to infer/verify commutativity conditions
 - `spec_generator.ml` — generates YAML-format Servois2 specs from `commute` blocks
 - `interface.ml` — thin wrapper around the Servois2 OCaml library
-- `loop_abstract.ml` — for `verify`, a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/`. Note a loop *without* an invariant that does not qualify is still silently dropped by `Spec_generator` (the `While (_, None, _)` case).
+- `loop_abstract.ml` — for `verify`, a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/`. Any other loop without an invariant (and any other `for` loop, which cannot carry one) is an error in `Spec_generator.compile_block_to_smt`; it used to be silently dropped.
 
 Servois2 is a git submodule at `src/servois2`. It is built by the same dune invocation via the `servois2` opam library. Update the submodule pointer in the top-level repo when servois2 changes.
 

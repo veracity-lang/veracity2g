@@ -917,8 +917,16 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
             ELet (lets,
               ELop (And, [exit_cond; compile_block_to_smt tl vctrs])))
 
-        | While (_, None, _) ->
-          compile_block_to_smt tl vctrs
+        (* A loop we cannot summarise must not be dropped: verifying the
+           block without it would prove something about a different
+           program.  Counter loops that make up a whole commute block are
+           rewritten away beforehand by Loop_abstract. *)
+        | While (_, None, _) | For _ ->
+          failwith (Printf.sprintf
+            "%s: cannot translate this loop in a commute block: give it an \
+             invariant (while (g) invariant I { ... }), or make it the whole \
+             block and drive it by a counter used for nothing else"
+            (Range.string_of_range stmt.loc))
 
         | _ -> compile_block_to_smt tl vctrs
         end

@@ -252,7 +252,8 @@ known_verify_failure() {
 
 # run_loop_abs LABEL BENCH_PATH EXPECT
 #   EXPECT is correct or incorrect (the loop abstraction must fire and give
-#   that verdict) or nofire (a side condition fails, so it must not fire).
+#   that verdict) or nofire (a side condition fails, so it must not fire and
+#   the loop must be rejected rather than dropped).
 run_loop_abs() {
     local label="$1" file="$2" expect="$3"
     local out fired verdict
@@ -260,6 +261,7 @@ run_loop_abs() {
     fired=$(printf '%s\n' "$out" | grep -c '^Loop abstraction:')
     verdict=$(printf '%s\n' "$out" | grep -o 'verified as [a-z]*' | head -1 | cut -d' ' -f3)
     if [[ "$expect" == nofire && "$fired" -eq 0 ]] \
+        && printf '%s\n' "$out" | grep -q 'cannot translate this loop' \
         || [[ "$expect" != nofire && "$fired" -eq 1 && "$verdict" == "$expect" ]]; then
         _record pass "$label" "[$expect]"
     else
@@ -272,20 +274,23 @@ run_loop_abs() {
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
     run_verify "banking"            "$GC/banking.vcy"                  5
     run_verify "blockchain-erc20"   "$GC/blockchain-erc20-1dArray.vcy" 3
-    run_verify "commset-kmeans"     "$GC/commset-kmeans.vcy"           1
     run_verify "motivation"         "$GC/motivation.vcy"               1
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
-    run_verify "simple-vector"      "$GC/simple-vector.vcy"            1
-    run_verify "simple-vector-err"  "$GC/simple-vector-err.vcy"        1
-    run_verify "sollve_dotprod"     "$GC/sollve_dotprod.vcy"           1
-    run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
     run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
     run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
-    run_verify "ncb_max_reduce"     "$GC/ncb_max_reduce.vcy"           1
-    run_verify "commset"            "$GC/commset.vcy"                  1
 
     known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
+    # These loops read their counter or share the block with other code, so
+    # they need an invariant; until now verify silently dropped them.
+    LOOPMSG="loop needs an invariant"
+    known_verify_failure "commset-kmeans"    "$GC/commset-kmeans.vcy"    "$LOOPMSG"
+    known_verify_failure "simple-vector"     "$GC/simple-vector.vcy"     "$LOOPMSG"
+    known_verify_failure "simple-vector-err" "$GC/simple-vector-err.vcy" "$LOOPMSG"
+    known_verify_failure "sollve_dotprod"    "$GC/sollve_dotprod.vcy"    "$LOOPMSG"
+    known_verify_failure "commset-potrace"   "$GC/commset-potrace.vcy"   "$LOOPMSG"
+    known_verify_failure "ncb_max_reduce"    "$GC/ncb_max_reduce.vcy"    "$LOOPMSG"
+    known_verify_failure "commset"           "$GC/commset.vcy"           "$LOOPMSG"
     # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).
 
