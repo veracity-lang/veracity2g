@@ -10,13 +10,23 @@ let generated_tasks = ref []
 let generated_decl_vars = ref []
 let codegen = ref false
 let commutativity_spec_exist = ref false
-(* When set, dot files (pdg.dot, dag-scc.dot, tasks.dot) land here instead of /tmp. *)
+(* Where the dot files (pdg.dot, dag-scc.dot, merged-dag-scc*.dot,
+   tasks.dot) go.  Set by run.ml for --html; otherwise they go in this run's
+   directory (veracity_output/run_NNNN/, or --out-dir / $VERACITY_OUT),
+   allocated on first use.  Rundir.resolve memoizes it in Util.output_root,
+   so a session directory allocated later in the run is the same one. *)
 let output_dir : string option ref = ref None
 
 let dot_out_path name =
-  match !output_dir with
-  | Some d -> Filename.concat d name
-  | None   -> Filename.concat "/tmp" name
+  let dir = match !output_dir with
+    | Some d -> d
+    | None ->
+      let d = Servois2.Rundir.resolve ~root:Util.output_root ~tool:"veracity"
+                ~env_var:"VERACITY_OUT" in
+      output_dir := Some d;
+      d
+  in
+  Filename.concat dir name
 
 type dependency =
 | ControlDep
@@ -1294,11 +1304,11 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
-  print_dag merged_dag "/tmp/merged-dag-scc.dot" dag_pdgnode_to_string;
+  print_dag merged_dag (dot_out_path "merged-dag-scc.dot") dag_pdgnode_to_string;
   let merged_dag_with_added_deps = add_empty_data_dep_edges merged_dag in
   debug_print (lazy "add empty data dependency edges:\n");
   print_dag_debug merged_dag_with_added_deps;
-  print_dag merged_dag_with_added_deps "/tmp/merged-dag-scc2.dot" dag_pdgnode_to_string;
+  print_dag merged_dag_with_added_deps (dot_out_path "merged-dag-scc2.dot") dag_pdgnode_to_string;
   let init_task, tasks = generate_tasks merged_dag_with_added_deps body in 
   if !Util.debug then begin
     Printf.printf "Init Task -> \n %s \n [%s] \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map Int.to_string init_task.jobs));

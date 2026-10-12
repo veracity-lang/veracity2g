@@ -36,7 +36,7 @@ Everything a run writes goes under `./veracity_output/run_NNNN/` (with a `latest
 
 Veracity in turn hands each commute a subdirectory (`commute_NNNN/`) and points Servois2 at it via `Servois2.Util.output_dir`, so the Servois2 queries for a commute land beside the report that describes it. Note `Analyze.phi_of_blocks` allocates that subdir *before* calling `compile_blocks_to_spec`, which writes `veracity_spec.smt` through `Servois2.Util.outfile` — allocate later and the spec escapes into a stray `servois2_output/` tree.
 
-DSWP dot files (`pdg.dot`, `dag-scc.dot`, `tasks.dot`) also land in the session directory when `--html` is set, via `Exe_pdg.output_dir`.
+DSWP dot files (`pdg.dot`, `dag-scc.dot`, `merged-dag-scc*.dot`, `tasks.dot`) land in the run directory via `Exe_pdg.dot_out_path`: the session directory when `--html` set `Exe_pdg.output_dir`, otherwise the run directory resolved on first use (so a plain `--dswp` run also gets a `run_NNNN/`). The exception is `/tmp/autogen_tasks.c` from `--codegen`, which `taskparallel/Makefile` reads from there.
 
 The shared mechanism is `Servois2.Rundir` (`src/servois2/src/rundir.ml`); the root cell for this layer is `Util.output_root`. Each run also writes a `manifest.json` (tool, input, args, result, artifacts, children) using the same schema as the layers above and below.
 
