@@ -1,0 +1,19 @@
+/* A write inside a nested { ... } must be seen; it used to be dropped.
+   Expect: incorrect. */
+commutativity {
+    {f(i_1)}, {f(i_2)} : (true)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 2) {
+        f(i): {
+            { a[0] = i; }
+        }
+        i = i + 1;
+    }
+    return 0;
+}

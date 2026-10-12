@@ -116,7 +116,18 @@ let rec smt_translation (input: Smt.exp) (embedding: embedding_map) : exp =
 let exp_of_phi (phi : Servois2.Phi.disjunction) (embedding: embedding_map) : exp =
   smt_translation (Servois2.Phi.smt_of_disj phi) embedding
   
+(* Loops with a literal trip count are replaced by that many copies of their
+   body; see Loop_abstract.unroll. *)
+let unroll_loops blks =
+  let blks, unrolled = Loop_abstract.unroll blks in
+  List.iter (fun (x, k) ->
+    Printf.eprintf "Loop unrolling: unrolled the loop over %s (%d iterations)\n%!" x k)
+    unrolled;
+  Loop_abstract.check_scopes blks;
+  blks
+
 let phi_of_blocks (genv: global_env) (cv: commute_variant) (blks: block node list) (vars : ty bindlist) pre post =
+  let blks = unroll_loops blks in
   let embedding = generate_embedding_map vars in
   (* Point Servois2 at this commute's subdir *before* compiling the spec:
      compile_blocks_to_spec itself writes veracity_spec.smt through
@@ -306,6 +317,7 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   let embedding = generate_embedding_map vars in
   (* A block that is just a loop over an iteration counter is checked one
      iteration at a time; see Loop_abstract for when that is sound. *)
+  let blks = unroll_loops blks in
   let blks, abstracted = Loop_abstract.abstract ~globals:vars ~cv ~phi:e ~pre ~post blks in
   if abstracted <> [] then
     Printf.eprintf "Loop abstraction: verifying one iteration of the loop(s) over %s\n%!"

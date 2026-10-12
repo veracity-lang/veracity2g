@@ -71,3 +71,29 @@ relative to the Solidity example it cites (`require(sender.weight != 0)`).
 
 To fix: seed the tables in `main` before the vote blocks, and decide whether
 the check should be `weight == 0` (reject voters with no weight).
+
+## Variables declared in a commute block are encoded as shared state
+
+**Status:** open. `commset`, `commset-verify` and `commset-potrace` work
+around it by resetting their block locals (`s = ""; temp = ""; …`) at the end
+of the block.
+
+### Problem
+
+`verify_phis_of_block` (`src/vcy/interp.ml`) adds every `Decl` it meets,
+including those inside labeled blocks, to `global_defs`, so a block-local
+`string s` becomes a state variable that both instances write. The final
+`s` is then whichever block ran last, and verify reports a conflict that
+cannot happen: each instance has its own `s`.
+
+### Proposed fix
+
+Leave variables that every block declares before use out of
+`generate_spec_statesEqual`. They are still part of the state (each method
+binds them on declaration), but no longer compared afterwards. Then drop the
+reset idiom from the benchmarks.
+
+### How to check
+
+Remove the resets from `commset.vcy`; it should still verify as correct.
+

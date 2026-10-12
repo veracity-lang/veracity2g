@@ -1,0 +1,25 @@
+/* The body writes the counter besides its increment, so the trip count is
+   not known: the loop is not unrolled and verify must reject it.
+   Expect: "cannot translate this loop". */
+commutativity {
+    {f(i_1)}, {f(i_2)} : (true)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 2) {
+        f(i): {
+            int k = 0;
+            while (k < 5) {
+                a[0] = a[0] + 1;
+                k = k + 1;
+                if (a[0] > 3) { k = 5; }
+            }
+        }
+        i = i + 1;
+    }
+    return 0;
+}

@@ -1,0 +1,25 @@
+/* The then-branch declares y, shadowing the y read after the if.  The
+   encoder inlines the branch into what follows, so it would read the inner
+   y.  Verify must reject this.  Expect: "used after it". */
+commutativity {
+    {f(i_1)}, {f(i_2)} : (true)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 2) {
+        f(i): {
+            int y = 1;
+            if (a[2] > 0) {
+                int y = 5;
+                a[1] = y;
+            }
+            a[0] = a[0] + y;
+        }
+        i = i + 1;
+    }
+    return 0;
+}

@@ -1,0 +1,25 @@
+/* The block parameter is used only inside the loop body.  Each instance
+   must get its own copy of it (i_1, i_2); if it is left as the shared i,
+   both instances store the same value and the conflict is missed.
+   Expect: incorrect. */
+commutativity {
+    {f(i_1)}, {f(i_2)} : (true)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 2) {
+        f(i): {
+            int k = 0;
+            while (k < 3) {
+                a[k] = i;
+                k = k + 1;
+            }
+        }
+        i = i + 1;
+    }
+    return 0;
+}

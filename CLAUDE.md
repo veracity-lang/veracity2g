@@ -70,7 +70,12 @@ Veracity is an OCaml project built with dune. The source lives entirely under `s
 - `analyze.ml` — translates Veracity ASTs into Servois2 specs and calls the Servois2 library to infer/verify commutativity conditions
 - `spec_generator.ml` — generates YAML-format Servois2 specs from `commute` blocks
 - `interface.ml` — thin wrapper around the Servois2 OCaml library
-- `loop_abstract.ml` — for `verify`, a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/`. Any other loop without an invariant (and any other `for` loop, which cannot carry one) is an error in `Spec_generator.compile_block_to_smt`; it used to be silently dropped.
+- `loop_abstract.ml` — two loop rewrites, applied in `Analyze` before the spec is built:
+  - `unroll` (`verify` and `infer`): a `while` loop with a literal trip count (`x = c0; …; while (x < N) { …; x = x + c; }`, with x written only by its increment, and at most `unroll_limit` = 128 iterations) is replaced by that many copies of its body. It is exact, so completeness still holds. Each iteration is its own scope in the interpreter but the copies are inlined, so a body that declares a name also used before its declaration or outside the loop is not unrolled. Tests: `benchmarks/loop-unroll/`.
+  - `check_scopes`: the encoder inlines nested `{ ... }` blocks and `if` branches into the statements after them, so a name declared inside one and then used afterwards, meaning an outer variable, is rejected rather than misencoded.
+  - `abstract` (`verify` only): a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/`.
+
+  Any other loop without an invariant (and any other `for` loop, which cannot carry one) is an error in `Spec_generator.compile_block_to_smt`; it used to be silently dropped.
 
 Servois2 is a git submodule at `src/servois2`. It is built by the same dune invocation via the `servois2` opam library. Update the submodule pointer in the top-level repo when servois2 changes.
 

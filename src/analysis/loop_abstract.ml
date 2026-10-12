@@ -256,3 +256,202 @@ let abstract ~(globals : ty bindlist) ~(cv : commute_variant)
           | None -> b
           | Some l -> node_up b l.body) blks loops,
         List.filter_map (Option.map (fun l -> l.counter)) loops
+
+(* Constant-trip-count unrolling.
+
+     x = c0;  ...;  while (x < n) { ...; x = x + c; ... }
+
+   with c0, n and c > 0 integer literals runs exactly ceil((n - c0) / c)
+   times (or zero), so it can be replaced by that many copies of its body.
+   Unlike [abstract] this is exact, so the completeness check still means
+   what it says, and it works for a loop anywhere in a block, not only one
+   that makes up the whole block.
+
+   The count is only known if, between the initialisation and the loop,
+   nothing writes x (no impure user method call, which might), and inside
+   the body x is written only by its single top-level increment.  Bodies
+   that may [return] or [raise] are left alone. *)
+
+let unroll_limit = 128
+
+let const_int (e : exp node) = match e.elt with CInt n -> Some n | _ -> None
+
+(* [x = c] or [T x = c]. *)
+let const_init_of (s : stmt node) : (id * int64) option =
+  match s.elt with
+  | Assn ({ elt = Id x; _ }, e) | Decl (x, (_, e)) ->
+      Option.map (fun n -> (x, n)) (const_int e)
+  | _ -> None
+
+(* [x = x + c] or [x = c + x] with a literal c > 0. *)
+let positive_step_of (s : stmt node) : (id * int64) option =
+  let pos e = match const_int e with Some c when c > 0L -> Some c | _ -> None in
+  let step i c = Option.map (fun c -> (i, c)) (pos c) in
+  match s.elt with
+  | Assn ({ elt = Id i; _ }, { elt = Bop (Add, { elt = Id j; _ }, c); _ }) when i = j -> step i c
+  | Assn ({ elt = Id i; _ }, { elt = Bop (Add, c, { elt = Id j; _ }); _ }) when i = j -> step i c
+  | _ -> None
+
+(* The loop runs while [x < bound] (exclusive bound). *)
+let exclusive_bound_of (x : id) (guard : exp node) : int64 option =
+  match guard.elt with
+  | Bop (Lt, { elt = Id y; _ }, n) when y = x -> const_int n
+  | Bop (Gt, n, { elt = Id y; _ }) when y = x -> const_int n
+  | Bop (Lte, { elt = Id y; _ }, n) when y = x -> Option.map Int64.succ (const_int n)
+  | Bop (Gte, n, { elt = Id y; _ }) when y = x -> Option.map Int64.succ (const_int n)
+  | _ -> None
+
+(* None when the writes cannot be determined. *)
+let writes (b : block) : S.t option =
+  match Spec_generator.loop_modified_vars b with
+  | ws -> Some (S.of_list ws)
+  | exception Failure _ -> None
+
+let calls_impure_method (b : block) =
+  List.exists (fun (user, pure, _) -> user && not pure) (calls_of_block b)
+
+(* The interpreter gives every iteration its own scope, but the copies are
+   inlined into one sequence, so a declaration in one copy stays visible in
+   the next copy and after the loop.  That is harmless exactly when no name
+   the body declares can mean anything else: each is declared once, at the
+   top level of the body, is not mentioned before its declaration, and is
+   not mentioned anywhere in the block outside the loop ([outside]).  A body
+   that redeclares an outer variable (say [y = y + 1; int y = 0;]) is not
+   unrolled. *)
+let scoping_ok (outside : S.t) (body : block) : bool =
+  let declared = List.map fst (decls_of_block body) in
+  let top_decl x (s : stmt node) = match s.elt with Decl (y, _) -> y = x | _ -> false in
+  List.length declared = S.cardinal (S.of_list declared)
+  && List.for_all (fun x ->
+       not (S.mem x outside)
+       && match List.find_index (top_decl x) body with
+          | None -> false
+          | Some i -> List.for_all (fun s -> not (S.mem x (ids_of_stmt s)))
+                        (List.filteri (fun j _ -> j < i) body))
+     declared
+
+(* The number of iterations of [while (guard) body] when x = c0 on entry. *)
+let trip_count (known : (id * int64) list) (outside : S.t)
+    (guard : exp node) (body : block) : (id * int) option =
+  List.find_map (fun s ->
+    match positive_step_of s with
+    | None -> None
+    | Some (x, c) ->
+      match List.assoc_opt x known, exclusive_bound_of x guard with
+      | Some c0, Some n ->
+          let rest = List.filter (fun s' -> s' != s) body in
+          let x_written_elsewhere = match writes rest with
+            | Some ws -> S.mem x ws
+            | None -> true
+          in
+          if List.length rest <> List.length body - 1
+             || x_written_elsewhere || escapes body || calls_impure_method rest
+             || not (scoping_ok outside body)
+          then None
+          else
+            let span = Int64.sub n c0 in
+            let k = if span <= 0L then 0L else Int64.(div (add span (sub c 1L)) c) in
+            if k > Int64.of_int unroll_limit then None else Some (x, Int64.to_int k)
+      | _ -> None) body
+
+(* Unroll every such loop in a block, including nested ones.  [known] maps
+   variables to the literal they were last set to on every path here;
+   [outside] holds every name mentioned in the enclosing commute block
+   outside this block.  Returns the new block and the (counter, iterations)
+   of each loop unrolled. *)
+let rec unroll_block (known : (id * int64) list) (outside : S.t) (b : block)
+  : block * (id * int) list =
+  let rec go known before = function
+    | [] -> [], []
+    | (s : stmt node) :: tl ->
+      (* Everything in this block except [s] counts as outside for [s]. *)
+      let outside_s = S.union outside (S.union before (ids_of_block tl)) in
+      let forget ws known = match ws with
+        | Some ws -> List.filter (fun (x, _) -> not (S.mem x ws)) known
+        | None -> []
+      in
+      let loop_body guard inv body =
+        let outside_b = S.union outside_s
+            (S.union (ids_of_exp guard) (Option.fold ~none:S.empty ~some:ids_of_exp inv)) in
+        unroll_block [] outside_b body.elt
+      in
+      let s', here, known' =
+        match s.elt with
+        | While (guard, None, body) ->
+          let body', inner = loop_body guard None body in
+          begin match trip_count known outside_s guard body.elt with
+          | Some (x, k) ->
+            let copies = List.init k (fun _ -> node_up s (SBlock (None, node_up body body'))) in
+            copies, (x, k) :: inner,
+            forget (Option.map (S.add x) (writes body.elt)) known
+          | None ->
+            [ node_up s (While (guard, None, node_up body body')) ], inner,
+            forget (writes body.elt) known
+          end
+        | While (guard, Some inv, body) ->
+          let body', inner = loop_body guard (Some inv) body in
+          [ node_up s (While (guard, Some inv, node_up body body')) ], inner,
+          forget (writes body.elt) known
+        | If (c, b1, b2) ->
+          let o1 = S.union outside_s (S.union (ids_of_exp c) (ids_of_block b2.elt)) in
+          let o2 = S.union outside_s (S.union (ids_of_exp c) (ids_of_block b1.elt)) in
+          let b1', u1 = unroll_block known o1 b1.elt in
+          let b2', u2 = unroll_block known o2 b2.elt in
+          [ node_up s (If (c, node_up b1 b1', node_up b2 b2')) ], u1 @ u2,
+          forget (writes [ s ]) known
+        | SBlock (l, inner) ->
+          let inner', u = unroll_block known outside_s inner.elt in
+          [ node_up s (SBlock (l, node_up inner inner')) ], u, forget (writes [ s ]) known
+        | _ -> [ s ], [], forget (writes [ s ]) known
+      in
+      let known' = if calls_impure_method [ s ] then [] else known' in
+      let known' = match const_init_of s with
+        | Some (x, n) -> (x, n) :: List.remove_assoc x known'
+        | None -> known'
+      in
+      let tl', rest = go known' (S.union before (ids_of_stmt s)) tl in
+      s' @ tl', here @ rest
+  in
+  go known S.empty b
+
+let unroll (blks : block node list) : block node list * (id * int) list =
+  let pairs = List.map (fun b -> let b', u = unroll_block [] S.empty b.elt in node_up b b', u) blks in
+  List.map fst pairs, List.concat_map snd pairs
+
+(* The encoder inlines nested blocks and if-branches into the statements
+   after them (Spec_generator.compile_block_to_smt), but the interpreter
+   ends their scope there.  So a name declared inside one must not be used
+   afterwards except after a fresh declaration of its own: such a use means
+   an outer variable that the inlined declaration would shadow.  Reject the
+   block rather than encode a different program. *)
+let check_scopes (blks : block node list) : unit =
+  (* The statements as the encoder sees them: nested blocks inlined. *)
+  let rec flat (b : block) = List.concat_map (fun (s : stmt node) ->
+    match s.elt with SBlock (_, inner) -> flat inner.elt | _ -> [ s ]) b in
+  let used_after x (after : block) =
+    match List.find_opt (fun s -> S.mem x (ids_of_stmt s)) (flat after) with
+    | None -> false
+    | Some { elt = Decl (y, (_, e)); _ } -> not (y = x && not (S.mem x (ids_of_exp e)))
+    | Some _ -> true
+  in
+  let rec go (b : block) = match b with
+    | [] -> ()
+    | (s : stmt node) :: tl ->
+      let scope (inner : block node) =
+        List.iter (fun (x, _) ->
+          if used_after x tl then
+            failwith (Printf.sprintf
+              "%s: %s is declared in this nested scope and used after it, where \
+               it means another variable; rename one of them"
+              (Range.string_of_range inner.loc) x))
+          (decls_of_block inner.elt);
+        go inner.elt
+      in
+      (match s.elt with
+       | SBlock (_, inner) -> scope inner
+       | If (_, b1, b2) -> scope b1; scope b2
+       | While (_, _, body) | For (_, _, _, body) -> go body.elt
+       | _ -> ());
+      go tl
+  in
+  List.iter (fun b -> go b.elt) blks

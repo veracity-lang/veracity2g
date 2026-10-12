@@ -57,9 +57,11 @@ int main(int argc, string[] argv) {
         new_centers_len[index] = new_centers_len[index] + 1;
         mutex_unlock(1);
         
-        /* loop over features */
+        /* loop over features.  The bound is nFeatures written as a
+           literal: verify starts from an arbitrary state, where nFeatures
+           is unknown, but a literal trip count lets it unroll the loop. */
         k=0; 
-        while(k<nFeatures) {
+        while(k<100) {
           mutex_lock(2);
           new_centers[k] = new_centers[k] + 1;
           mutex_unlock(2);

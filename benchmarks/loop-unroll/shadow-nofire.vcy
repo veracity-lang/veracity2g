@@ -1,0 +1,28 @@
+/* The body declares y, which shadows the y read after the loop.  The
+   interpreter scopes each iteration, so the a[0] = y below reads the outer
+   y; inlined copies would make it read the inner one.  The loop must not
+   be unrolled.  Expect: "cannot translate this loop". */
+commutativity {
+    {f(i_1)}, {f(i_2)} : (true)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 2) {
+        f(i): {
+            int y = 1;
+            int k = 0;
+            while (k < 3) {
+                int y = 5;
+                a[1] = a[1] + y;
+                k = k + 1;
+            }
+            a[0] = a[0] + y;
+        }
+        i = i + 1;
+    }
+    return 0;
+}

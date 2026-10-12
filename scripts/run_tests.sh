@@ -250,6 +250,31 @@ known_verify_failure() {
     XFAIL=$((XFAIL + 1))
 }
 
+# run_loop_unroll LABEL BENCH_PATH EXPECT
+#   EXPECT is correct or incorrect (the first verdict printed), nofire
+#   (no loop may be unrolled, and verify must reject the loop), or reject
+#   (verify must refuse a declaration that shadows a later use).
+run_loop_unroll() {
+    local label="$1" file="$2" expect="$3"
+    local out verdict ok=0
+    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 2>&1)
+    verdict=$(printf '%s\n' "$out" | grep -o 'verified as [a-z]*' | head -1 | cut -d' ' -f3)
+    case "$expect" in
+        nofire)
+            ! printf '%s\n' "$out" | grep -q '^Loop unrolling:' \
+                && printf '%s\n' "$out" | grep -q 'cannot translate this loop' && ok=1 ;;
+        reject)
+            printf '%s\n' "$out" | grep -q 'used after it' && ok=1 ;;
+        *)
+            [[ "$verdict" == "$expect" ]] && ok=1 ;;
+    esac
+    if [[ "$ok" -eq 1 ]]; then
+        _record pass "$label" "[$expect]"
+    else
+        _record fail "$label" "[verdict=${verdict:-none}, want $expect]"
+    fi
+}
+
 # run_loop_abs LABEL BENCH_PATH EXPECT
 #   EXPECT is correct or incorrect (the loop abstraction must fire and give
 #   that verdict) or nofire (a side condition fails, so it must not fire and
@@ -282,19 +307,31 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "ncb_histogram"      "$GC/test/ncb_histogram.vcy"            1
     # md5_lower and string_of_int have no model: uninterpreted functions.
     run_verify "commset-verify"     "$GC/test/commset-verify.vcy"      1
+    # The inner 10x / nFeatures loops have literal trip counts and are unrolled.
+    run_verify "commset"            "$GC/commset.vcy"                  1
+    run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
+    run_verify "commset-kmeans"     "$GC/commset-kmeans.vcy"           1
 
     # These loops read their counter or share the block with other code, so
     # they need an invariant; until now verify silently dropped them.
     LOOPMSG="loop needs an invariant"
-    known_verify_failure "commset-kmeans"    "$GC/commset-kmeans.vcy"    "$LOOPMSG"
     known_verify_failure "simple-vector"     "$GC/other/simple-vector.vcy"     "$LOOPMSG"
     known_verify_failure "simple-vector-err" "$GC/other/simple-vector-err.vcy" "$LOOPMSG"
     known_verify_failure "sollve_dotprod"    "$GC/other/sollve_dotprod.vcy"    "$LOOPMSG"
-    known_verify_failure "commset-potrace"   "$GC/commset-potrace.vcy"   "$LOOPMSG"
     known_verify_failure "ncb_max_reduce"    "$GC/test/ncb_max_reduce.vcy"    "$LOOPMSG"
-    known_verify_failure "commset"           "$GC/commset.vcy"           "$LOOPMSG"
     # 2d-array and ps-dswp have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).
+
+    echo ""
+    echo "=== Loop unrolling and block encoding (vcy verify --prover cvc5) ==="
+    LU="../benchmarks/loop-unroll"
+    run_loop_unroll "lu mid-block-ok"         "$LU/mid-block-ok.vcy"         correct
+    run_loop_unroll "lu param-in-loop-bad"    "$LU/param-in-loop-bad.vcy"    incorrect
+    run_loop_unroll "lu nested-block-bad"     "$LU/nested-block-bad.vcy"     incorrect
+    run_loop_unroll "lu counter-written"      "$LU/counter-written-nofire.vcy" nofire
+    run_loop_unroll "lu shadow"               "$LU/shadow-nofire.vcy"        nofire
+    run_loop_unroll "lu use-before-decl"      "$LU/use-before-decl-nofire.vcy" nofire
+    run_loop_unroll "lu if-shadow"            "$LU/if-shadow-reject.vcy"     reject
 
     echo ""
     echo "=== Counter-loop abstraction (vcy verify --prover cvc5) ==="
