@@ -1215,58 +1215,66 @@ let find_corresponding a b s =
   else Some (List.nth a idx)
     
 
-let rec substitute_vars_exp (args_in: exp node list) (args_out: exp node list) exp = 
-  let e = match exp.elt with 
-  | CStr _ | Id _ -> find_corresponding args_in args_out exp
-  | Index (e1, e2) -> Some (node_up exp (Index (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)))
-  | Bop (op, e1, e2) -> Some (node_up exp @@ Bop (op, substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2))
-  | Uop (op, e) -> Some (node_up exp @@ Uop (op, substitute_vars_exp args_in args_out e))
-  | CallRaw (id, el) -> Some (node_up exp @@ CallRaw (id, List.map (substitute_vars_exp args_in args_out) el))
-  | Call (method_variant, el) -> Some (node_up exp @@ Call (method_variant, List.map (substitute_vars_exp args_in args_out) el))
-  | CNull _ | CBool _ | CInt _ -> None
-  | _ -> None
-  (* 
-  | CArr of ty * exp node list
-  | NewArr of ty * exp node
-  | NewHashTable of hashtable_variant * ty * ty
-  | Ternary of exp node * exp node * exp node
-  | CStruct of id * exp node bindlist
-  | Proj of exp node * id
-    *)
-  in 
-  match e with
-  | None -> exp 
-  | Some ex -> ex
-    
-let rec substitute_vars_block (args_in: exp node list) (args_out: exp node list) block = 
-  match block with 
-  | [] -> block
-  | s::tl -> 
-  let s' = begin match s.elt with 
-  | Assn (e1,e2) -> Assn (substitute_vars_exp args_in args_out e1, substitute_vars_exp args_in args_out e2)
-  | If (e,b1,b2) -> If (substitute_vars_exp args_in args_out e, node_up b1 @@ substitute_vars_block args_in args_out b1.elt, node_up b2 @@ substitute_vars_block args_in args_out b2.elt)
-  | Ret (Some e) -> Ret (Some (substitute_vars_exp args_in args_out e))
-  | Decl (id, (ty, e)) -> Decl (id,(ty,substitute_vars_exp args_in args_out e))
-  | SCallRaw (id, el) -> SCallRaw (id, List.map (substitute_vars_exp args_in args_out) el)
-  | SCall (method_variant, el) -> SCall (method_variant, List.map (substitute_vars_exp args_in args_out) el)
-  (* 
-  
-  | For of vdecl list * exp node option * stmt node option * block node
-  | While of exp node * block node
-  | Raise of exp node
-  | Commute of commute_variant * commute_condition * block node list
-  | Assert of exp node
-  | Assume of exp node
-  | Havoc of id
-  | Require of exp node
-  | SBlock of blocklabel option * block node
-  | GCommute of commute_variant * commute_condition * commute_pre_cond * block node list * commute_post_cond
-  | SendDep of int * ((ty * id) list) (* only for dependency of tasks *)
-  | SendEOP of int *)
-  | _ -> s.elt
-  end 
-  in (node_up s s') :: substitute_vars_block args_in args_out tl
-  
+(* Rename a labeled block's parameters to the instances named in the
+   commutativity section (f(i) used as f(i_1) and f(i_2)).  This has to reach
+   every expression in the block: a parameter left unrenamed inside a loop or
+   a nested block stays the one shared variable, so the two instances look
+   identical there and a conflict between them goes unseen. *)
+let rec substitute_vars_exp (args_in: exp node list) (args_out: exp node list) exp =
+  let sub = substitute_vars_exp args_in args_out in
+  let up e = node_up exp e in
+  match exp.elt with
+  | CStr _ | Id _ ->
+    Option.value ~default:exp (find_corresponding args_in args_out exp)
+  | CNull _ | CBool _ | CInt _ | NewHashTable _ -> exp
+  | CArr (t, el) -> up @@ CArr (t, List.map sub el)
+  | NewArr (t, e) -> up @@ NewArr (t, sub e)
+  | Index (e1, e2) -> up @@ Index (sub e1, sub e2)
+  | Bop (op, e1, e2) -> up @@ Bop (op, sub e1, sub e2)
+  | Uop (op, e) -> up @@ Uop (op, sub e)
+  | CallRaw (id, el) -> up @@ CallRaw (id, List.map sub el)
+  | Call (mv, el) -> up @@ Call (mv, List.map sub el)
+  | Ternary (a, b, c) -> up @@ Ternary (sub a, sub b, sub c)
+  | CStruct (id, fs) -> up @@ CStruct (id, List.map (fun (f, e) -> (f, sub e)) fs)
+  | Proj (e, f) -> up @@ Proj (sub e, f)
+  | HeapAlloc (a, b) -> up @@ HeapAlloc (sub a, sub b)
+  | HeapValue (a, b) -> up @@ HeapValue (sub a, sub b)
+  | HDerefValue e -> up @@ HDerefValue (sub e)
+  | HDerefNext e -> up @@ HDerefNext (sub e)
+  | Exists (x, t, e) | Forall (x, t, e) ->
+    (* A bound variable shadows a parameter of the same name. *)
+    let keep = List.map (fun a -> a.elt <> Id x) args_in in
+    let filt l = List.filteri (fun i _ -> List.nth keep i) l in
+    let e' = substitute_vars_exp (filt args_in) (filt args_out) e in
+    up @@ (match exp.elt with Exists _ -> Exists (x, t, e') | _ -> Forall (x, t, e'))
+
+let rec substitute_vars_block (args_in: exp node list) (args_out: exp node list) block =
+  let sub = substitute_vars_exp args_in args_out in
+  let sub_blk b = node_up b @@ substitute_vars_block args_in args_out b.elt in
+  let sub_stmt (s : stmt node) = List.hd (substitute_vars_block args_in args_out [s]) in
+  List.map (fun (s : stmt node) ->
+    let s' = match s.elt with
+      | Assn (e1, e2) -> Assn (sub e1, sub e2)
+      | Decl (id, (ty, e)) -> Decl (id, (ty, sub e))
+      | Ret eo -> Ret (Option.map sub eo)
+      | SCallRaw (id, el) -> SCallRaw (id, List.map sub el)
+      | SCall (mv, el) -> SCall (mv, List.map sub el)
+      | If (e, b1, b2) -> If (sub e, sub_blk b1, sub_blk b2)
+      | For (vds, eo, so, b) ->
+        For (List.map (fun (id, (ty, e)) -> (id, (ty, sub e))) vds,
+             Option.map sub eo, Option.map sub_stmt so, sub_blk b)
+      | While (e, inv, b) -> While (sub e, Option.map sub inv, sub_blk b)
+      | Raise e -> Raise (sub e)
+      | Assert e -> Assert (sub e)
+      | Assume e -> Assume (sub e)
+      | Havoc e -> Havoc (sub e)
+      | Require e -> Require (sub e)
+      | SBlock (l, b) -> SBlock (l, sub_blk b)
+      | Commute (cv, phi, bl, pre, post) -> Commute (cv, phi, List.map sub_blk bl, pre, post)
+      | SendDep _ | SendEOP _ -> s.elt
+    in
+    node_up s s') block
+
 let infer_phis_of_global_commutativity (g : global_env) (defs : ty bindlist) : group_commute node list = 
   let rec interp_group_commute (gc: group_commute node list) : group_commute node list = 
     begin match gc with 

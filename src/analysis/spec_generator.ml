@@ -617,6 +617,7 @@ and loop_modified_in_stmt (stmt : stmt node) : string list =
       List.map (fun (id, _) -> id) vds @ loop_modified_vars body.elt
   | Commute (_, _, blocks, _, _) ->
       List.concat_map (fun b -> loop_modified_vars b.elt) blocks
+  | SBlock (_, b) -> loop_modified_vars b.elt
   | _ -> []
 
 let compile_block_to_smt_exp (genv: global_env) (b : block) =
@@ -741,9 +742,20 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
         | Decl (id, (ty, expn)) ->
           let e_rtn, e_binds = exp_to_smt_exp expn right vctrs in
           let conds = consume_deref_conds () in
-
+          (* Binding the bare name is only right while [id] has no versions
+             yet.  Once it has (a redeclaration, e.g. in an unrolled loop
+             body, or after a library call bumped it), later reads use the
+             latest version, so the declaration must create the next one,
+             as an assignment does. *)
+          let target = match Hashtbl.find_opt vctrs id with
+            | Some n when !n > 0 ->
+              (match fst @@ exp_to_smt_exp (no_loc (Id id)) left vctrs with
+               | EVar v -> v
+               | _ -> failwith "declaration target should be a variable")
+            | _ -> Var id
+          in
           with_conds conds @@
-            bind e_binds @@ ELet ([(Var id, e_rtn)], compile_block_to_smt tl vctrs)
+            bind e_binds @@ ELet ([(target, e_rtn)], compile_block_to_smt tl vctrs)
 
         | If (exn, bln1, bln2) ->  
           (* requires := !requires ^ ("(" ^ (exp_to_smt_exp exn 0)^ ")"); *)
@@ -779,6 +791,10 @@ let compile_block_to_smt_exp (genv: global_env) (b : block) =
           Hashtbl.replace vctrs dst_id (ref(embedding_type_index + 1)) ;
 
           bind binds @@ compile_block_to_smt tl vctrs
+
+        (* A nested { ... } runs inline, as an If branch does.  It used to
+           fall through to the catch-all below and be dropped. *)
+        | SBlock (_, b) -> compile_block_to_smt (b.elt @ tl) vctrs
 
         | Commute (_, _, blks, _, _) -> 
           (* List.map (fun {elt=bl; _} -> compile_block_to_smt bl ) blks *)
@@ -1359,6 +1375,8 @@ let generate_assert_vcs (b: block) (extra_vars: embedding_map ref) : (Range.t * 
                 wrap (EExists ([(Var havoc_id, havoc_sty)], ELet ([new_id, exp_smt], k))))
             with _ -> go tl vctrs wrap end
           end
+
+      | SBlock (_, b) -> go (b.elt @ tl) vctrs wrap
 
       (* ── Conditional ─────────────────────────────────────────────── *)
       | If (cond_exp, then_blk, else_blk) ->
