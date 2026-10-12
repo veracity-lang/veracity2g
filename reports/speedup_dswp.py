@@ -91,9 +91,9 @@ def prep_potrace(n):
 
 # Program name, followed by any command line arguments
 benchmarks : List[Benchmark] = [
-    ("benchmarks/ncb/sollve_dotprod.vcy", lambda n : [str(n)]),
-    ("benchmarks/ncb/simple-vector.vcy", lambda n : [str(n)]),
-    ("benchmarks/ncb/2d-array.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/other/sollve_dotprod.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/other/simple-vector.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/other/2d-array.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/vote-run.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/commset.vcy", prep_commset),
     ("benchmarks/ncb/multi-blocks.vcy", lambda n : [str(n)]),

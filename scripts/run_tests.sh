@@ -98,9 +98,9 @@ echo "=== speedup_dswp benchmarks (n=1, sequential) ==="
 
 GC="../benchmarks/ncb"
 
-run_once "sollve_dotprod"       "$GC/sollve_dotprod.vcy"           1
-run_once "simple-vector"        "$GC/simple-vector.vcy"            1
-run_once "2d-array"             "$GC/2d-array.vcy"                 1
+run_once "sollve_dotprod"       "$GC/other/sollve_dotprod.vcy"     1
+run_once "simple-vector"        "$GC/other/simple-vector.vcy"      1
+run_once "2d-array"             "$GC/other/2d-array.vcy"           1
 run_once "vote-run"             "$GC/vote-run.vcy"                 1
 run_once "commset"              "$GC/commset.vcy" \
     "$TMPF/a.txt" "$TMPF/b.txt" "$TMPF/c.txt" "$TMPF/d.txt"
@@ -287,9 +287,9 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     # they need an invariant; until now verify silently dropped them.
     LOOPMSG="loop needs an invariant"
     known_verify_failure "commset-kmeans"    "$GC/commset-kmeans.vcy"    "$LOOPMSG"
-    known_verify_failure "simple-vector"     "$GC/simple-vector.vcy"     "$LOOPMSG"
-    known_verify_failure "simple-vector-err" "$GC/simple-vector-err.vcy" "$LOOPMSG"
-    known_verify_failure "sollve_dotprod"    "$GC/sollve_dotprod.vcy"    "$LOOPMSG"
+    known_verify_failure "simple-vector"     "$GC/other/simple-vector.vcy"     "$LOOPMSG"
+    known_verify_failure "simple-vector-err" "$GC/other/simple-vector-err.vcy" "$LOOPMSG"
+    known_verify_failure "sollve_dotprod"    "$GC/other/sollve_dotprod.vcy"    "$LOOPMSG"
     known_verify_failure "commset-potrace"   "$GC/commset-potrace.vcy"   "$LOOPMSG"
     known_verify_failure "ncb_max_reduce"    "$GC/test/ncb_max_reduce.vcy"    "$LOOPMSG"
     known_verify_failure "commset"           "$GC/commset.vcy"           "$LOOPMSG"

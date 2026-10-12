@@ -242,7 +242,7 @@ Useful options include:
 Infer conditions for NCBs whose condition is `_`:
 
 ```bash
-./vcy infer benchmarks/ncb/vote-infer.vcy --prover cvc5
+./vcy infer benchmarks/ncb/other/vote-infer.vcy --prover cvc5
 ```
 
 Inference can be limited with:
@@ -310,21 +310,21 @@ NCB examples are located in `benchmarks/ncb/`.
 
 | Benchmark                      | Illustrates                                               | Example arguments          |
 | ------------------------------ | --------------------------------------------------------- | -------------------------- |
-| `ncb_dot_product.vcy`          | Self-commuting loop body and synthesized reduction lock   | `4`                        |
-| `ncb_histogram.vcy`            | `(true)` condition and shared bucket update               | `8`                        |
-| `ncb_max_reduce.vcy`           | Max-reduction pattern                                     | `10`                       |
+| `test/ncb_dot_product.vcy`     | Self-commuting loop body and synthesized reduction lock   | `4`                        |
+| `test/ncb_histogram.vcy`       | `(true)` condition and shared bucket update               | `8`                        |
+| `test/ncb_max_reduce.vcy`      | Max-reduction pattern                                     | `10`                       |
 | `motivation.vcy`               | Paper running example with conditional commutativity      | `100 10`                   |
 | `banking.vcy`                  | Deposits, withdrawals, and transfers on distinct accounts | `1 100 1000`               |
-| `blockchain-erc20-1dArray.vcy` | ERC20 transfers                                           | `1 1 2`                    |
+| `erc20.vcy`                    | ERC20 transfers                                           | `1 1 2`                    |
 | `vote-run.vcy`                 | Smart-contract voting                                     | `1`                        |
 | `multi-blocks.vcy`             | Multiple NCBs and hashtable conditions                    | `1`                        |
 | `simple-io.vcy`                | Commutativity involving file I/O                          | Four file paths            |
 | `commset.vcy`                  | Benchmark adapted from CommSet                            | See `scripts/run_tests.sh` |
 | `commset-kmeans.vcy`           | Benchmark adapted from CommSet                            | See `scripts/run_tests.sh` |
 | `commset-potrace.vcy`          | Benchmark adapted from CommSet                            | See `scripts/run_tests.sh` |
-| `sollve_dotprod.vcy`           | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
-| `simple-vector.vcy`            | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
-| `2d-array.vcy`                 | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
+| `other/sollve_dotprod.vcy`     | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
+| `other/simple-vector.vcy`      | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
+| `other/2d-array.vcy`           | Benchmark adapted from PS-DSWP / SOLLVE                   | `1`                        |
 
 ## Building
 
