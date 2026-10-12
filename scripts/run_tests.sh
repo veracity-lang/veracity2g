@@ -266,8 +266,8 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "ncb_dot_product"    "$GC/ncb_dot_product.vcy"          1
     run_verify "ncb_histogram"      "$GC/ncb_histogram.vcy"            1
     run_verify "ncb_max_reduce"     "$GC/ncb_max_reduce.vcy"           1
+    run_verify "commset"            "$GC/commset.vcy"                  1
 
-    known_verify_failure "commset"         "$GC/commset.vcy"         "Index of a non-Arr, non-HT"
     known_verify_failure "vote-run"        "$GC/vote-run.vcy"        "Failure \"bad input\""
     # 2d-array and ps-dswp-ek have no commutativity conditions; vote-infer
     # uses `_` (infer, not verify).
