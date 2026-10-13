@@ -9,6 +9,9 @@ which instances of these regions commute. V2G can then verify these
 conditions, transform the program into parallel tasks, synthesize locks,
 and execute the result on a multicore runtime.
 
+The source code is available on GitHub:
+<https://github.com/veracity-lang/veracity2g>.
+
 ## Quick Start
 
 The provided artifact VM already contains the required dependencies and
@@ -48,20 +51,16 @@ index and `arr[i_1] > 0`.
 After building, the main workflow can be run with:
 
 ```bash
-# 1. Inspect the transformed program
-./vcy parse --synthesize-locks --pretty \
-    benchmarks/ncb/motivation.vcy
-
-# 2. Verify the commutativity condition
+# 1. Verify the commutativity condition
 ./vcy verify benchmarks/ncb/motivation.vcy --prover cvc5
 
-# 3. Run sequentially
+# 2. Run sequentially
 ./vcy interp benchmarks/ncb/motivation.vcy 100 10
 
-# 4. Run in parallel with synthesized locks
-./vcy interp --dswp benchmarks/ncb/motivation.vcy 100 10
+# 3. Run in parallel with synthesized locks
+./vcy interp --dswp --synthesize-locks benchmarks/ncb/motivation.vcy 100 10
 
-# 5. Optionally infer the commutativity condition (You need to remove the condition first and replace it with _)
+# 4. Optionally infer the commutativity condition (You need to remove the condition first and replace it with _)
 ./vcy infer benchmarks/ncb/motivation.vcy --prover cvc5 --poke2 --timeout=30
 ```
 
@@ -73,23 +72,9 @@ The two arguments `100 10` are passed to `main` as `argv`:
 The sequential and parallel executions should produce the same return
 value.
 
-The four main commands are described in more detail below.
+The three main commands are described in more detail below.
 
-### 1. Parse
-
-Inspect the transformed program without executing it:
-
-```bash
-./vcy parse \
-    --synthesize-locks \
-    --pretty \
-    benchmarks/ncb/motivation.vcy
-```
-
-This is useful for inspecting the locks synthesized for shared state and
-understanding the program transformation.
-
-### 2. Verify
+### 1. Verify
 
 Check that the commutativity condition is sound:
 
@@ -104,7 +89,7 @@ An unsound condition can allow non-commuting blocks to execute
 concurrently, so conditions should be verified before parallel
 execution.
 
-### 3. Interpret
+### 2. Interpret
 
 Run the benchmark sequentially:
 
@@ -133,7 +118,22 @@ Return: N
 
 where `N` is the return value of `main`.
 
-### 4. Infer
+Lock synthesis operates on the parallel tasks produced by the DSWP
+transformation, not on the sequential program, so `--synthesize-locks`
+is always used together with `--dswp`.
+
+To see the synchronization that V2G generates for the tasks, add
+`--codegen`:
+
+```bash
+./vcy interp --dswp --synthesize-locks benchmarks/ncb/commset.vcy --codegen
+```
+
+This writes the generated C code to `/tmp/autogen_tasks.c`, where you
+can inspect the semaphores (`sem_t`, `sem_init`, `sem_wait`,
+`sem_post`) generated to enforce the dependencies between tasks.
+
+### 3. Infer
 
 V2G can also infer a commutativity condition. Replace the explicit
 condition in `motivation.vcy` with `_`:
@@ -259,12 +259,6 @@ Parse and inspect a program:
 ./vcy parse --pretty program.vcy
 ```
 
-To inspect synthesized locks:
-
-```bash
-./vcy parse --synthesize-locks --pretty program.vcy
-```
-
 ### `interp`
 
 Run a program sequentially:
@@ -293,6 +287,7 @@ Important options:
 | `--threads N`           | Worker pool size; default is 8                 |
 | `--synthesize-locks`    | Insert fine-grained locks                      |
 | `--emit-tasks`          | Print generated task bodies and exit           |
+| `--codegen`             | Write generated C to `/tmp/autogen_tasks.c`    |
 | `--html` / `--htmlopen` | Generate a PDG, SCC DAG, and task-graph report |
 | `--time`                | Print execution time                           |
 | `--force-sequential`    | Disable parallel execution                     |
@@ -425,6 +420,27 @@ effect. Check that an invariant is inductive with:
 ```bash
 ./vcy invariants benchmarks/invariants/inc.vcy --prover cvc5
 ```
+
+### Loop support
+
+Loops inside a block being verified are supported in one of three ways:
+
+1. **User-provided loop invariants.** A `while` loop annotated with an
+   `invariant` is encoded by its invariant, as described above.
+2. **Unrolling.** A `while` loop that iterates a constant number of
+   times (a counter initialized to a literal, compared against a
+   literal bound, and incremented by a constant)
+   is replaced by that many copies of its body. Unrolling is exact.
+   Examples are in `benchmarks/loop-unroll/`.
+3. **Per-iteration commutativity.** When the loop body does not depend on
+   the loop counter, and each iteration commutes with the body of
+   another NCB, `verify` checks a single iteration against the other
+   block. By induction on swaps, the whole loop then commutes with that
+   block. Examples are in `benchmarks/loop-abstract/`.
+
+Any other loop is rejected with an error rather than being encoded
+unsoundly. Commutativity of general loops is an open problem and is
+left for future work.
 
 ### Quantified conditions
 
