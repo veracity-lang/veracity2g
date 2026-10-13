@@ -3,16 +3,25 @@
 #
 # Runs each benchmark from reports/speedup_dswp.py once (n=1, sequential
 # mode) and each lock_synth benchmark twice (plain + --synthesize-locks),
-# comparing the two outputs.  Then runs `vcy verify` on the NCB examples
-# (skipped if cvc5 is not installed).
+# comparing the two outputs.  Then, if cvc5 is installed, runs `vcy verify`
+# on the NCB, loop-unroll and loop-abstract examples.
 #
-# Usage: bash scripts/run_tests.sh
-# Usually invoked via:  make test
+# Usage: bash scripts/run_tests.sh [--all]
+# Usually invoked via:  make test   (or make test-all for --all)
+# --all also runs benchmarks/{verify,loops,models,prepost,movers,invariants,
+# inferred} (formerly test.sh), which takes minutes.
 # Set VCY=/path/to/binary to test a binary other than ./vcy.
 #
 # Exit code: 0 if all tests pass, 1 if any fail.
 
 set -uo pipefail
+
+ALL=0
+case "${1:-}" in
+    --all) ALL=1 ;;
+    "") ;;
+    *) echo "usage: $0 [--all]" >&2; exit 2 ;;
+esac
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VCY="${VCY:-$REPO_ROOT/vcy}"
@@ -294,6 +303,65 @@ run_loop_abs() {
     fi
 }
 
+# The helpers below run from the repo root, with benchmark paths written as
+# benchmarks/...; the label is the path without benchmarks/ and .vcy.
+_label() { local l="${1#benchmarks/}"; printf '%s' "${l%.vcy}"; }
+
+# run_exit BENCH_PATH CMD...
+#   Pass if CMD exits 0.
+run_exit() {
+    local label; label=$(_label "$1"); shift
+    local out rc
+    out=$(cd "$REPO_ROOT" && "$@" 2>&1); rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        _record pass "$label" "[ok]"
+    else
+        local snippet; snippet=$(printf '%s\n' "$out" | grep -v '^\s*$' | tail -1 | cut -c1-60)
+        _record fail "$label" "[exit $rc: $snippet]"
+    fi
+}
+
+# run_incorrect BENCH_PATH
+#   The condition is wrong: verify must report it incorrect (and so exits
+#   non-zero, which is not checked).
+run_incorrect() {
+    local label; label=$(_label "$1")
+    local out
+    out=$(cd "$REPO_ROOT" && "$VCY" verify "$1" --prover cvc5 2>&1)
+    if printf '%s\n' "$out" | grep -q 'verified as incorrect'; then
+        _record pass "$label" "[incorrect]"
+    else
+        _record fail "$label" "[want incorrect]"
+    fi
+}
+
+# run_table BENCH_PATH
+#   The condition fails, and verify --html must write the counterexample
+#   table (Model_table) somewhere under the run directory.
+run_table() {
+    local label; label=$(_label "$1")
+    local d; d=$(mktemp -d -p "$TMPF")
+    (cd "$REPO_ROOT" && "$VCY" verify "$1" --prover cvc5 --html --out-dir "$d" > /dev/null 2>&1)
+    if [[ -n "$(find "$d" -name expr_table.html)" ]]; then
+        _record pass "$label" "[table]"
+    else
+        _record fail "$label" "[no expr_table.html]"
+    fi
+}
+
+# run_interp_ok BENCH_PATH [ARGS...]
+#   Pass if interp reports no error (these programs print no Return line).
+run_interp_ok() {
+    local label; label=$(_label "$1")
+    local out
+    out=$(cd "$REPO_ROOT" && "$VCY" interp "$@" 2>&1)
+    if printf '%s\n' "$out" | grep -q 'error occurred\|Fatal error'; then
+        _record fail "$label" "[$(printf '%s\n' "$out" | grep -m1 'error occurred\|Fatal error' | cut -c1-60)]"
+    else
+        _record pass "$label" "[ok]"
+    fi
+}
+
 # Servois2 looks for cvc5 only at fixed paths (see Provers.ProverCVC5), so
 # being on $PATH is not enough.
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
@@ -340,6 +408,81 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_loop_abs "la guard-unstable" "$LA/guard-unstable.vcy" nofire
     run_loop_abs "la phi-unstable"   "$LA/phi-unstable.vcy"   nofire
     run_loop_abs "la counter-read"   "$LA/counter-read.vcy"   nofire
+
+    # The suites below were test.sh.  They run only with --all (make
+    # test-all).  Each loops over its directory, so a new benchmark there is
+    # picked up without being listed.
+    if [[ "$ALL" -eq 1 ]]; then
+        echo ""
+        echo "=== benchmarks/verify (vcy verify --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/verify/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            case "$f" in
+                # The condition `true` is wrong: the decrement is guarded on c > 0.
+                */counter.vcy)  run_incorrect "$f" ;;
+                # Its loop summary uses havoc.
+                */loop-amt.vcy) run_exit "$f" "$VCY" verify "$f" --prover cvc5 -ae ;;
+                *)              run_exit "$f" "$VCY" verify "$f" --prover cvc5 ;;
+            esac
+        done
+
+        echo ""
+        echo "=== benchmarks/loops (vcy verify --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/loops/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            run_exit "$f" "$VCY" verify "$f" --prover cvc5
+        done
+
+        echo ""
+        echo "=== benchmarks/models (counterexample tables) ==="
+        for f in seq-read-after-write array-write-conflict heap-read-after-write; do
+            run_table "benchmarks/models/$f.vcy"
+        done
+        # Known limitation: the loop summarisation finds no counterexample, so
+        # there is no model and no table.  Exit status only; see that file's header.
+        run_exit benchmarks/models/loop-read-after-write.vcy \
+            "$VCY" verify benchmarks/models/loop-read-after-write.vcy --prover cvc5
+
+        echo ""
+        echo "=== benchmarks/prepost (vcy infer --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/prepost/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            run_exit "$f" "$VCY" infer "$f" --prover cvc5
+        done
+
+        # These have no commute blocks, so they are interpreted, not inferred.
+        MOVERS_INTERP=" parse1 test-heap-smt1 test-heap-write test-interp1 test-interp2 test-interp3 "
+        echo ""
+        echo "=== benchmarks/movers (vcy infer --prover cvc5 -ae, or interp) ==="
+        for f in "$REPO_ROOT"/benchmarks/movers/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            name=$(basename "$f" .vcy)
+            if [[ "$MOVERS_INTERP" == *" $name "* ]]; then
+                if [[ "$name" == test-interp3 ]]; then run_interp_ok "$f" 3
+                else run_interp_ok "$f"; fi
+            else
+                run_exit "$f" "$VCY" infer "$f" --prover cvc5 -ae
+            fi
+        done
+
+        echo ""
+        echo "=== benchmarks/invariants (vcy invariants --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/invariants/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            run_exit "$f" "$VCY" invariants "$f" --prover cvc5
+        done
+
+        echo ""
+        echo "=== benchmarks/inferred (vcy infer --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/inferred/*.vcy; do
+            f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+            [[ "$f" == *tmp.vcy ]] && continue
+            run_exit "$f" "$VCY" infer "$f" --prover cvc5
+        done
+    else
+        echo ""
+        echo "=== benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}: skipped (run make test-all) ==="
+    fi
 else
     echo "  SKIP  cvc5 not found in /usr/local/bin, /usr/bin or /opt/homebrew/bin"
 fi

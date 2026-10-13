@@ -8,7 +8,7 @@ else
   OPAM_SETUP :=
 endif
 
-.PHONY: all test latex clean
+.PHONY: all test test-all latex clean
 
 all:
 	$(OPAM_SETUP) dune build --root src
@@ -16,6 +16,9 @@ all:
 
 test: all
 	$(OPAM_SETUP) bash scripts/run_tests.sh
+
+test-all: all
+	$(OPAM_SETUP) bash scripts/run_tests.sh --all
 
 # Emit post-DSWP task bodies with synthesized locks for all benchmark programs
 # and write reports/tasks_appendix.tex.  Optionally compile a standalone PDF:
