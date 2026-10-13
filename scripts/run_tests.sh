@@ -4,12 +4,13 @@
 # Runs each benchmark from reports/speedup_dswp.py once (n=1, sequential
 # mode) and each lock_synth benchmark twice (plain + --synthesize-locks),
 # comparing the two outputs.  Then, if cvc5 is installed, runs `vcy verify`
-# on the NCB, loop-unroll and loop-abstract examples.
+# on the NCB examples.
 #
 # Usage: bash scripts/run_tests.sh [--all]
 # Usually invoked via:  make test   (or make test-all for --all)
-# --all also runs benchmarks/{verify,loops,models,prepost,movers,invariants,
-# inferred} (formerly test.sh), which takes minutes.
+# --all also runs the loop-unroll and loop-abstract checks and
+# benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}
+# (formerly test.sh), which takes minutes.
 # Set VCY=/path/to/binary to test a binary other than ./vcy.
 #
 # Exit code: 0 if all tests pass, 1 if any fail.
@@ -386,33 +387,33 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     # known_verify_failure).  2d-array and ps-dswp have no commutativity
     # conditions; vote-infer uses `_` (infer, not verify).
 
-    echo ""
-    echo "=== Loop unrolling and block encoding (vcy verify --prover cvc5) ==="
-    LU="../benchmarks/loop-unroll"
-    run_loop_unroll "lu mid-block-ok"         "$LU/mid-block-ok.vcy"         correct
-    run_loop_unroll "lu param-in-loop-bad"    "$LU/param-in-loop-bad.vcy"    incorrect
-    run_loop_unroll "lu nested-block-bad"     "$LU/nested-block-bad.vcy"     incorrect
-    run_loop_unroll "lu counter-written"      "$LU/counter-written-nofire.vcy" nofire
-    run_loop_unroll "lu shadow"               "$LU/shadow-nofire.vcy"        nofire
-    run_loop_unroll "lu use-before-decl"      "$LU/use-before-decl-nofire.vcy" nofire
-    run_loop_unroll "lu if-shadow"            "$LU/if-shadow-reject.vcy"     reject
-
-    echo ""
-    echo "=== Counter-loop abstraction (vcy verify --prover cvc5) ==="
-    LA="../benchmarks/loop-abstract"
-    run_loop_abs "la commute-ok"     "$LA/commute-ok.vcy"     correct
-    run_loop_abs "la commute-cond"   "$LA/commute-cond.vcy"   correct
-    run_loop_abs "la both-loops"     "$LA/both-loops.vcy"     correct
-    run_loop_abs "la for-loop"       "$LA/for-loop.vcy"       correct
-    run_loop_abs "la commute-bad"    "$LA/commute-bad.vcy"    incorrect
-    run_loop_abs "la guard-unstable" "$LA/guard-unstable.vcy" nofire
-    run_loop_abs "la phi-unstable"   "$LA/phi-unstable.vcy"   nofire
-    run_loop_abs "la counter-read"   "$LA/counter-read.vcy"   nofire
-
-    # The suites below were test.sh.  They run only with --all (make
-    # test-all).  Each loops over its directory, so a new benchmark there is
-    # picked up without being listed.
+    # The suites below run only with --all (make test-all).  The
+    # benchmarks/ ones were test.sh; each loops over its directory, so a
+    # new benchmark there is picked up without being listed.
     if [[ "$ALL" -eq 1 ]]; then
+        echo ""
+        echo "=== Loop unrolling and block encoding (vcy verify --prover cvc5) ==="
+        LU="../benchmarks/loop-unroll"
+        run_loop_unroll "lu mid-block-ok"         "$LU/mid-block-ok.vcy"         correct
+        run_loop_unroll "lu param-in-loop-bad"    "$LU/param-in-loop-bad.vcy"    incorrect
+        run_loop_unroll "lu nested-block-bad"     "$LU/nested-block-bad.vcy"     incorrect
+        run_loop_unroll "lu counter-written"      "$LU/counter-written-nofire.vcy" nofire
+        run_loop_unroll "lu shadow"               "$LU/shadow-nofire.vcy"        nofire
+        run_loop_unroll "lu use-before-decl"      "$LU/use-before-decl-nofire.vcy" nofire
+        run_loop_unroll "lu if-shadow"            "$LU/if-shadow-reject.vcy"     reject
+
+        echo ""
+        echo "=== Counter-loop abstraction (vcy verify --prover cvc5) ==="
+        LA="../benchmarks/loop-abstract"
+        run_loop_abs "la commute-ok"     "$LA/commute-ok.vcy"     correct
+        run_loop_abs "la commute-cond"   "$LA/commute-cond.vcy"   correct
+        run_loop_abs "la both-loops"     "$LA/both-loops.vcy"     correct
+        run_loop_abs "la for-loop"       "$LA/for-loop.vcy"       correct
+        run_loop_abs "la commute-bad"    "$LA/commute-bad.vcy"    incorrect
+        run_loop_abs "la guard-unstable" "$LA/guard-unstable.vcy" nofire
+        run_loop_abs "la phi-unstable"   "$LA/phi-unstable.vcy"   nofire
+        run_loop_abs "la counter-read"   "$LA/counter-read.vcy"   nofire
+
         echo ""
         echo "=== benchmarks/verify (vcy verify --prover cvc5) ==="
         for f in "$REPO_ROOT"/benchmarks/verify/*.vcy; do
@@ -481,7 +482,7 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
         done
     else
         echo ""
-        echo "=== benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}: skipped (run make test-all) ==="
+        echo "=== loop-unroll, loop-abstract, benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}: skipped (run make test-all) ==="
     fi
 else
     echo "  SKIP  cvc5 not found in /usr/local/bin, /usr/bin or /opt/homebrew/bin"

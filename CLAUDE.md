@@ -9,13 +9,13 @@ make          # build everything → installs ./vcy
 make clean    # remove build artifacts
 ```
 
-The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. `make test` runs `scripts/run_tests.sh` (DSWP interp runs, lock synthesis, and NCB/loop verify benchmarks). `make test-all` runs `scripts/run_tests.sh --all`, which adds the slow suites formerly in `test.sh`: `benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}`. Benchmarks in those directories, and in `manual`, `pre_post`, `qref`, `quotients`, `rhl` and `vcgen`, must never run under plain `make test`; add them to the `--all` section only.
+The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. `make test` runs `scripts/run_tests.sh` (DSWP interp runs, lock synthesis, and NCB verify benchmarks). `make test-all` runs `scripts/run_tests.sh --all`, which adds the `loop-unroll` and `loop-abstract` checks and the slow suites formerly in `test.sh`: `benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}`. Benchmarks in those directories, in `loop-unroll` and `loop-abstract`, and in `manual`, `pre_post`, `qref`, `quotients`, `rhl` and `vcgen`, must never run under plain `make test`; add them to the `--all` section only.
 
 ## Tests
 
 ```bash
 make test      # scripts/run_tests.sh (fast)
-make test-all  # scripts/run_tests.sh --all (adds verify, loops, models, prepost, movers, invariants, inferred)
+make test-all  # scripts/run_tests.sh --all (adds loop-unroll, loop-abstract, verify, loops, models, prepost, movers, invariants, inferred)
 ```
 
 Requires `cvc5` on `$PATH`. Individual benchmark suites can be run manually:
@@ -72,9 +72,9 @@ Veracity is an OCaml project built with dune. The source lives entirely under `s
 - `spec_generator.ml` — generates YAML-format Servois2 specs from `commute` blocks
 - `interface.ml` — thin wrapper around the Servois2 OCaml library
 - `loop_abstract.ml` — two loop rewrites, applied in `Analyze` before the spec is built:
-  - `unroll` (`verify` and `infer`): a `while` loop with a literal trip count (`x = c0; …; while (x < N) { …; x = x + c; }`, with x written only by its increment, and at most `unroll_limit` = 128 iterations) is replaced by that many copies of its body. It is exact, so completeness still holds. Each iteration is its own scope in the interpreter but the copies are inlined, so a body that declares a name also used before its declaration or outside the loop is not unrolled. Tests: `benchmarks/loop-unroll/`.
+  - `unroll` (`verify` and `infer`): a `while` loop with a literal trip count (`x = c0; …; while (x < N) { …; x = x + c; }`, with x written only by its increment, and at most `unroll_limit` = 128 iterations) is replaced by that many copies of its body. It is exact, so completeness still holds. Each iteration is its own scope in the interpreter but the copies are inlined, so a body that declares a name also used before its declaration or outside the loop is not unrolled. Tests: `benchmarks/loop-unroll/` (`make test-all`).
   - `check_scopes`: the encoder inlines nested `{ ... }` blocks and `if` branches into the statements after them, so a name declared inside one and then used afterwards, meaning an outer variable, is rejected rather than misencoded.
-  - `abstract` (`verify` only): a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/`.
+  - `abstract` (`verify` only): a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/` (`make test-all`).
 
   Any other loop without an invariant (and any other `for` loop, which cannot carry one) is an error in `Spec_generator.compile_block_to_smt`; it used to be silently dropped.
 
