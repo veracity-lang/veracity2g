@@ -307,7 +307,7 @@ NCB examples are located in `benchmarks/ncb/`.
 | ------------------------------ | --------------------------------------------------------- | -------------------------- |
 | `test/ncb_dot_product.vcy`     | Self-commuting loop body and synthesized reduction lock   | `4`                        |
 | `test/ncb_histogram.vcy`       | `(true)` condition and shared bucket update               | `8`                        |
-| `test/ncb_max_reduce.vcy`      | Max-reduction pattern                                     | `10`                       |
+| `other/ncb_max_reduce.vcy`     | Max-reduction pattern                                     | `10`                       |
 | `motivation.vcy`               | Paper running example with conditional commutativity      | `100 10`                   |
 | `banking.vcy`                  | Deposits, withdrawals, and transfers on distinct accounts | `1 100 1000`               |
 | `erc20.vcy`                    | ERC20 transfers                                           | `1 1 2`                    |

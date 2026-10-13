@@ -1,6 +1,3 @@
-void compute1(bool cond){} 
-void compute2(bool cond){}
-
 int main(int argc, string[] argv) {
     int n = int_of_string(argv[1]);
     int t = int_of_string(argv[2]);

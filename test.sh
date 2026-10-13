@@ -22,7 +22,20 @@ done
 
 echo "=== benchmarks/verify ==="
 for f in benchmarks/verify/*.vcy; do
-  run "$f" "$VCY" verify "$f" --prover cvc5
+  case $f in
+    # The condition `true` is wrong (the decrement is guarded on c > 0), so
+    # verify must reject it and exit non-zero.
+    */counter.vcy)
+      out=$("$VCY" verify "$f" --prover cvc5 2>&1) || true
+      if echo "$out" | grep -q 'verified as incorrect'; then
+        echo "  PASS $f (incorrect)"; pass=$((pass+1))
+      else
+        echo "  FAIL $f (want incorrect)"; fail=$((fail+1))
+      fi ;;
+    # Its loop summary uses havoc.
+    */loop-amt.vcy) run "$f" "$VCY" verify "$f" --prover cvc5 -ae ;;
+    *) run "$f" "$VCY" verify "$f" --prover cvc5 ;;
+  esac
 done
 
 # These programs are meant to fail verification -- a failing condition is what

@@ -58,6 +58,7 @@ class VcyError(Exception):
 benchmark_dir = vcy_dir + 'benchmarks/'
 
 infer_dir        = benchmark_dir + 'inferred/'
+infer_slow_dir   = infer_dir + 'slow/'
 infer_loop_dir   = benchmark_dir + 'inferred_loops/'
 infer_manual_dir = benchmark_dir + 'manual/'
 output_dir       = benchmark_dir + 'inference_output/'
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     os.chdir(os.path.dirname(sys.argv[0]))
 
     infer_benchmarks : List[str] = \
-        files_in_dir(infer_dir) + files_in_dir(infer_loop_dir)
+        files_in_dir(infer_dir) + files_in_dir(infer_slow_dir) + files_in_dir(infer_loop_dir)
 
     manual_benchmarks : List[str] = \
         files_in_dir(infer_manual_dir)

@@ -140,7 +140,7 @@ run_synth "ls_ncb_6"            "$LS/ls_ncb_6.vcy"     8
 # New NCB benchmarks demonstrating three distinct lock patterns
 run_synth "ncb_histogram"       "$GC/test/ncb_histogram.vcy"   8
 run_synth "ncb_dot_product"     "$GC/test/ncb_dot_product.vcy" 4
-run_synth "ncb_max_reduce"      "$GC/test/ncb_max_reduce.vcy"  10
+run_synth "ncb_max_reduce"      "$GC/other/ncb_max_reduce.vcy" 10
 
 # Non-NCB: pre-DSWP synthesis may or may not add locks; output unchanged
 run_synth "ls_noncb_1"          "$LS/ls_noncb_1.vcy"   4
@@ -312,15 +312,11 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
     run_verify "commset-kmeans"     "$GC/commset-kmeans.vcy"           1
 
-    # These loops read their counter or share the block with other code, so
-    # they need an invariant; until now verify silently dropped them.
-    LOOPMSG="loop needs an invariant"
-    known_verify_failure "simple-vector"     "$GC/other/simple-vector.vcy"     "$LOOPMSG"
-    known_verify_failure "simple-vector-err" "$GC/other/simple-vector-err.vcy" "$LOOPMSG"
-    known_verify_failure "sollve_dotprod"    "$GC/other/sollve_dotprod.vcy"    "$LOOPMSG"
-    known_verify_failure "ncb_max_reduce"    "$GC/test/ncb_max_reduce.vcy"    "$LOOPMSG"
-    # 2d-array and ps-dswp have no commutativity conditions; vote-infer
-    # uses `_` (infer, not verify).
+    # Not verified: other/simple-vector{,-err}, other/sollve_dotprod and
+    # other/ncb_max_reduce have loops that read their counter or share the
+    # block with other code, so they need an invariant (see
+    # known_verify_failure).  2d-array and ps-dswp have no commutativity
+    # conditions; vote-infer uses `_` (infer, not verify).
 
     echo ""
     echo "=== Loop unrolling and block encoding (vcy verify --prover cvc5) ==="

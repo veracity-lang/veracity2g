@@ -11,7 +11,7 @@ int main(int argc, string[] argv) {
             /* this only works if i is initially even. */
             amt_pre = amt;
             i_pre = i;
-            while(i>0) { 
+            while(i>0) invariant true { 
                 if(i%2 == 0) {
                     amt = amt * -1;
                 } else {
@@ -20,6 +20,8 @@ int main(int argc, string[] argv) {
                 i = i - 1;
             }
             /* need a strong enough loop invariarnt to show that amt>0 here */
+            /* `invariant true` only lets verify translate the loop; the
+               summary below supplies the fact it needs. */
             /* LOOP SUMMARY */
             havoc amt; havoc i; assume( amt == amt_pre || i_pre%2!=0 );
             /* END SUMMARY */
