@@ -82,9 +82,18 @@ of the block.
 
 `verify_phis_of_block` (`src/vcy/interp.ml`) adds every `Decl` it meets,
 including those inside labeled blocks, to `global_defs`, so a block-local
-`string s` becomes a state variable that both instances write. The final
-`s` is then whichever block ran last, and verify reports a conflict that
-cannot happen: each instance has its own `s`.
+`string s` becomes a state variable.
+
+That only matters once the local is *assigned after its declaration*.  A
+declaration alone binds the bare name without bumping the version counter,
+so the post-state treats the variable as unchanged and it is effectively
+local (`ncb_histogram`'s `int b = i % nbuckets;` is fine).  An assignment
+(`s = read_line(c)`) bumps the version, the variable is then compared
+after both orders, and its final value is whichever block ran last, so
+verify reports a conflict that cannot happen: each instance has its own
+`s`.  Checked on `ncb_histogram`: `int b = 0; b = i % nbuckets;` verifies
+as incorrect, and adding `b = 0;` at the end of the block makes it
+correct again.
 
 ### Proposed fix
 
