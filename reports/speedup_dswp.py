@@ -19,7 +19,7 @@ Row = Tuple[int, List[float]]
 
 os.chdir(os.path.dirname(sys.argv[0]))
 
-vcy_exe = '../src/vcy.exe'
+vcy_exe = '.././vcy'
 
 dir = ''
 num_trials = 0
@@ -94,7 +94,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/ncb/other/sollve_dotprod.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/other/simple-vector.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/other/2d-array.vcy", lambda n : [str(n)]),
-    ("benchmarks/ncb/vote-run.vcy", lambda n : [str(n)]),
+    ("benchmarks/ncb/vote.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/commset.vcy", prep_commset),
     ("benchmarks/ncb/multi-blocks.vcy", lambda n : [str(n)]),
     ("benchmarks/ncb/simple-io.vcy", prep_simpleio),

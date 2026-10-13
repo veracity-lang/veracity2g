@@ -18,7 +18,7 @@ Row = Tuple[int, List[float]]
 
 os.chdir(os.path.dirname(sys.argv[0]))
 
-vcy_exe = '../src/vcy.exe'
+vcy_exe = '.././vcy'
 
 dir = ''
 num_trials = 0

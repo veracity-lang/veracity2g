@@ -111,7 +111,7 @@ GC="../benchmarks/ncb"
 run_once "sollve_dotprod"       "$GC/other/sollve_dotprod.vcy"     1
 run_once "simple-vector"        "$GC/other/simple-vector.vcy"      1
 run_once "2d-array"             "$GC/other/2d-array.vcy"           1
-run_once "vote-run"             "$GC/vote-run.vcy"                 1
+run_once "vote"                 "$GC/vote.vcy"                 1
 run_once "commset"              "$GC/commset.vcy" \
     "$TMPF/a.txt" "$TMPF/b.txt" "$TMPF/c.txt" "$TMPF/d.txt"
 run_once "multi-blocks"         "$GC/multi-blocks.vcy"             1
@@ -370,7 +370,7 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "erc20"              "$GC/erc20.vcy" 3
     run_verify "motivation"         "$GC/motivation.vcy"               1
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
-    run_verify "vote-run"           "$GC/vote-run.vcy"                 6
+    run_verify "vote"               "$GC/vote.vcy"                 6
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
     run_verify "ncb_dot_product"    "$GC/test/ncb_dot_product.vcy"          1
     run_verify "ncb_histogram"      "$GC/test/ncb_histogram.vcy"            1

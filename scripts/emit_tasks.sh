@@ -173,8 +173,8 @@ output=$(emit_tasks "multi-blocks" "$GC/multi-blocks.vcy" 1)
 append_benchmark "multi-blocks" "multi-blocks" "$output"
 echo "done"
 
-echo -n "  vote-run ... "
-output=$(emit_tasks "vote-run" "$GC/vote-run.vcy" 1)
+echo -n "  vote ... "
+output=$(emit_tasks "vote" "$GC/vote.vcy" 1)
 append_benchmark "vote" "vote" "$output"
 echo "done"
 
