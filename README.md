@@ -311,7 +311,7 @@ NCB examples are located in `benchmarks/ncb/`.
 | `motivation.vcy`               | Paper running example with conditional commutativity      | `100 10`                   |
 | `banking.vcy`                  | Deposits, withdrawals, and transfers on distinct accounts | `1 100 1000`               |
 | `erc20.vcy`                    | ERC20 transfers                                           | `1 1 2`                    |
-| `vote-run.vcy`                 | Smart-contract voting                                     | `1`                        |
+| `vote.vcy`                 | Smart-contract voting                                     | `1`                        |
 | `multi-blocks.vcy`             | Multiple NCBs and hashtable conditions                    | `1`                        |
 | `simple-io.vcy`                | Commutativity involving file I/O                          | Four file paths            |
 | `commset.vcy`                  | Benchmark adapted from CommSet                            | See `scripts/run_tests.sh` |

@@ -57,11 +57,11 @@ Revert `simple-io.vcy` to the `fname_1..4` names; it should still verify as
 correct. Add a regression benchmark that declares both `x` and `x_1`, and
 assigns `x` inside a commute block.
 
-## `vote-run` interpreter run is vacuous
+## `vote` interpreter run is vacuous
 
 **Status:** open.
 
-`benchmarks/ncb/vote-run.vcy` never populates `voter_weight`, `voter_voted`,
+`benchmarks/ncb/vote.vcy` never populates `voter_weight`, `voter_voted`,
 `voter_vote` or `proposals`. `ht_get` on a missing key returns null, so
 `weight != 0` always holds and every vote is rejected. The `interp` test passes
 without ever reaching the `proposals` updates; that is how the missing
