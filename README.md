@@ -358,6 +358,111 @@ Run the NCB benchmark and lock-synthesis tests:
 bash scripts/run_tests.sh
 ```
 
+## Reproducing the Paper's Results
+
+The scripts are in `reports/`. Each one changes into its own directory and
+resolves paths from there, so run them from `reports/` as `./script.py` or
+`python3 ./script.py`. (`python3 script.py` without `./` fails.) Output
+directories are created under `reports/`. The plotting scripts need
+`pandas` and `matplotlib`, which are installed in the VM.
+
+### Speedup measurements
+
+Each measurement script runs every benchmark in its `benchmarks` list,
+sequentially (`vcy interp --time`) and in parallel
+(`vcy interp --time --dswp --synthesize-locks`), for each computation size N
+in `n_values` (10 to 5·10⁷), `<trials>` times:
+
+```bash
+cd reports
+python3 ./speedup_dswp.py      out-ncbpar <trials>   # NCBPar.: NCBs with their commutativity conditions
+python3 ./speedup_dswp_nc.py   out-nc     <trials>   # False-Comm.: every condition replaced by false
+python3 ./speedup_dswp_noNB.py out-noNB   <trials>   # No-NCB.: commutativity block and NCB labels removed
+```
+
+Each writes four tab-separated tables to its output directory, with one row
+per N and one column per benchmark:
+
+| File            | Contents                                         |
+| --------------- | ------------------------------------------------ |
+| `seq.csv`       | Mean sequential time (s)                         |
+| `par.csv`       | Mean parallel time (s)                           |
+| `ratio.csv`     | Geometric mean of the per-trial speedups         |
+| `ratio_std.csv` | Standard deviation of the per-trial speedups     |
+
+Add `--test` after `<trials>` to run only N = 10⁶, as a quick check.
+
+**A single benchmark.** Pass the program path (relative to the repository
+root), followed by any arguments after the first. The script supplies the
+first argument, N, itself and sweeps it, so do not pass N:
+
+```bash
+python3 ./speedup_dswp.py out-motivation 5 benchmarks/ncb/motivation.vcy 10
+# runs: vcy interp ... motivation.vcy <N> 10   for each N
+```
+
+This works for all three scripts. Note that a program given this way always
+receives N itself as its first argument, while the built-in `benchmarks` list
+may scale it (`motivation.vcy` receives N·100 there). To reproduce the
+paper's numbers, use the built-in list.
+
+### Fig. 6
+
+Run the three measurement scripts above, then:
+
+```bash
+python3 ./speedup_plot_compare.py out-ncbpar out-nc out-noNB fig6 [--err]
+```
+
+This writes one `<benchmark>-comparison.png` per benchmark to `fig6/`.
+`--err` adds error bars from `ratio_std.csv`.
+
+To plot a single result directory instead, run
+`python3 ./speedup_plot.py <result-dir> <out-dir>`. It reads that directory's
+`ratio.csv` and writes one `<benchmark>-plot.png` per benchmark.
+
+### Table 3
+
+Each row uses, for that benchmark, the computation size N with the highest
+speedup in `ratio.csv` from `speedup_dswp.py`:
+
+| Benchmark      | N          |
+| -------------- | ---------- |
+| `motivation`   | 50,000,000 |
+| `simple-io`    | 1,000,000  |
+| `multi-blocks` | 10,000,000 |
+| `vote`         | 50,000,000 |
+| `erc20`        | 50,000,000 |
+| `banking`      | 50,000,000 |
+
+| Column                     | Source                                                                                                        |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Total Exec (Seq, Par)      | `seq.csv` and `par.csv` at that N                                                                             |
+| Speedup (Obsrv.)           | `ratio.csv` at that N (geometric mean of per-trial speedups, so not exactly Seq ÷ Par)                        |
+| Nodes                      | Nodes in `pdg.dot`, the PDG before transformation                                                             |
+| Depth                      | Longest control-dependence chain from the entry node in `pdg.dot`                                             |
+| Tasks                      | Static tasks in `tasks.dot` or the HTML report                                                                |
+| Locks                      | Synthesized locks in the task bodies (`mutex_lock`/`mutex_unlock`)                                             |
+| Jobs                       | Dynamic job instances executed in the parallel run                                                            |
+| Avg Job Exec (Pure, +Deps) | Average time per job: its own computation (Pure), and including waits on dependencies (+Deps)                 |
+| Speedup (Thry.)            | Derived by hand from the thread count (default 8 (9 domains), `--threads`), the number of jobs, and dependencies that keep threads idle |
+
+
+To get the PDG and tasks for a benchmark, run it once with `--html`:
+
+```bash
+./vcy interp --dswp --synthesize-locks --html benchmarks/ncb/<bench>.vcy <args>
+```
+
+This writes `pdg.dot`, `dag-scc.dot`, `tasks.dot` and an HTML report to
+`veracity_output/latest/`. Add `--emit-tasks` to print the task bodies,
+including synthesized locks, without running the program.
+
+### Geometric-mean speedup
+
+The overall speedup reported in the paper is the geometric mean of the
+Obsrv. column of Table 3 across its six benchmarks (4.49×).
+
 ## Original Veracity `commute` Blocks
 
 V2G also supports the original Veracity constructs, which reason about
