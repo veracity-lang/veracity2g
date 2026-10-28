@@ -11,7 +11,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VCY="$REPO_ROOT/src/vcy.exe"
+VCY="$REPO_ROOT/./vcy"
 GC="$REPO_ROOT/benchmarks/ncb"
 OUT="$REPO_ROOT/reports/tasks_appendix.tex"
 

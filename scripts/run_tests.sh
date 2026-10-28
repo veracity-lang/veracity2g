@@ -189,10 +189,35 @@ count_locks_dswp() {
         | grep -o '"mutex_lock"' | wc -l | tr -d ' '
 }
 
-# ls_noncb_1 deadlocks in --dswp (backward counter dep creates a scheduler cycle)
+# ls_noncb_1 needs its synthesized locks (plain --dswp races), so it is
+# checked against the sequential result below instead.
 run_synth_dswp  "ls_noncb_2 (dswp)"  "$LS/ls_noncb_2.vcy"   8
 run_synth_dswp  "ls_noncb_3 (dswp)"  "$LS/ls_noncb_3.vcy"   4
 run_synth_dswp  "ls_noncb_4 (dswp)"  "$LS/ls_noncb_4.vcy"   4
+
+# run_dswp_vs_seq LABEL RUNS BENCH_PATH [ARGS...]
+#   --dswp --synthesize-locks must return the sequential result on every one
+#   of RUNS runs: a race shows up only on some interleavings.
+run_dswp_vs_seq() {
+    local label="$1" runs="$2"; shift 2
+    local seq par bad=""
+    seq=$(cd "$RUNDIR" && "$VCY" interp "$@" 2>&1 | tail -1) || true
+    for _ in $(seq 1 "$runs"); do
+        par=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks "$@" 2>&1 | tail -1) || true
+        [[ "$par" == "$seq" ]] || bad="$par"
+    done
+    if [[ -z "$bad" ]] && printf '%s\n' "$seq" | grep -q '^Return:'; then
+        _record pass "$label" "[$seq x$runs]"
+    else
+        _record fail "$label" "[seq=$seq | dswp=$bad]"
+    fi
+}
+
+run_dswp_vs_seq "ls_doall_counter (dswp == seq)"     10 "$LS/ls_doall_counter.vcy"     200
+run_dswp_vs_seq "ls_ncb_shared_scalar (dswp == seq)" 10 "$LS/ls_ncb_shared_scalar.vcy" 1 10
+run_dswp_vs_seq "ls_noncb_1 (dswp == seq)"           5  "$LS/ls_noncb_1.vcy"           8
+run_dswp_vs_seq "ls_global_induction (dswp == seq)"  10 "$LS/ls_global_induction.vcy"  20
+run_dswp_vs_seq "2d-array (dswp == seq)"             5  "$GC/other/2d-array.vcy"       20
 
 # Verify pre-DSWP lock counts.
 # ls_noncb_1: counter IS in the NCB conflict_set (incr blocks share it),

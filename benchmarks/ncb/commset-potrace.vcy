@@ -21,7 +21,6 @@ int main(int argc, string[] argv) {
     int i = 1;
     int i_1 = 0;
     int i_2 = 0;
-    int j = 0;
 
     while (i <= (argc - 1)/2){
         f1(i, argv):{
@@ -29,7 +28,7 @@ int main(int argc, string[] argv) {
             string out_fn = "";
             string s = "";
             string temp = "";
-            j = 0;
+            int j = 0;
             temp = "";
             /* in/out filename pairs */
             in_fn = argv[i*2];

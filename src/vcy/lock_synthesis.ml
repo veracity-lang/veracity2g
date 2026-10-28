@@ -317,6 +317,34 @@ let concurrent_task_pairs (tasks : dswp_task list) : (dswp_task * dswp_task) lis
     ) tasks
   ) tasks
 
+(* Variables that race between concurrent jobs of one Doall task. Each job
+   gets its own copy of the variables its spawning dependence sends
+   (make_new_job), so those are private, and writes to an array or table
+   indexed by one of them are taken to hit distinct elements — the spawner
+   sends the iteration counter. Every other outer variable a job writes is
+   shared with its sibling jobs. *)
+let doall_self_conflicts (t : dswp_task) : id list =
+  let spawned = List.exists (fun d -> d.make_new_job) t.deps_in in
+  match t.label with
+  | Sequential -> []
+  | Doall when not spawned -> [] (* started once, from the init task *)
+  | Doall ->
+    let per_job =
+      List.concat_map (fun d -> if d.make_new_job then List.map snd d.vars else []) t.deps_in in
+    (* A job runs the body in its own scope, so everything declared in it, at
+       any depth (e.g. inside the named block that makes up most task
+       bodies), is private to the job. *)
+    let rec decls stmts = List.concat_map (fun s -> match s.elt with
+      | Decl (name, _) -> [name]
+      | If (_, b1, b2) -> decls b1.elt @ decls b2.elt
+      | While (_, _, b) | SBlock (_, b) -> decls b.elt
+      | For (vdecls, _, _, b) -> List.map fst vdecls @ decls b.elt
+      | _ -> []) stmts in
+    let private_vars = per_job @ decls t.body.elt in
+    let outer =
+      List.filter (fun v -> not (List.mem v private_vars)) (outer_vars_of_block t.body.elt) in
+    conflicting_writes_in_stmts outer per_job t.body.elt
+
 (* Variables that could race between concurrent task pairs.
    Uses conservative empty safe_args at the task level (no per-task
    commutativity condition is available here; NCB-level safe_args are
@@ -334,6 +362,7 @@ let inter_task_conflict_set (tasks : dswp_task list) : id list =
     List.filter (fun v -> List.mem v access1) writes2
     |> List.sort_uniq compare
   ) pairs
+  @ List.concat_map doall_self_conflicts tasks
   |> List.sort_uniq compare
 
 (* ---- Lock ID state ---- *)

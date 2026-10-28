@@ -661,18 +661,22 @@ and interp_global_commute (env: env) : (group_commute node * bool) list =
   in 
   (interp_group_commute g.group_commute)
   
-and senddep_extend_env env (vals: (ty * id * value) list) : env =
+and senddep_extend_env ?(shared = []) env (vals: (ty * id * value) list) : env =
   (* Treat new task as a new block in call stack. *)
-  senddep_extend_env_inner {env with l = ([] :: List.hd env.l ) :: List.tl env.l} vals
-and senddep_extend_env_inner env vals =
+  senddep_extend_env_inner shared {env with l = ([] :: List.hd env.l ) :: List.tl env.l} vals
+(* A sent global gets a job-private copy too, holding its value at the
+   SendDep, unless it is in `shared` (the job writes it, so the write must
+   reach the global). Reading the live global instead would see the value of
+   whatever iteration the spawner has reached by the time the job runs. *)
+and senddep_extend_env_inner shared env vals =
   match vals with 
   | [] -> env 
   | (t,i,v)::rest ->
       (* This is like Decl statements *)
       (* Add ID to environment - most recent call in callstack, innermost block *)
-      if List.mem_assoc i env.g.globals then begin
+      if List.mem_assoc i env.g.globals && List.mem i shared then begin
         debug_print (lazy (Printf.sprintf "Dep is global; not creating new reference: %s = %s\n" i (AstML.string_of_value v |> debug_trunc)));
-        senddep_extend_env_inner env rest
+        senddep_extend_env_inner shared env rest
       end else begin
         debug_print (lazy (Printf.sprintf "Dep sent: %s = %s\n" i (AstML.string_of_value v |> debug_trunc)));
         let stk = List.hd env.l in
@@ -680,7 +684,7 @@ and senddep_extend_env_inner env vals =
         let blk = (i, (t, ref v)) :: blk in
         let stk = blk :: List.tl stk in
         let env' = {env with l=(stk :: List.tl env.l)} in
-        senddep_extend_env_inner env' rest
+        senddep_extend_env_inner shared env' rest
       end
 
 
@@ -884,24 +888,34 @@ and make_job_vals env deps =
       end          
    ) [] deps
 (* Interpreter calls this function at each SendDep to create a new job *)
-and add_job j promise =
-  Mutex.protect jobs_mutex (fun () ->
-    debug_print (lazy (sp "Adding job with tid=%d.\n" j.tid));
-    Queue.add (j, promise) job_queue;
-    all_jobs := (j, promise) :: !all_jobs)
 and new_job ?(wait_on_init = false) j deps = 
   debug_print (Lazy.from_val (sp "Starting new job with tid=%d.\n" j.tid));
   let deps' = topsort_deps deps in
-  let initial_waits = if List.is_empty deps' then []
-    else begin
-      let jobs = Mutex.protect jobs_mutex (fun () -> Queue.to_seq job_queue |> List.of_seq) in
-      List.map (fun dep -> List.filter_map (function | ({tid;_}, _) as j -> if tid = dep.pred_task then Some (j, dep) else None) jobs) (List.hd deps' |> List.sort_uniq (fun a b -> b.pred_task - a.pred_task)) |> List.concat
-    end in
-  let deps'' = if List.is_empty deps' then [] else List.concat (List.tl deps') in
-  let promise = Domainslib.Task.async (get !pool) (fun () -> 
-    if wait_on_init then Mutex.protect init_mutex (const ());
-    run_job j initial_waits deps'' |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
-  add_job j promise;
+  (* Only the spawning dependences are resolved from the snapshot below. Any
+     other first-level dependence goes through wait_deps with the rest: a
+     snapshot taken when, say, a job is started from the init task holds none
+     of the jobs that its predecessor will spawn later. *)
+  let first, first_rest = match deps' with
+    | [] -> [], []
+    | l :: _ -> List.partition (fun d -> d.make_new_job) l in
+  let deps' = if List.is_empty deps' then [] else first :: List.tl deps' in
+  let deps'' = if List.is_empty deps' then [] else first_rest @ List.concat (List.tl deps') in
+  (* Snapshot the jobs to wait on and register this one in a single critical
+     section: jobs of one task can be spawned concurrently (from the jobs of a
+     Doall task), and with a gap between the two steps each new job could miss
+     the other and both would run at once. Task.async only enqueues. *)
+  Mutex.protect jobs_mutex (fun () ->
+    let initial_waits = if List.is_empty deps' then []
+      else begin
+        let jobs = Queue.to_seq job_queue |> List.of_seq in
+        List.map (fun dep -> List.filter_map (function | ({tid;_}, _) as j -> if tid = dep.pred_task then Some (j, dep) else None) jobs) (List.hd deps' |> List.sort_uniq (fun a b -> b.pred_task - a.pred_task)) |> List.concat
+      end in
+    let promise = Domainslib.Task.async (get !pool) (fun () -> 
+      if wait_on_init then Mutex.protect init_mutex (const ());
+      run_job j initial_waits deps'' |> seq @@ debug_print (lazy (Printf.sprintf "Job with tid=%d successfully finished.\n" j.tid))) in
+    debug_print (lazy (sp "Adding job with tid=%d.\n" j.tid));
+    Queue.add (j, promise) job_queue;
+    all_jobs := (j, promise) :: !all_jobs);
   debug_print (Lazy.from_val (sp "Job with tid=%d successfully started.\n" j.tid));
 
 and task_defs = ref []
@@ -1027,7 +1041,8 @@ and topsort_deps deps =
           (* Get all the dependencies whose pred_task has
              incoming spawning tasks from deps be only from seen tasks *)
           let t = load_task_def dep.pred_task in
-          List.filter (fun dep' -> dep'.make_new_job && List.mem dep'.pred_task dep_tasks) t.deps_in |>
+          (* A spawning dependence of a task on itself would never be seen. *)
+          List.filter (fun dep' -> dep'.make_new_job && dep'.pred_task <> dep.pred_task && List.mem dep'.pred_task dep_tasks) t.deps_in |>
           List.for_all (fun dep' -> List.mem dep'.pred_task (List.map get_pred_task !seen))) !remaining in
           res := level :: !res;
           seen := level @ !seen;
@@ -1103,11 +1118,54 @@ and wait_deps j init_waits deps self_body =
   (* For each dependency in order, wait on all jobs we're dependent on. *)
   List.iter (fun d ->
     let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
+    (* all_jobs is newest first, i.e. in reverse program order. When the
+       predecessor task also depends on this one (a task on itself, or two
+       blocks with a commute dependence each way), waiting on its later jobs
+       too would let two jobs wait on each other forever, so wait only on the
+       jobs registered before this one (new_job registers a job before it can
+       start, so it is always in the list). *)
+    let rec older = function
+      | [] -> []
+      | (j', _) :: rest -> if j' == j then rest else older rest in
+    let mutual = d.pred_task = j.tid
+      || List.exists (fun d' -> d'.pred_task = j.tid) (load_task_def d.pred_task).deps_in in
+    (* Two stages spawned by the same loop form a pipeline: the predecessor's
+       jobs for earlier iterations are already registered, and its later ones
+       come after this job in program order. *)
+    let same_loop = List.exists (fun s -> List.mem s (spawners_of j.tid)) (spawners_of d.pred_task) in
+    let candidates =
+      if mutual || same_loop then older jobs
+      else begin
+        (* The predecessor is an earlier stage that may still be spawning
+           jobs: wait until it has spawned all of them. *)
+        List.iter wait_complete (spawners_of d.pred_task);
+        Mutex.protect jobs_mutex (fun () -> !all_jobs)
+      end in
     (* Get the jobs corresponding to this dependency *)
-    let jobs_to_wait = List.filter (fun (j', _) -> 
-      j'.tid = d.pred_task && if j'.tid = j.tid then j'.tid < j.tid else true) jobs in
+    let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task) candidates in
     List.iter (flip wait_job d) jobs_to_wait
   ) deps;
+
+(* Tasks that spawn jobs of tid, i.e. whose body has a SendDep to it. *)
+and spawners_of tid =
+  let rec sends stmts = List.exists (fun s -> match s.elt with
+    | SendDep (t, _) -> t = tid
+    | If (_, b1, b2) -> sends b1.elt || sends b2.elt
+    | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sends b.elt
+    | _ -> false) stmts in
+  List.filter_map (fun t -> if sends t.body.elt then Some t.id else None) !task_defs
+
+(* A task is complete once every task spawning it is complete (so all its
+   jobs are registered: SendDep registers a job from within its spawner's
+   job) and all its jobs have finished. *)
+and completed_tasks : int list ref = ref []
+and wait_complete tid =
+  if not (Mutex.protect jobs_mutex (fun () -> List.mem tid !completed_tasks)) then begin
+    List.iter wait_complete (spawners_of tid);
+    let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
+    List.iter (fun (j', p) -> if j'.tid = tid then Domainslib.Task.await (get !pool) p |> ignore) jobs;
+    Mutex.protect jobs_mutex (fun () -> completed_tasks := tid :: !completed_tasks)
+  end
 
 and send_dep calling_tid tid env vals =
   (* 1 - Check input dependencies
@@ -1120,11 +1178,13 @@ and send_dep calling_tid tid env vals =
   
   debug_print (lazy (Printf.sprintf "send_dep called for tid=%d\n" tid));
   
-  let env' = senddep_extend_env env vals in
+  let task = load_task_def tid in
+  let shared = Lock_synthesis.conflicting_writes_in_stmts
+    (List.map (fun (_, i, _) -> i) vals) [] task.body.elt in
+  let env' = senddep_extend_env ~shared env vals in
   let env' = {env' with tid = Some tid} in
   
   (* 1 *)
-  let task = load_task_def tid in
   let deps =
     List.filter (function
       | {pred_task;_} when pred_task = calling_tid -> false (* Skip calling task *)

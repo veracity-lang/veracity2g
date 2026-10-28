@@ -206,7 +206,7 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     end 
   | EStmt s ->
     begin match s.elt with 
-    | Assn (e1,e2) -> (set_vars_side (find_exp_vars e1) lvalue) @ (set_vars_side (find_exp_vars e2) rvalue)
+    | Assn (e1,e2) -> (find_lhs_vars e1) @ (set_vars_side (find_exp_vars e2) rvalue)
     | Decl vdecl ->
       let id, (ty, e) = vdecl in 
       let decl = Gvdecl (no_loc { name = id; ty = ty; init = e }) in 
@@ -239,6 +239,12 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
     | _ -> []
     end 
   | Entry -> []
+
+(* `a[i] = ...` writes a but only reads i. *)
+and find_lhs_vars (lhs : exp node) : ((ty * string) * int) list =
+  match lhs.elt with
+  | Index (base, idx) -> find_lhs_vars base @ set_vars_side (find_exp_vars idx) rvalue
+  | _ -> set_vars_side (find_exp_vars lhs) lvalue
 
 and find_exp_vars exp : (ty * string) list =
   match exp.elt with 
@@ -326,23 +332,76 @@ let has_data_dep src dst : bool * (ty * string) list * (ty * string) list =
     | _ -> (t,id)
   ) !dts_vars
 
-let add_dataDep_edges pdg = 
-  let p = ref pdg in 
+(* Names declared anywhere inside a statement: each execution of the
+   statement gets fresh copies, so they carry nothing across iterations. *)
+let rec decls_in_stmts (stmts : stmt node list) : id list =
+  List.concat_map (fun s -> decls_in_stmt s.elt) stmts
 
-  let deps_equal deps1 deps2 =
-    List.length deps1 = List.length deps2 && 
-    List.for_all (fun d -> List.mem d deps2) deps1
-  in 
-  apply_pairs (fun x y -> 
-    let dep, std_deps, dts_deps = has_data_dep x y in 
+and decls_in_stmt (s : stmt) : id list =
+  match s with
+  | Decl (id, _) -> [id]
+  | If (_, b1, b2) -> decls_in_stmts b1.elt @ decls_in_stmts b2.elt
+  | While (_, _, body) | SBlock (_, body) -> decls_in_stmts body.elt
+  | For (vdecls, _, _, body) -> List.map fst vdecls @ decls_in_stmts body.elt
+  | Commute (_, _, blocks, _, _) -> List.concat_map (fun b -> decls_in_stmts b.elt) blocks
+  | _ -> []
+
+(* Variables a node both reads and writes that make it depend on its own
+   previous execution. Arrays and hash tables are left out: there is no index
+   analysis here, so `arr[i] = arr[i] + 1` would otherwise serialize every
+   array loop; races on their elements are left to lock synthesis. *)
+let self_dep_vars (n : pdg_node) (vars : (ty * string) list) : (ty * string) list =
+  let locals = match n.src with Some s -> decls_in_stmt s.elt | None -> [] in
+  List.filter (fun (ty, id) ->
+    match ty with
+    | TArr _ | THashTable _ -> false
+    | _ -> not (List.mem id locals)
+  ) vars
+
+let add_dataDep_edges pdg =
+  let p = ref pdg in
+  let writes n =
+    List.filter_map (fun (v, side) -> if side = lvalue then Some v else None) (find_stmt_vars n.n) in
+  apply_pairs (fun x y ->
+    let dep, std_deps, dts_deps = has_data_dep x y in
+    (* Output dependence: both write v, and the later write (y, in program
+       order) must land last. has_data_dep only pairs reads with writes. *)
+    if not (compare_nodes x y) then begin
+      let wy = writes y in
+      let waw = List.sort_uniq compare
+        (List.filter (fun v -> List.mem v wy && not (List.mem v std_deps)) (writes x)) in
+      if not (List.is_empty waw) then
+        p := add_edge !p x y (DataDep waw)
+    end;
     if dep then begin
-      if (not (List.is_empty std_deps)) && (not (compare_nodes x y) || not (deps_equal std_deps dts_deps)) then
-        p := add_edge !p x y (DataDep std_deps);
-      if (not (List.is_empty dts_deps)) && (not (compare_nodes x y) || not (deps_equal std_deps dts_deps)) then
-        p := add_edge !p y x (DataDep dts_deps);
+      if compare_nodes x y then begin
+        (* A node reading and writing the same variable: std_deps = dts_deps. *)
+        let self = self_dep_vars x std_deps in
+        if not (List.is_empty self) then
+          p := add_edge !p x x (DataDep self)
+      end else begin
+        if not (List.is_empty std_deps) then
+          p := add_edge !p x y (DataDep std_deps);
+        if not (List.is_empty dts_deps) then
+          p := add_edge !p y x (DataDep dts_deps)
+      end
     end
   ) pdg.nodes;
   !p
+
+(* A named block that commutes with itself (both sides of a commutativity
+   group carry its label) needs no self-dependence: concurrent instances are
+   covered by the commutativity condition and by NCB lock synthesis. *)
+let drop_commuting_self_deps pdg : exe_pdg =
+  let self_commutes n =
+    List.exists (fun e ->
+      compare_nodes e.src n && compare_nodes e.dst n
+      && (match e.dep with Commute _ -> true | _ -> false)) pdg.edges
+  in
+  { pdg with edges = List.filter (fun e ->
+      not (compare_nodes e.src e.dst
+           && (match e.dep with DataDep _ -> true | _ -> false)
+           && self_commutes e.src)) pdg.edges }
 
 
 let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
@@ -376,7 +435,13 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
       let cond, vars1, vars2 = !(find_commute_condition l1 l2) in
       begin match cond with 
       | None -> ()
-      | Some (PhiExp cond) -> p := add_edge !p x y (Commute (cond, vars1, vars2))
+      | Some (PhiExp cond) ->
+        p := add_edge !p x y (Commute (cond, vars1, vars2));
+        (* apply_pairs only visits x before y, but commutativity is symmetric:
+           a loop-carried dependence from y to x (y in iteration i, x in i+1)
+           must carry the same condition, with the formals swapped. *)
+        if not (compare_nodes x y) then
+          p := add_edge !p y x (Commute (cond, vars2, vars1))
       | _ -> failwith "undefined commute condition"
       end
     | _, _ -> ()
@@ -429,6 +494,39 @@ let find_outermost_loop_header pdg mem_node : pdg_node option =
 
   in
   match edge.dep with
+  | DataDep register when compare_nodes n1 n2 ->
+    (* A node depending on itself: the value it writes is read by its next
+       execution, which is a later iteration of the loop enclosing it --
+       unless every iteration first overwrites the variable, as `q = 0;`
+       does before `while (...) { q = q + 1; }`. *)
+    begin match find_outermost_loop_header pdg n1 with
+    | None -> false
+    | Some header ->
+      let control_parent n =
+        List.find_map (fun e -> match e.dep with
+          | ControlDep when compare_nodes e.dst n && not (compare_nodes e.src n) -> Some e.src
+          | _ -> None) pdg.edges in
+      let rec ancestors n = match control_parent n with
+        | None -> []
+        | Some p -> p :: ancestors p in
+      let n1_ancestors = ancestors n1 in
+      let in_loop p = compare_nodes p header || List.exists (compare_nodes header) (ancestors p) in
+      let start n = let (_, s, _) = n.l in s in
+      (* m assigns v without reading it, comes before n1, and runs in every
+         iteration in which n1 runs (it is controlled by an ancestor of n1
+         inside the loop). *)
+      let kills (_, v) (m : pdg_node) =
+        let assigns = match m.src with
+          | Some {elt = Assn ({elt = Id v'; _}, rhs); _} ->
+            v' = v && not (List.exists (fun (_, r) -> r = v) (find_exp_vars rhs))
+          | Some {elt = Decl (v', _); _} -> v' = v
+          | _ -> false in
+        assigns && not (compare_nodes m n1) && compare (start m) (start n1) < 0
+        && (match control_parent m with
+            | Some p -> List.exists (compare_nodes p) n1_ancestors && in_loop p
+            | None -> false) in
+      List.exists (fun v -> not (List.exists (kills v) pdg.nodes)) register
+    end
   | DataDep register ->
     (* Check if the definition of the register reaches the outermost loop header *)
     let rec definition_reaches_outer_loop_header (node: pdg_node) (visited: visited ref) =
@@ -453,16 +551,20 @@ let find_outermost_loop_header pdg mem_node : pdg_node option =
       match outer_loop_header with
       | None -> false
       | Some outer_loop_header ->
-        let rec has_upwards_exposed_use node =
-          let uses, _ = List.split (List.filter (fun (v, side) -> side == rvalue) (find_stmt_vars node.n)) in 
+        (* Walk back from n2 towards the loop header. This used to look up an
+           edge *out of* node and recurse on its source, i.e. on node itself,
+           which spun forever once n2 did not read the register directly. *)
+        let rec has_upwards_exposed_use node visited =
+          let uses, _ = List.split (List.filter (fun (v, side) -> side == rvalue) (find_stmt_vars node.n)) in
           if List.exists (fun (_, use) -> List.exists (fun (_, r) -> String.equal use r) register) uses then true
-          else match List.find_opt (fun e -> compare_nodes e.src node) pdg.edges with
+          else match List.find_opt (fun e -> compare_nodes e.dst node && not (compare_nodes e.src node)) pdg.edges with
             | None -> false
             | Some e ->
               if compare_nodes outer_loop_header e.src then false (* Reached outermost loop header *)
-              else has_upwards_exposed_use e.src
+              else if List.exists (compare_nodes e.src) visited then false
+              else has_upwards_exposed_use e.src (node :: visited)
         in
-        has_upwards_exposed_use n2
+        has_upwards_exposed_use n2 []
     in
     definition_reaches_outer_loop_header && upwards_exposed_use_in_outer_loop_header
   (* | ControlDep ->
@@ -535,6 +637,7 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
   let pdg = add_dataDep_edges pdg in 
   (* add commute dependency edges *)
   let pdg = add_commuteDep_edges pdg gc in
+  let pdg = drop_commuting_self_deps pdg in
   (* connect the entry node to the header nodes *)
   let pdg = begin match pdg.entry_node with 
   | Some en -> List.fold_left (fun pdg s -> let n = find_node s pdg in add_edge pdg en n ControlDep) pdg block
@@ -666,15 +769,14 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
   close_out oc
 
 let has_loop_carried (scc: pdg_node list) (pdg: exe_pdg) : bool =
-    let find_edge n1 n2 =
-    List.find_opt (fun e -> e.src == n1 && e.dst == n2) pdg.edges
+    (* Every edge between the pair counts, not just the first one found. *)
+    let carried n1 n2 =
+    List.exists (fun e -> e.src == n1 && e.dst == n2 && e.loop_carried) pdg.edges
     in
     let res = ref false in 
     apply_pairs (
       fun s1 s2 -> 
-      let e1 = find_edge s1 s2 in 
-      let e2 = find_edge s2 s1 in 
-      res := !res || (match e1 with | None -> false | Some e -> e.loop_carried) || (match e2 with | None -> false | Some e -> e.loop_carried) 
+      res := !res || carried s1 s2 || carried s2 s1
     ) scc;
     !res
 
@@ -903,6 +1005,24 @@ let retain_max_profile_doall dag_scc =
 
 (** TODO: revise this*)
 (* Function to merge sequential blocks greedily *)
+(* Is there a path src -> x -> ... -> dst through some block x other than
+   src and dst? Merging src and dst would then put x on a cycle, e.g. a Doall
+   stage spawned by a loop and controlling a statement merged into that loop. *)
+let path_via_other src dst dag_scc =
+  let succs n =
+    List.filter_map (fun e -> if compare_dag_nodes e.dag_src n then Some e.dag_dst else None) dag_scc.edges in
+  let is_end n = compare_dag_nodes n src || compare_dag_nodes n dst in
+  let rec reaches visited = function
+    | [] -> false
+    | n :: rest ->
+      if List.exists (compare_dag_nodes n) visited then reaches visited rest
+      else
+        let next = succs n in
+        List.exists (compare_dag_nodes dst) next
+        || reaches (n :: visited) (List.filter (fun m -> not (is_end m)) next @ rest)
+  in
+  reaches [] (List.filter (fun m -> not (is_end m)) (succs src))
+
 let merge_sequential_blocks dag_scc =
   (* let rec merge_blocks acc dag_scc =
     let sequential_blocks = List.filter (fun node -> node.label = Sequential) dag_scc.nodes in
@@ -929,6 +1049,8 @@ let merge_sequential_blocks dag_scc =
     && (block1.label == Sequential && block2.label = Sequential)
     && not (is_return_node block1)
     && not (is_return_node block2)
+    && not (path_via_other block1 block2 dag_scc)
+    && not (path_via_other block2 block1 dag_scc)
   in
   let rec merge_blocks block dag_scc visited =
     if List.mem block !visited then
@@ -942,7 +1064,13 @@ let merge_sequential_blocks dag_scc =
           if hd != block && a then find_mergeable_blocks (hd :: acc) tl
           else find_mergeable_blocks acc tl
       in
-      let mergeable_blocks = find_mergeable_blocks [] dag_scc.nodes in
+      (* Merge one block at a time: each candidate is checked against block
+         alone, so merging two of them together could still close a cycle
+         through a third block (path_via_other). The recursion below picks
+         up the rest, rechecked against the merged block. *)
+      let mergeable_blocks = match List.rev (find_mergeable_blocks [] dag_scc.nodes) with
+        | [] -> []
+        | first :: _ -> [first] in
       match mergeable_blocks with
       | [] -> dag_scc, visited
       | _ ->
@@ -1124,7 +1252,12 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
     let temp = ref 0 in 
     List.iteri (fun i n -> if compare_dag_nodes n node then temp := i + 1) dag.nodes;
     !temp
-  in 
+  in
+  (* make_new_job_out/in only say a task spawns some task and is spawned by
+     some task; a task that is both (a loop nested in a loop) would otherwise
+     get a spawning dependence on itself, which no SendDep ever creates. *)
+  let spawns src dst =
+    src <> dst && List.mem dst !make_new_job_in && List.mem src !make_new_job_out in
   let res = ref tasks in 
   List.iter (
     fun e -> 
@@ -1135,14 +1268,14 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
       let src_task = List.assoc src_taskID !res in
       if src_taskID = dst_taskID then begin
         let updated_task = (src_taskID, 
-          {src_task with deps_out = {pred_task= dst_taskID; make_new_job=if List.mem dst_taskID !make_new_job_in && List.mem src_taskID !make_new_job_out then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out;
-                         deps_in = {pred_task= src_taskID; make_new_job=if List.mem src_taskID !make_new_job_out && List.mem dst_taskID !make_new_job_in then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_in}) in
+          {src_task with deps_out = {pred_task= dst_taskID; make_new_job=spawns src_taskID dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out;
+                         deps_in = {pred_task= src_taskID; make_new_job=spawns src_taskID dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_in}) in
         res := updated_task :: List.remove_assoc src_taskID !res
       end
       else begin
         let dst_task = List.assoc dst_taskID !res in
-        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; make_new_job= if List.mem dst_taskID !make_new_job_in && List.mem src_taskID !make_new_job_out then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out}) in
-        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; make_new_job= if List.mem src_taskID !make_new_job_out && List.mem dst_taskID !make_new_job_in then true else false; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: dst_task.deps_in}) in
+        let new_src_task = (src_taskID, {src_task with deps_out = {pred_task= dst_taskID; make_new_job=spawns src_taskID dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: src_task.deps_out}) in
+        let new_dst_task = (dst_taskID, {dst_task with deps_in = {pred_task= src_taskID; make_new_job=spawns src_taskID dst_taskID; vars; commute_cond = {my_task_formals =[]; other_task_formals=[]; condition=None}} :: dst_task.deps_in}) in
         res := new_src_task :: new_dst_task :: 
         List.remove_assoc dst_taskID (List.remove_assoc src_taskID !res)
       end
