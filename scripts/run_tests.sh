@@ -393,7 +393,7 @@ run_interp_ok() {
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then
     run_verify "banking"            "$GC/banking.vcy"                  5
     run_verify "erc20"              "$GC/erc20.vcy" 3
-    run_verify "motivation"         "$GC/motivation.vcy"               1
+    run_verify "motivation"         "$GC/motivation.vcy"               3
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
     run_verify "vote"               "$GC/vote.vcy"                 6
     run_verify "simple-io"          "$GC/simple-io.vcy"                1

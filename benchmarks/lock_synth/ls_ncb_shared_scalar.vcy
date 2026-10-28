@@ -1,0 +1,49 @@
+int[] arr = new int[1000];
+
+commutativity {
+    {f1(i_1)}, {f2(i_2)}: ((i_1 != i_2) || (i_1 == i_2 && arr[i_1] > 0));
+    {f1(i_1)}, {f1(i_2)}: (i_1 != i_2);
+    {f2(i_1)}, {f2(i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int scalingfactor = int_of_string(argv[1]);
+    int size = int_of_string(argv[2]);
+    int[] out = new int[size];
+    int i = 0;
+    int j = 0;
+    int k = 0;
+    int sum = 0;
+
+    while (j < 1000) {
+        arr[j] = ((j*37)%1000)+1;
+        j = j + 1;
+    }
+
+    while (i < size) {
+        f1(i):{
+            busy_wait(scalingfactor);
+            int x = i;
+            arr[i] = arr[i] + (x*x);
+        }
+
+        f2(i):{
+            int t = i;
+            busy_wait(scalingfactor);
+            if (arr[i] > 0 && t < 0) {
+                arr[i] = arr[i] - 1;
+                out[i] = t;
+            } else {
+                out[i] = t;
+            }
+        }
+
+        i = i + 1;
+    }
+
+    while (k < 1000) {
+        sum = sum + arr[k];
+        k = k + 1;
+    }
+    return sum;
+}
