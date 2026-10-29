@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# Invoke with: python3 ./speedup_dswp.py out-dswp-results-dir
+# Invoke with: python3 ./speedup_dswp_noNB.py out-dswp-results-dir
 # The directory will be created if it doesn't exist,
 #   and 3 CSV files will be generated inside the directory
 
