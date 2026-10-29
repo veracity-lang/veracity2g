@@ -393,19 +393,26 @@ per N and one column per benchmark:
 
 Add `--test` after `<trials>` to run only N = 10⁶, as a quick check.
 
-**A single benchmark.** Pass the program path (relative to the repository
-root), followed by any arguments after the first. The script supplies the
-first argument, N, itself and sweeps it, so do not pass N:
+**A single benchmark.** Pass the program after `<trials>`. If it is in the
+script's built-in `benchmarks` list (matched by path, file name or name, e.g.
+`motivation`), it runs with the same inputs as in the full sweep, so the
+results match the paper's:
 
 ```bash
-python3 ./speedup_dswp.py out-motivation 5 benchmarks/ncb/motivation.vcy 10
-# runs: vcy interp ... motivation.vcy <N> 10   for each N
+python3 ./speedup_dswp.py out-motivation 2 motivation
+# runs: vcy interp ... motivation.vcy <N*100> 10   for each N
 ```
 
-This works for all three scripts. Note that a program given this way always
-receives N itself as its first argument, while the built-in `benchmarks` list
-may scale it (`motivation.vcy` receives N·100 there). To reproduce the
-paper's numbers, use the built-in list.
+Any other program is given N as its first argument, followed by any further
+arguments you pass (relative to the repository root). The script sweeps N,
+so do not pass it:
+
+```bash
+python3 ./speedup_dswp.py out-mine 2 benchmarks/ncb/my-prog.vcy 10
+# runs: vcy interp ... my-prog.vcy <N> 10   for each N
+```
+
+This works for all three scripts.
 
 ### Fig. 6
 

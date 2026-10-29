@@ -6,7 +6,7 @@ import os
 
 def read_csv(file_path):
     try:
-        return pd.read_csv(file_path, delim_whitespace=True)
+        return pd.read_csv(file_path, sep=r"\s+")
     except pd.errors.ParserError:
         print(f"Error: The file {file_path} does not have the correct format.")
         sys.exit(1)
