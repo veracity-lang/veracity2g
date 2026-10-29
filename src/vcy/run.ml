@@ -162,6 +162,7 @@ module RunInterp : Runner = struct
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
+    ; "--job-stats", Arg.Set Interp.job_stats_flag, " Print the number of DSWP jobs and their average execution time, pure and with dependency waits, to stderr"
     ; "--synthesize-locks", Arg.Set synthesize_locks, " Synthesize fine-grained mutex_lock/unlock in named commutative blocks"
     ; "--emit-tasks", Arg.Set emit_tasks, " Print DSWP task bodies (requires --dswp) and exit without running"
     ; "--html",     Arg.Unit (fun () -> generate_html := true), " Generate HTML report of DSWP analysis in ./veracity_output/run_NNNN/ (requires --dswp)"

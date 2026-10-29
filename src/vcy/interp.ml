@@ -22,6 +22,7 @@ let dswp_mode = ref false
 let synthesize_locks_flag = ref false
 
 let pool_size = ref 8
+let job_stats_flag = ref false
 
 let flatten_value_option v = match v with
   | Some v -> v
@@ -875,9 +876,23 @@ and interp_block ?(new_scope = true) (env : env) (block : block node) : env * va
 and jobs_mutex = Mutex.create ()
 and job_queue = Queue.create ()
 and all_jobs = ref []
+(* Per-job timings for --job-stats: pure is the body alone, with_deps also
+   counts the time spent in wait_deps. *)
+and job_stats_mutex = Mutex.create ()
+and job_count = ref 0
+and job_pure_time = ref 0.
+and job_with_deps_time = ref 0.
 and run_job jb initial_waits deps = 
+    let t0 = Unix.gettimeofday () in
     wait_deps jb initial_waits deps (load_task_def jb.tid).body;
-    interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body
+    let t1 = Unix.gettimeofday () in
+    let r = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body in
+    let t2 = Unix.gettimeofday () in
+    Mutex.protect job_stats_mutex (fun () ->
+      incr job_count;
+      job_pure_time := !job_pure_time +. (t2 -. t1);
+      job_with_deps_time := !job_with_deps_time +. (t2 -. t0));
+    r
 (* capture the values of dependent variables from the environment *)
 and make_job_vals env deps = 
   List.fold_left (fun acc (varty,varid) ->
@@ -1900,13 +1915,24 @@ let prepare_prog (prog : prog) (argv : string array) =
     let e = CallRaw (main_method_name, [e_argc;e_argv]) |> no_loc in
     env, e
 
+let print_job_stats tasks =
+  if !job_stats_flag then begin
+    let n = !job_count in
+    let avg t = if n = 0 then 0. else t /. float_of_int n in
+    Printf.eprintf "Tasks: %d\nJobs: %d\nAvg job exec (pure): %f s\nAvg job exec (+deps): %f s\n%!"
+      (List.length tasks) n (avg !job_pure_time) (avg !job_with_deps_time)
+  end
+
 let interp_tasks env0 decls init_task tasks : value =
   set_task_def tasks;
+  job_count := 0; job_pure_time := 0.; job_with_deps_time := 0.;
   (* create a job for each task with no deps_in -- REMOVED, just start job 0 in scheduler. *)
   (* let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs
     |> List.map (fun task -> {tid=task.id; env=env0}) in *)
   (* start the scheduler *)
-  scheduler init_task env0 |> flatten_value_option
+  let v = scheduler init_task env0 |> flatten_value_option in
+  print_job_stats tasks;
+  v
 
 (* Kick off interpretation of progam. 
  * Build initial environment, construct argc and argv,

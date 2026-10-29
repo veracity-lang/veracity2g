@@ -290,6 +290,7 @@ Important options:
 | `--codegen`             | Write generated C to `/tmp/autogen_tasks.c`    |
 | `--html` / `--htmlopen` | Generate a PDG, SCC DAG, and task-graph report |
 | `--time`                | Print execution time                           |
+| `--job-stats`           | Print task/job counts and average job time     |
 | `--force-sequential`    | Disable parallel execution                     |
 | `--out-dir DIR`         | Specify the output directory                   |
 
@@ -438,15 +439,38 @@ speedup in `ratio.csv` from `speedup_dswp.py`:
 | Column                     | Source                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | Total Exec (Seq, Par)      | `seq.csv` and `par.csv` at that N                                                                             |
-| Speedup (Obsrv.)           | `ratio.csv` at that N (geometric mean of per-trial speedups, so not exactly Seq ÷ Par)                        |
+| Speedup (Obsrv.)           | `ratio.csv` at that N (geometric mean of per-trial speedups)                        |
 | Nodes                      | Nodes in `pdg.dot`, the PDG before transformation                                                             |
 | Depth                      | Longest control-dependence chain from the entry node in `pdg.dot`                                             |
-| Tasks                      | Static tasks in `tasks.dot` or the HTML report                                                                |
-| Locks                      | Synthesized locks in the task bodies (`mutex_lock`/`mutex_unlock`)                                             |
-| Jobs                       | Dynamic job instances executed in the parallel run                                                            |
-| Avg Job Exec (Pure, +Deps) | Average time per job: its own computation (Pure), and including waits on dependencies (+Deps)                 |
+| Tasks                      | `Tasks:` from `--job-stats`: static tasks, as listed in the HTML report (init task not counted)              |
+| Locks                      | Synthesized locks in the task bodies: distinct locks (distinct `mutex_lock` ids), not `mutex_lock`/`mutex_unlock` pairs |
+| Jobs                       | `Jobs:` from `--job-stats`: dynamic job instances executed in the parallel run                                |
+| Avg Job Exec (Pure, +Deps) | `Avg job exec (pure)` / `(+deps)` from `--job-stats`: average seconds per job for its body alone (Pure), and including waits on dependencies (+Deps) |
 | Speedup (Thry.)            | Derived by hand from the thread count (default 8 (9 domains), `--threads`), the number of jobs, and dependencies that keep threads idle |
 
+
+To get Tasks, Jobs and Avg Job Exec, run the parallel configuration once at
+that N with `--job-stats`:
+
+```bash
+./vcy interp --dswp --synthesize-locks --time --job-stats benchmarks/ncb/<bench>.vcy <args>
+```
+
+```
+Tasks: 7
+Jobs: 65
+Avg job exec (pure): 0.000042 s
+Avg job exec (+deps): 0.000233 s
+0.001065
+```
+
+The statistics go to stderr, so the `--time` value is still the last line of
+stdout. Each job is timed in `run_job` (`src/vcy/interp.ml`): Pure covers
+only the job's body, +Deps also covers the time it spends in `wait_deps`
+before the body starts. Time a job spends queued in the worker pool before it
+starts is not counted. Do not add `-d`/`--debug`: its output is printed from
+inside each job and inflates both averages. Keep `--time`, which suppresses
+the program's own `print` output for the same reason.
 
 To get the PDG and tasks for a benchmark, run it once with `--html`:
 
