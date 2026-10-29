@@ -482,6 +482,25 @@ This writes `pdg.dot`, `dag-scc.dot`, `tasks.dot` and an HTML report to
 `veracity_output/latest/`. Add `--emit-tasks` to print the task bodies,
 including synthesized locks, without running the program.
 
+To draw the tasks as an image, use `reports/tasks_to_jpg.py`. It runs
+`vcy interp --dswp --synthesize-locks --emit-tasks` on each `.vcy` file (or
+every `.vcy` file in a folder) and writes one `.jpg` per program. Each task is
+a card with its id, label (Doall/Sequential) and code with synthesized locks
+highlighted. Arrows show dependencies with the variables they carry and their
+commute conditions. Run `make` first, since it calls `./vcy`; it needs
+`matplotlib`.
+
+```bash
+python3 reports/tasks_to_jpg.py benchmarks/ncb/erc20.vcy
+python3 reports/tasks_to_jpg.py benchmarks/ncb/ -o reports/tasks-img --save-txt
+```
+
+Images go to `reports/tasks-img/` by default (`-o DIR` to change). `-r`
+searches folders recursively, `--save-txt` also saves the raw `--emit-tasks`
+output, and `--timeout N` sets the per-file timeout (default 120 s). The task
+count shown for each file matches `Tasks:` from `--job-stats`, and the
+highlighted locks can be used to count Locks.
+
 ### Geometric-mean speedup
 
 The overall speedup reported in the paper is the geometric mean of the
