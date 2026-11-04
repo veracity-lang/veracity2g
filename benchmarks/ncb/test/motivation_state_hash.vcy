@@ -1,0 +1,61 @@
+/* motivation.vcy with a fixed arr instead of random values, returning a hash
+   of the final state. Keep in sync. */
+int[] arr = new int[1000];
+
+commutativity {
+    {f1(i_1)}, {f2(i_2)}: ((i_1 != i_2) || (i_1 == i_2 && arr[i_1] > 0));
+    {f1(i_1)}, {f1(i_2)}: (i_1 != i_2);
+    {f2(i_1)}, {f2(i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int scalingfactor = int_of_string(argv[1]);
+
+    int size = int_of_string(argv[2]);
+    int[] out = new int[size];
+    int i = 0;
+    int j = 0;
+    int i_1 = 0;
+    int i_2 = 2;
+    int res = 0;
+    
+    while (j < 1000) {
+        arr[j] = (j * 37) % 1000 + 1;
+        j = j + 1;
+    }
+
+    while (i < size) {
+        f1(i):{ /* will only increase arr[i] */
+            busy_wait(scalingfactor); 
+            int x = i;
+            arr[i] = arr[i] + (x*x);
+        }
+
+        f2(i):{ /* only observes if arr[i]>0 */
+            int t = /*compute*/(i);
+            busy_wait(scalingfactor);
+            if (arr[i] > 0 && t < 0) {
+                arr[i] = arr[i] - 1; 
+                out[i] = /*calc2*/(t);
+            } else {
+                out[i] = /*calc3*/(t);
+            }
+        }
+        
+        i = i + 1;
+    }
+
+    /* Hash the final state so that a wrong result is visible. */
+    int k = 0;
+    int state_hash = 0;
+    while (k < 1000) {
+        state_hash = state_hash * 3 + arr[k];
+        k = k + 1;
+    }
+    k = 0;
+    while (k < size) {
+        state_hash = state_hash * 3 + out[k];
+        k = k + 1;
+    }
+    return state_hash;
+}

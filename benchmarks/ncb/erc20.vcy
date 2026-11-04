@@ -61,6 +61,7 @@ int main(int argc, string[] argv) {
 
     /* Work phase */
     while (i<nAgents) {
+        j = 0;
         while(j<nTxns[i]) {
             transfer(i,account,amount,toWhom,pendingPoolSize,nAgents,maxSpend) : {
                 busy_wait(scalingFactor);

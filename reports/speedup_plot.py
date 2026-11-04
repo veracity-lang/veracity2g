@@ -37,7 +37,9 @@ def create_plot(data, benchmark, output_dir):
     plt.tight_layout()
 
     output_file = os.path.join(output_dir, f'{benchmark}-plot.png')
-    plt.savefig(output_file, dpi=300, bbox_inches='tight', transparent=True)
+    
+    # plt.subplots_adjust(left=0.16, right=0.98, bottom=0.17, top=0.97)
+    plt.savefig(output_file, dpi=300, transparent=True)
     plt.close()
     print(f"Plot for {benchmark} saved at {output_file}")
 

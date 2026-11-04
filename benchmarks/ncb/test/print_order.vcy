@@ -1,0 +1,21 @@
+/* Prints share no program variable but must still appear in program order. */
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    int total = 0;
+    print("start\n");
+    print("n = ");
+    print(string_of_int(n));
+    print("\n");
+    while (i < n) {
+        print(string_of_int(i));
+        print(" ");
+        total = total + i;
+        i = i + 1;
+    }
+    print("\nFinal:\n");
+    print("total = ");
+    print(string_of_int(total));
+    print("\n");
+    return total;
+}

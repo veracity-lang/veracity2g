@@ -181,6 +181,11 @@ let set_vars_side (vars : (ty * string) list) side : ((ty * string) * int) list 
 
 let find_global_by_name_opt name = List.find_opt (function (Gvdecl d) -> String.equal d.elt.name name | _ -> false) !decl_vars
 
+(* Stands for standard output: each print both reads and writes it, so prints
+   stay in program order unless a commutativity condition says otherwise. It
+   exists only in the PDG; task dependences do not carry it. *)
+let stdout_var = (TStr, "$stdout")
+
 let rec find_block_vars block : ((ty * string) * int) list = 
   match block with 
   | [] -> []
@@ -235,6 +240,10 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
       @ find_block_vars body.elt
     | If (e,b1,b2) -> (set_vars_side (find_exp_vars e) rvalue) @ (find_block_vars b1.elt) @ (find_block_vars b2.elt)
     | Assert e | Assume e | Require e | Raise e -> set_vars_side (find_exp_vars e) rvalue
+    | SCall (MethodL ("print", _), el) | SCallRaw ("print", el) ->
+      (stdout_var, lvalue) :: (stdout_var, rvalue) :: (set_vars_side (List.concat_map find_exp_vars el) rvalue)
+    | SCall (MethodL ("ht_put", _), (tbl :: _ as el)) | SCallRaw ("ht_put", (tbl :: _ as el)) ->
+      (set_vars_side (find_exp_vars tbl) lvalue) @ (set_vars_side (List.concat_map find_exp_vars el) rvalue)
     | SCall (_, el) | SCallRaw (_, el) -> (set_vars_side (List.concat_map find_exp_vars el) rvalue)
     | _ -> []
     end 
@@ -346,22 +355,28 @@ and decls_in_stmt (s : stmt) : id list =
   | Commute (_, _, blocks, _, _) -> List.concat_map (fun b -> decls_in_stmts b.elt) blocks
   | _ -> []
 
-(* Variables a node both reads and writes that make it depend on its own
-   previous execution. Arrays and hash tables are left out: there is no index
-   analysis here, so `arr[i] = arr[i] + 1` would otherwise serialize every
-   array loop; races on their elements are left to lock synthesis. *)
+(* Variables that make a node depend on its own previous execution: anything
+   it writes that it did not declare itself. Arrays and hash tables count too:
+   there is no index analysis, so two writes may hit the same element, and only
+   a commutativity condition can rule that out (drop_commuting_self_deps). *)
 let self_dep_vars (n : pdg_node) (vars : (ty * string) list) : (ty * string) list =
   let locals = match n.src with Some s -> decls_in_stmt s.elt | None -> [] in
-  List.filter (fun (ty, id) ->
-    match ty with
-    | TArr _ | THashTable _ -> false
-    | _ -> not (List.mem id locals)
-  ) vars
+  List.filter (fun (_, id) -> not (List.mem id locals)) vars
 
 let add_dataDep_edges pdg =
   let p = ref pdg in
   let writes n =
     List.filter_map (fun (v, side) -> if side = lvalue then Some v else None) (find_stmt_vars n.n) in
+  let rec enclosing_loops (n : pdg_node) =
+    List.concat_map (fun e ->
+      if e.dep == ControlDep && compare_nodes e.dst n && not (compare_nodes e.src n) then
+        (match e.src.n with EWhile _ | EFor _ -> [e.src] | _ -> []) @ enclosing_loops e.src
+      else []) pdg.edges in
+  let loops_of (n : pdg_node) =
+    (match n.n with EWhile _ | EFor _ -> [n] | _ -> []) @ enclosing_loops n in
+  let share_loop x y =
+    let ly = loops_of y in
+    List.exists (fun l -> List.exists (compare_nodes l) ly) (loops_of x) in
   apply_pairs (fun x y ->
     let dep, std_deps, dts_deps = has_data_dep x y in
     (* Output dependence: both write v, and the later write (y, in program
@@ -373,18 +388,18 @@ let add_dataDep_edges pdg =
       if not (List.is_empty waw) then
         p := add_edge !p x y (DataDep waw)
     end;
-    if dep then begin
-      if compare_nodes x y then begin
-        (* A node reading and writing the same variable: std_deps = dts_deps. *)
-        let self = self_dep_vars x std_deps in
-        if not (List.is_empty self) then
-          p := add_edge !p x x (DataDep self)
-      end else begin
-        if not (List.is_empty std_deps) then
-          p := add_edge !p x y (DataDep std_deps);
-        if not (List.is_empty dts_deps) then
-          p := add_edge !p y x (DataDep dts_deps)
-      end
+    if compare_nodes x y then begin
+      (* Concurrent runs of a node overwrite each other's writes even when
+         nothing reads them, so a write alone is a self-dependence. *)
+      let self = self_dep_vars x (List.sort_uniq compare (std_deps @ writes x)) in
+      if not (List.is_empty self) then
+        p := add_edge !p x x (DataDep self)
+    end else if dep then begin
+      if not (List.is_empty std_deps) then
+        p := add_edge !p x y (DataDep std_deps);
+      (* y reads what a later run of x writes, which needs a shared loop. *)
+      if not (List.is_empty dts_deps) && share_loop x y then
+        p := add_edge !p y x (DataDep dts_deps)
     end
   ) pdg.nodes;
   !p
@@ -611,7 +626,7 @@ let build_pdg (block: block) entry_loc (gc: group_commute node list) : exe_pdg =
         let src, pdg = add_node pdg stmt in
         let pdg = traverse_ast blk2.elt (traverse_ast blk1.elt pdg) in 
 
-        List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg blk1.elt
+        List.fold_left (fun pdg s -> add_edge pdg src (find_node s pdg) ControlDep) pdg (blk1.elt @ blk2.elt)
           
       | While (_, _, bl) | For (_, _, _, bl) ->
         let src, pdg = add_node pdg stmt in
@@ -892,8 +907,38 @@ let rec find_ancestors ancestors visited edges src_node =
       acc
   ) ancestors edges
 
+(* The control context of each statement: the If/loop directly around it and,
+   for an If, which branch. Top-level statements have the context ("", 0). *)
+let control_contexts (body : block node) =
+  let ctx = Hashtbl.create 64 in
+  let key l = Range.string_of_range_nofn l in
+  let rec walk parent (stmts : stmt node list) =
+    List.iter (fun s ->
+      Hashtbl.replace ctx (key s.loc) parent;
+      match s.elt with
+      | If (_, b1, b2) -> walk (key s.loc, 1) b1.elt; walk (key s.loc, 2) b2.elt
+      | While (_, _, b) | For (_, _, _, b) -> walk (key s.loc, 0) b.elt
+      | _ -> ()) stmts
+  in
+  walk ("", 0) body.elt;
+  ctx
+
+(* A task is spawned from one place in the program, once per execution of that
+   place, and reconstructAST flattens away any control statement it does not
+   contain. So the nodes of a task whose control statement lies outside the
+   task must all sit directly in the same context; otherwise statements from
+   different loops or branches would run together in every job. *)
+let single_context ctx (nodes : pdg_node list) =
+  let key (n : pdg_node) = Range.string_of_range_nofn n.l in
+  let keys = List.map key nodes in
+  let outer = List.filter_map (fun n ->
+    match Hashtbl.find_opt ctx (key n) with
+    | Some (parent, _) as c when not (List.mem parent keys) -> c
+    | _ -> None) nodes in
+  List.length (List.sort_uniq compare outer) <= 1
+
 (* Function to merge doall blocks greedily *)
-let merge_doall_blocks dag_scc (pdg: exe_pdg) =
+let merge_doall_blocks ctx dag_scc (pdg: exe_pdg) =
   let find_reachable_blocks block dag_scc visited =
     let reachable_blocks = ref [] in
     let rec dfs node =
@@ -941,6 +986,7 @@ let merge_doall_blocks dag_scc (pdg: exe_pdg) =
       match e.dep with | Commute _ -> true | _ -> false
       ) dag_scc.edges) in
     a && b&& d && c && (block1.label == Doall && block2.label = Doall) 
+    && single_context ctx (block1.n @ block2.n)
     && not (is_return_node block1)
     && not (is_return_node block2)
   in
@@ -1023,7 +1069,7 @@ let path_via_other src dst dag_scc =
   in
   reaches [] (List.filter (fun m -> not (is_end m)) (succs src))
 
-let merge_sequential_blocks dag_scc =
+let merge_sequential_blocks ctx dag_scc =
   (* let rec merge_blocks acc dag_scc =
     let sequential_blocks = List.filter (fun node -> node.label = Sequential) dag_scc.nodes in
     match sequential_blocks with
@@ -1047,6 +1093,7 @@ let merge_sequential_blocks dag_scc =
       && all_in_list_a_in_b e.dag_dst.n block1.n
       ) dag_scc.edges
     && (block1.label == Sequential && block2.label = Sequential)
+    && single_context ctx (block1.n @ block2.n)
     && not (is_return_node block1)
     && not (is_return_node block2)
     && not (path_via_other block1 block2 dag_scc)
@@ -1077,7 +1124,13 @@ let merge_sequential_blocks dag_scc =
         List.iter (fun block -> visited := block :: !visited) mergeable_blocks;
         let merged_block = { n = List.flatten (List.map (fun b -> b.n) (block :: mergeable_blocks)); label = Sequential } in
         let remaining_blocks = List.filter (fun b -> not (List.mem b mergeable_blocks) && b != block) dag_scc.nodes in
-        let new_edges = List.filter (fun e -> not (all_in_list_a_in_b e.dag_src.n merged_block.n && all_in_list_a_in_b e.dag_dst.n merged_block.n)) dag_scc.edges in
+        (* An edge inside the merged block can go, except a loop-carried one:
+           it becomes a self-edge, which is what orders the block's jobs. *)
+        let new_edges = List.filter (fun e ->
+          not (all_in_list_a_in_b e.dag_src.n merged_block.n && all_in_list_a_in_b e.dag_dst.n merged_block.n)
+          || (match e.dep with
+              | DataDep _ -> e.loop_carried || compare_dag_nodes e.dag_src e.dag_dst
+              | _ -> false)) dag_scc.edges in
         let nodes = merged_block :: remaining_blocks in
         let temp_nodes = match dag_scc.entry_node with | Some s -> {n = s.n; label = Sequential} :: nodes | None -> nodes in
         let updated_edges = List.map (
@@ -1144,7 +1197,7 @@ let reconstructAST dag dag_scc_node (block: block node) taskID : block =
     List.sort (fun s1 s2 ->
       let (_, p1, _) = s1.loc in
       let (_, p2, _) = s2.loc in
-      Int.compare (Range.line_of_pos p1) (Range.line_of_pos p2)
+      Stdlib.compare p1 p2
     ) augmented_block
   in
   let rec transform_block dag_scc_node (block: block node) : block * bool =
@@ -1265,6 +1318,7 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
     let dst_taskID = find_taskID e.dag_dst in 
     match e.dep with
     | DataDep vars -> 
+      let vars = List.filter (fun v -> v <> stdout_var) vars in
       let src_task = List.assoc src_taskID !res in
       if src_taskID = dst_taskID then begin
         let updated_task = (src_taskID, 
@@ -1429,12 +1483,50 @@ let add_empty_data_dep_edges dag_scc =
   ) dag_scc.nodes;
   { dag_scc with edges = !new_edges }
 
+(* Every task must be started by following spawns from the init task, and
+   spawns must not form a cycle: a job waits for the task that spawned it. *)
+let spawns_well_formed (init_task : init_task) (tasks : dswp_task list) =
+  let rec spawned (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, _) -> [i]
+      | If (_, b1, b2) -> spawned b1.elt @ spawned b2.elt
+      | While (_, _, b) | For (_, _, _, b) -> spawned b.elt
+      | _ -> []) stmts in
+  let succs id = spawned (List.find (fun t -> t.id = id) tasks).body.elt in
+  let finished = ref [] in
+  let rec acyclic path id =
+    List.mem id !finished
+    || (not (List.mem id path)
+        && List.for_all (acyclic (id :: path)) (succs id)
+        && (finished := id :: !finished; true)) in
+  List.for_all (acyclic []) init_task.jobs
+  && List.for_all (fun t -> List.mem t.id !finished) tasks
+
+(* The fallback when no valid partition was found: everything in one
+   sequential task, apart from a top-level return. *)
+let sequentialize ctx dag_scc =
+  let top_level_return (b : dag_node) =
+    is_return_node b && List.for_all (fun (n : pdg_node) ->
+      match Hashtbl.find_opt ctx (Range.string_of_range_nofn n.l) with
+      | Some (parent, _) -> parent = ""
+      | None -> false) b.n in
+  let returns, rest = List.partition top_level_return dag_scc.nodes in
+  let all = { n = List.concat_map (fun b -> b.n) rest; label = Sequential } in
+  let nodes = all :: returns in
+  let temp_nodes = match dag_scc.entry_node with Some s -> s :: nodes | None -> nodes in
+  let remap b = List.find (fun n -> all_in_list_a_in_b b.n n.n) temp_nodes in
+  let edges = List.filter_map (fun e ->
+    let src = remap e.dag_src and dst = remap e.dag_dst in
+    if src == all && dst == all then None else Some { e with dag_src = src; dag_dst = dst }) dag_scc.edges in
+  { dag_scc with nodes; edges = remove_duplicate_edge edges }
+
 let thread_partitioning dag_scc pdg (threads: int list) body =
   debug_print (lazy "Merging DAG_scc:\n");
-  let merged_dag = merge_doall_blocks dag_scc pdg in
+  let ctx = control_contexts body in
+  let merged_dag = merge_doall_blocks ctx dag_scc pdg in
   let dag_scc_with_max_profile = retain_max_profile_doall merged_dag in
   print_dag_debug dag_scc_with_max_profile;
-  let dag_scc_merged_sequential = merge_sequential_blocks dag_scc_with_max_profile in
+  let dag_scc_merged_sequential = merge_sequential_blocks ctx dag_scc_with_max_profile in
   let merged_dag = dag_scc_merged_sequential in 
   print_dag_debug merged_dag;
   print_dag merged_dag (dot_out_path "merged-dag-scc.dot") dag_pdgnode_to_string;
@@ -1443,6 +1535,18 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   print_dag_debug merged_dag_with_added_deps;
   print_dag merged_dag_with_added_deps (dot_out_path "merged-dag-scc2.dot") dag_pdgnode_to_string;
   let init_task, tasks = generate_tasks merged_dag_with_added_deps body in 
+  let init_task, tasks =
+    if List.for_all (fun b -> single_context ctx b.n) merged_dag.nodes
+       && spawns_well_formed init_task tasks
+    then init_task, tasks
+    else begin
+      debug_print (lazy "No valid partition: falling back to one sequential task\n");
+      ctr := 0;
+      sendDep_exists := [];
+      make_new_job_in := [];
+      make_new_job_out := [];
+      generate_tasks (sequentialize ctx merged_dag) body
+    end in
   if !Util.debug then begin
     Printf.printf "Init Task -> \n %s \n [%s] \n" (AstPP.string_of_block init_task.decls) (String.concat ", " (List.map Int.to_string init_task.jobs));
     List.iter (fun t -> Printf.printf "Task ID = %d ->\n %s \n" t.id (AstPP.string_of_block t.body)) tasks;

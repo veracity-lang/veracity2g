@@ -19,7 +19,7 @@ if not os.path.exists(input_csv_file):
     sys.exit(1)
 
 try:
-    data = pd.read_csv(input_csv_file, delim_whitespace=True)
+    data = pd.read_csv(input_csv_file, sep=r"\s+")
 except pd.errors.ParserError:
     print(f"Error: The file {input_csv_file} does not have the correct format.")
     sys.exit(1)
@@ -29,6 +29,26 @@ log_N = np.log10(N)
 columns = data.columns[1:]
 
 markers = ['o', 's', '^', 'D', 'v', '<', '>', 'p', '*', 'H', '+', 'x']
+
+plt.figure(figsize=(6, 4))
+for i, column in enumerate(columns):
+    label = column.replace("vote-run", "vote")
+    plt.plot(log_N, data[column], label=label, marker=markers[i % len(markers)])
+
+# Add horizontal line for speedup = 1
+plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2.5)
+
+plt.xticks(fontsize=19)
+plt.yticks(fontsize=19)
+
+plt.xlabel('Log(Computation Size)', fontsize=19)
+plt.ylabel('Par-to-Seq Speedup', fontsize=19)
+
+plt.grid(True, linestyle=':', alpha=0.6)
+
+plt.subplots_adjust(left=0.16, right=0.98, bottom=0.17, top=0.97)
+
+plt.savefig(output_plot_file, dpi=300, transparent=True)
 
 plt.figure(figsize=(12, 8))
 for i, column in enumerate(columns):
@@ -41,14 +61,11 @@ plt.axhline(y=1, color='black', linestyle='--', label='Speedup = 1', linewidth=2
 plt.xticks(fontsize=17)
 plt.yticks(fontsize=17)
 
-# plt.xlabel('Log(Computation Size)', fontsize=15)
-# plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
+plt.xlabel('Log(Computation Size)', fontsize=15)
+plt.ylabel('Par-to-Seq Speedup', fontsize=15)
+
 plt.grid(True, linestyle=':', alpha=0.6)
 
-plt.savefig(output_plot_file, dpi=300, bbox_inches='tight', transparent=True)
-
-plt.xlabel('Log(Computation Size)', fontsize=15)
-plt.ylabel('Parallel-to-Sequential Speedup', fontsize=15)
 plt.legend()
 plt.savefig(output_plot_file_apx, dpi=300, bbox_inches='tight', transparent=True)
 

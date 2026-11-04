@@ -1,0 +1,20 @@
+/* `a` is written without being read, and every iteration needs its own value:
+   the loop must not run as Doall. Returns a hash of the whole histogram. */
+int[] hist = new int[16];
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int i = 0;
+    int a = 0;
+    int sum = 0;
+    int k = 0;
+    while (i < n) {
+        a = i % 16;
+        hist[a] = hist[a] + i;
+        i = i + 1;
+    }
+    while (k < 16) {
+        sum = sum * 3 + hist[k];
+        k = k + 1;
+    }
+    return sum;
+}

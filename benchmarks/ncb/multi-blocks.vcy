@@ -67,5 +67,6 @@ int main(int argc, string[] argv) {
         files[i] = g;
     }
 
-	return 0;
+	/* f and g depend on the order of f4 and f6. */
+	return y * 10000 + f * 100 + g + files[i] * 1000000;
 }

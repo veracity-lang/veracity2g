@@ -218,6 +218,80 @@ run_dswp_vs_seq "ls_ncb_shared_scalar (dswp == seq)" 10 "$LS/ls_ncb_shared_scala
 run_dswp_vs_seq "ls_noncb_1 (dswp == seq)"           5  "$LS/ls_noncb_1.vcy"           8
 run_dswp_vs_seq "ls_global_induction (dswp == seq)"  10 "$LS/ls_global_induction.vcy"  20
 run_dswp_vs_seq "2d-array (dswp == seq)"             5  "$GC/other/2d-array.vcy"       20
+run_dswp_vs_seq "hist_shared_index (dswp == seq)"    10 "$GC/test/hist_shared_index.vcy" 3000
+run_dswp_vs_seq "hist_shared_index_oneline (dswp == seq)" 10 "$GC/test/hist_shared_index_oneline.vcy" 3000
+run_dswp_vs_seq "banking (dswp == seq)"              10 "$GC/banking.vcy"              1 100 1000
+run_dswp_vs_seq "banking_state_hash (dswp == seq)"   10 "$GC/test/banking_state_hash.vcy" 1 100 1000
+run_dswp_vs_seq "erc20_state_hash (dswp == seq)"     10 "$GC/test/erc20_state_hash.vcy"                1 1 2
+run_dswp_vs_seq "multi-blocks (dswp == seq)"         10 "$GC/multi-blocks.vcy"         1
+run_dswp_vs_seq "vote_state_hash (dswp == seq)"      10 "$GC/test/vote_state_hash.vcy" 1
+run_dswp_vs_seq "motivation_state_hash (dswp == seq)" 10 "$GC/test/motivation_state_hash.vcy" 100 50
+
+# run_dswp_output_vs_seq LABEL RUNS BENCH_PATH [ARGS...]
+#   Like run_dswp_vs_seq, but the whole stdout must match, not just the result.
+run_dswp_output_vs_seq() {
+    local label="$1" runs="$2"; shift 2
+    local seq par bad=""
+    seq=$(cd "$RUNDIR" && "$VCY" interp "$@" 2>&1) || true
+    for _ in $(seq 1 "$runs"); do
+        par=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks "$@" 2>&1) || true
+        [[ "$par" == "$seq" ]] || bad=1
+    done
+    if [[ -z "$bad" ]] && [[ -n "$seq" ]]; then
+        _record pass "$label" "[x$runs]"
+    else
+        _record fail "$label" "[stdout differs from sequential]"
+    fi
+}
+run_dswp_output_vs_seq "print_order (stdout == seq)"  10 "$GC/test/print_order.vcy"    50
+
+# run_simpleio_files_vs_seq RUNS
+#   simple-io's output is the files it writes, so compare those: every run
+#   starts from fresh inputs and must leave the same files as a sequential run.
+run_simpleio_files_vs_seq() {
+    local runs="$1" dir f bad=""
+    fresh_simpleio() {
+        rm -rf "$1"; mkdir -p "$1"
+        printf 'A' > "$1/a.txt"
+        for f in b c d; do printf '%s%0100d' "$f" 0 > "$1/$f.txt"; done
+    }
+    dir="$TMPF/simpleio"
+    fresh_simpleio "$dir/seq"
+    (cd "$RUNDIR" && "$VCY" interp "$GC/simple-io.vcy" \
+        "$dir/seq/a.txt" "$dir/seq/b.txt" "$dir/seq/c.txt" "$dir/seq/d.txt") >/dev/null 2>&1 || true
+    # f1 copies a to b and f2 copies c to d: if not, the comparison means nothing.
+    cmp -s "$dir/seq/a.txt" "$dir/seq/b.txt" && cmp -s "$dir/seq/c.txt" "$dir/seq/d.txt" || bad=1
+    for _ in $(seq 1 "$runs"); do
+        fresh_simpleio "$dir/par"
+        (cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks "$GC/simple-io.vcy" \
+            "$dir/par/a.txt" "$dir/par/b.txt" "$dir/par/c.txt" "$dir/par/d.txt") >/dev/null 2>&1 || true
+        diff -r "$dir/seq" "$dir/par" >/dev/null || bad=1
+    done
+    if [[ -z "$bad" ]]; then
+        _record pass "simple-io (files == seq)" "[x$runs]"
+    else
+        _record fail "simple-io (files == seq)" "[files differ from sequential]"
+    fi
+}
+run_simpleio_files_vs_seq 10
+
+# check_self_dep LABEL PATTERN BENCH_PATH [ARGS...]
+#   The task containing PATTERN must depend on itself, or its jobs overlap. A
+#   missing self-dependence only rarely changes the result, so check the task.
+check_self_dep() {
+    local label="$1" pattern="$2"; shift 2
+    local task id
+    task=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks --emit-tasks "$@" 2>&1 \
+          | awk -v p="$pattern" 'BEGIN{RS="=== Task "} index($0, p)') || true
+    id=${task%% *}
+    if [[ -n "$id" ]] && printf '%s\n' "$task" | grep -q "^deps_in:.*from $id "; then
+        _record pass "$label" "[task $id]"
+    else
+        _record fail "$label" "[task ${id:-not found} has no self-dependence]"
+    fi
+}
+check_self_dep "banking max loop keeps its self-dep" "if (accounts[i] > max_balance)" \
+    "$GC/banking.vcy" 1 100 1000
 
 # Verify pre-DSWP lock counts.
 # ls_noncb_1: counter IS in the NCB conflict_set (incr blocks share it),
