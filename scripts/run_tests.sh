@@ -275,6 +275,30 @@ run_simpleio_files_vs_seq() {
 }
 run_simpleio_files_vs_seq 10
 
+# run_false_comm_vs_seq LABEL RUNS BENCH_PATH [ARGS...]
+#   With every commutativity condition replaced by false (Fig. 6 False-Comm),
+#   --dswp --synthesize-locks must still return the sequential result. 
+run_false_comm_vs_seq() {
+    local label="$1" runs="$2" bench="$3"; shift 3
+    local f="$TMPF/false_comm.vcy" seq par bad=""
+    sed -E '/^commutativity/,/^}/ s/: *\(.*\)( *;?) *$/: (false)\1/' "$RUNDIR/$bench" > "$f"
+    seq=$(cd "$RUNDIR" && "$VCY" interp "$f" "$@" 2>&1 | tail -1) || true
+    for _ in $(seq 1 "$runs"); do
+        par=$(cd "$RUNDIR" && perl -e 'alarm 30; exec @ARGV' "$VCY" interp --dswp --synthesize-locks "$f" "$@" 2>&1 | tail -1) || true
+        [[ "$par" == "$seq" ]] || bad="${par:-no result, timed out}"
+    done
+    if [[ -z "$bad" ]] && printf '%s\n' "$seq" | grep -q '^Return:'; then
+        _record pass "$label" "[$seq x$runs]"
+    else
+        _record fail "$label" "[seq=$seq | dswp=$bad]"
+    fi
+}
+run_false_comm_vs_seq "banking false-comm (dswp == seq)"      5 "$GC/test/banking_state_hash.vcy"    1 100 1000
+run_false_comm_vs_seq "erc20 false-comm (dswp == seq)"        5 "$GC/test/erc20_state_hash.vcy"      1 1 2
+run_false_comm_vs_seq "multi-blocks false-comm (dswp == seq)" 5 "$GC/multi-blocks.vcy"               1
+run_false_comm_vs_seq "vote false-comm (dswp == seq)"         5 "$GC/test/vote_state_hash.vcy"       1
+run_false_comm_vs_seq "motivation false-comm (dswp == seq)"   5 "$GC/test/motivation_state_hash.vcy" 100 50
+
 # check_self_dep LABEL PATTERN BENCH_PATH [ARGS...]
 #   The task containing PATTERN must depend on itself, or its jobs overlap. A
 #   missing self-dependence only rarely changes the result, so check the task.

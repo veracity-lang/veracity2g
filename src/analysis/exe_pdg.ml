@@ -363,10 +363,9 @@ let self_dep_vars (n : pdg_node) (vars : (ty * string) list) : (ty * string) lis
   let locals = match n.src with Some s -> decls_in_stmt s.elt | None -> [] in
   List.filter (fun (_, id) -> not (List.mem id locals)) vars
 
-let add_dataDep_edges pdg =
-  let p = ref pdg in
-  let writes n =
-    List.filter_map (fun (v, side) -> if side = lvalue then Some v else None) (find_stmt_vars n.n) in
+(* Whether x and y run inside a common loop. Without one, a later statement
+   can never feed an earlier one. *)
+let share_loop pdg x y =
   let rec enclosing_loops (n : pdg_node) =
     List.concat_map (fun e ->
       if e.dep == ControlDep && compare_nodes e.dst n && not (compare_nodes e.src n) then
@@ -374,9 +373,13 @@ let add_dataDep_edges pdg =
       else []) pdg.edges in
   let loops_of (n : pdg_node) =
     (match n.n with EWhile _ | EFor _ -> [n] | _ -> []) @ enclosing_loops n in
-  let share_loop x y =
-    let ly = loops_of y in
-    List.exists (fun l -> List.exists (compare_nodes l) ly) (loops_of x) in
+  let ly = loops_of y in
+  List.exists (fun l -> List.exists (compare_nodes l) ly) (loops_of x)
+
+let add_dataDep_edges pdg =
+  let p = ref pdg in
+  let writes n =
+    List.filter_map (fun (v, side) -> if side = lvalue then Some v else None) (find_stmt_vars n.n) in
   apply_pairs (fun x y ->
     let dep, std_deps, dts_deps = has_data_dep x y in
     (* Output dependence: both write v, and the later write (y, in program
@@ -398,7 +401,7 @@ let add_dataDep_edges pdg =
       if not (List.is_empty std_deps) then
         p := add_edge !p x y (DataDep std_deps);
       (* y reads what a later run of x writes, which needs a shared loop. *)
-      if not (List.is_empty dts_deps) && share_loop x y then
+      if not (List.is_empty dts_deps) && share_loop pdg x y then
         p := add_edge !p y x (DataDep dts_deps)
     end
   ) pdg.nodes;
@@ -455,7 +458,7 @@ let add_commuteDep_edges pdg (gc: group_commute node list) : exe_pdg =
         (* apply_pairs only visits x before y, but commutativity is symmetric:
            a loop-carried dependence from y to x (y in iteration i, x in i+1)
            must carry the same condition, with the formals swapped. *)
-        if not (compare_nodes x y) then
+        if not (compare_nodes x y) && share_loop pdg x y then
           p := add_edge !p y x (Commute (cond, vars2, vars1))
       | _ -> failwith "undefined commute condition"
       end
