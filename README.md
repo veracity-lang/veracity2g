@@ -513,6 +513,63 @@ highlighted locks can be used to count Locks.
 The overall speedup reported in the paper is the geometric mean of the
 Obsrv. column of Table 3 across its six benchmarks (4.49×).
 
+### Table 1
+
+Table 1 compares V2G with prior work on whether each benchmark can be
+parallelized. Each row maps to these files:
+
+| Row | File |
+| --- | ---- |
+| `psdswp` | `benchmarks/ncb/other/2d-array.vcy` |
+| `commset-md5` | `benchmarks/ncb/commset.vcy` |
+| `commset-kmeans` | `benchmarks/ncb/commset-kmeans.vcy` |
+| `commset-potrace` | `benchmarks/ncb/commset-potrace.vcy` |
+| `vcy-nested` | `benchmarks/inferred/nested.vcy` |
+| `vcy-crowd` | `benchmarks/manual/crowdfund.vcy` |
+| 24 more `vcy-*` | `benchmarks/ncb/veracity/<program>.vcy`, all except `dihedral` and `ht-fizz-buzz` |
+| `motivation` | `benchmarks/ncb/motivation.vcy` |
+| `simple-io` | `benchmarks/ncb/simple-io.vcy` |
+| `multiblocks` | `benchmarks/ncb/multi-blocks.vcy` |
+| `vote` | `benchmarks/ncb/vote.vcy` |
+| `erc20` | `benchmarks/ncb/erc20.vcy` |
+| `banking` | `benchmarks/ncb/banking.vcy` |
+
+Two `vcy-*` rows differ from the others:
+
+- `vcy-nested` is not parallelized by V2G because its blocks are nested, as the
+  table notes.
+- `vcy-crowd` uses interprocedural calls, which are not supported, so the table
+  assumes they are inlined.
+
+Run a benchmark in parallel with:
+
+```bash
+./vcy interp --dswp --synthesize-locks <file> <args>
+```
+
+`reports/speedup_gen_veracity.py` lists the arguments of the 24 `vcy-*` programs,
+and `reports/speedup_dswp.py` lists them for the `commset-*` programs and the last
+six rows. `ps-dswp.vcy` takes no arguments.
+
+#### Verifying the `vcy-*` programs
+
+The files in `benchmarks/ncb/veracity/` are used for both executing and verifying.
+Loops are annotated with invariants, and those programs are verified with `-ae`.
+`make test` runs all of these commands (they need `cvc5`):
+
+```bash
+./vcy verify benchmarks/ncb/veracity/<program>.vcy --prover cvc5
+./vcy verify benchmarks/ncb/veracity/loop-<name>.vcy --prover cvc5 -ae
+```
+
+| Program | Flags | Condition | Complete |
+| ------- | ----- | --------- | -------- |
+| `array-disjoint`, `array1`, `array2`, `array3`, `conditional`, `counter`, `dict`, `dot-product`, `ht-add-put`, `ht-cond-size-get`, `ht-simple`, `linear`, `linear-bool`, `linear-cond`, `matrix`, `nonlinear` | | Correct | Yes |
+| `calc`, `even-odd`, `ht-cond-mem-get`, `simple` | | Correct | No |
+| `loop-disjoint`, `loop-simple` | `-ae` | Correct | Yes |
+| `loop-amt`, `loop-inter` | `-ae` | Correct | No |
+| `dihedral`, `ht-fizz-buzz` (not rows of Table 1) | | Not verified | n/a |
+
 ## Original Veracity `commute` Blocks
 
 V2G also supports the original Veracity constructs, which reason about

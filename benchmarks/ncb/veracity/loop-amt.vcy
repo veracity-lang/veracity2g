@@ -11,7 +11,6 @@ int main(int argc, string[] argv) {
     int amt_pre = 0;
     int i_pre = 0;
     ctr = int_of_string(argv[2]);
-    mutex_init(0); 
     f(i) :
         {
             /* this only works if i is initially even. */
@@ -25,12 +24,12 @@ int main(int argc, string[] argv) {
                 }
                 i = i - 1;
             }
-            mutex_lock(0); ctr = ctr + amt; mutex_unlock(0); 
+            ctr = ctr + amt;
             i = 0; amt = 0; i_pre = 0; amt_pre = 0;
         }
     g() :
         {   
-            mutex_lock(0); if (ctr > 0) { ctr = ctr - 1; } mutex_unlock(0); busy_wait(n);
+            if (ctr > 0) { ctr = ctr - 1; } busy_wait(n);
         }
     
     return 0;

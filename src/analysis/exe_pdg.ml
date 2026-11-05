@@ -150,7 +150,7 @@ let print_pdg pdg fn : unit =
     )) "" pdg.edges;
     "}\n";
   ]);
-  debug_print (lazy ("pdg written to " ^ fn));
+  debug_print (lazy ("pdg written to " ^ fn ^ "\n"));
   close_out oc
 
 
@@ -783,7 +783,7 @@ let print_dag (d:dag_scc) fn node_to_string_fn : unit =
     )) "" d.edges;
     "}\n";
   ]);
-  debug_print (lazy ("dag written to " ^ fn));
+  debug_print (lazy ("dag written to " ^ fn ^ "\n"));
   close_out oc
 
 let has_loop_carried (scc: pdg_node list) (pdg: exe_pdg) : bool =

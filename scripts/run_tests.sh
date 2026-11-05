@@ -352,9 +352,9 @@ echo "=== NCB verify benchmarks (vcy verify --prover cvc5) ==="
 #   code, so the output is what we check.  Pinning NCONDS catches a condition
 #   that is silently dropped.
 run_verify() {
-    local label="$1" file="$2" nconds="$3"
+    local label="$1" file="$2" nconds="$3"; shift 3
     local out rc ok bad
-    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 2>&1); rc=$?
+    out=$(cd "$RUNDIR" && "$VCY" verify "$file" --prover cvc5 "$@" 2>&1); rc=$?
     ok=$(printf '%s\n' "$out" | grep -c 'verified as correct')
     bad=$(printf '%s\n' "$out" | grep -c 'verified as incorrect')
     if [[ "$rc" -eq 0 && "$bad" -eq 0 && "$ok" -eq "$nconds" ]]; then
@@ -504,6 +504,19 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
     run_verify "commset-kmeans"     "$GC/commset-kmeans.vcy"           1
 
+    # Veracity's benchmarks: the same files are executed and verified.
+    for p in array-disjoint array1 array2 array3 calc conditional counter dict \
+             dot-product even-odd ht-add-put ht-cond-mem-get ht-cond-size-get \
+             ht-simple linear linear-bool linear-cond matrix nonlinear simple; do
+        run_verify "veracity $p" "$GC/veracity/$p.vcy" 1
+    done
+    # Their loops carry invariants, which are encoded with -ae.
+    for p in loop-amt loop-disjoint loop-inter loop-simple; do
+        run_verify "veracity $p" "$GC/veracity/$p.vcy" 1 -ae
+    done
+    # known_verify_failure "veracity dihedral"     "$GC/veracity/dihedral.vcy"     "not translatable into logic"
+    # known_verify_failure "veracity ht-fizz-buzz" "$GC/veracity/ht-fizz-buzz.vcy" "loop without an invariant"
+
     # Not verified: other/simple-vector{,-err}, other/sollve_dotprod and
     # other/ncb_max_reduce have loops that read their counter or share the
     # block with other code, so they need an invariant (see
@@ -544,8 +557,8 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
             case "$f" in
                 # The condition `true` is wrong: the decrement is guarded on c > 0.
                 */counter.vcy)  run_incorrect "$f" ;;
-                # Its loop summary uses havoc.
-                */loop-amt.vcy) run_exit "$f" "$VCY" verify "$f" --prover cvc5 -ae ;;
+                # Their loop summaries use havoc.
+                */loop-amt.vcy|*/loop-inter.vcy) run_exit "$f" "$VCY" verify "$f" --prover cvc5 -ae ;;
                 *)              run_exit "$f" "$VCY" verify "$f" --prover cvc5 ;;
             esac
         done

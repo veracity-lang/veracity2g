@@ -38,9 +38,7 @@ int main(int argc, string[] argv) {
                 q = q+1; 
             }
             if(q < 100){
-                mutex_lock(0);
                 sum = (sum + pValue[row]) % 256;
-                mutex_unlock(0);
             }
         }
         p = p + 1; 
