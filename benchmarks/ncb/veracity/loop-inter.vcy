@@ -13,12 +13,12 @@ int main(int argc, string[] argv) {
 
     f1(x,s1):{
         
-        while(x>0) { x = x - 1;  busy_wait(n); s1 = s1 + 1; }
+        while(x>0) invariant true { x = x - 1;  busy_wait(n); s1 = s1 + 1; }
         acc = acc + s1;
     }
     f2(x,y,s2):{
     
-        while(y>0) { y = y - 1;  busy_wait(n); s2 = s2 + x; }
+        while(y>0) invariant true { y = y - 1;  busy_wait(n); s2 = s2 + x; }
         acc = acc + s2;
     }
     
