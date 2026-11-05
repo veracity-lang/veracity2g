@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 
-# Invoke with: python3 ./speedup_dswp.py out-dswp-results-dir
+# Invoke with: python3 path/to/speedup_dswp.py out-dswp-results-dir
 # The directory will be created if it doesn't exist,
 #   and 3 CSV files will be generated inside the directory
+# Can be run from anywhere: the results directory and the benchmark input
+#   files (a.txt, b.txt, ...) are relative to the current directory
 
 from posixpath import join
 from pathlib import Path
@@ -17,9 +19,9 @@ Data = Tuple[float, float]
 Result = Tuple[Benchmark, Data]
 Row = Tuple[int, List[float]]
 
-os.chdir(os.path.dirname(sys.argv[0]))
+repo_root = Path(__file__).resolve().parent.parent
 
-vcy_exe = '.././vcy'
+vcy_exe = str(repo_root / 'vcy')
 
 dir = ''
 num_trials = 0
@@ -57,7 +59,7 @@ def prep_commset(n):
         f.write("C"*(n))
     with open("d.txt", "w") as f:
         f.write("D"*(n))
-    return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
+    return ["a.txt", "b.txt", "c.txt", "d.txt"]
 
 def prep_simpleio(n):
     with open("a.txt", "w") as f:
@@ -68,7 +70,7 @@ def prep_simpleio(n):
         f.write("C"*(n))
     with open("d.txt", "w") as f:
         f.write("D"*(n))
-    return [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt")]
+    return ["a.txt", "b.txt", "c.txt", "d.txt"]
 
 
 def prep_potrace(n):
@@ -84,7 +86,7 @@ def prep_potrace(n):
         f.write("E"*(n))
     with open("f.txt", "w") as f:
         f.write("F"*(n))
-    files = [os.path.join(os.path.dirname(sys.argv[0]), "a.txt"), os.path.join(os.path.dirname(sys.argv[0]), "b.txt"), os.path.join(os.path.dirname(sys.argv[0]), "c.txt"), os.path.join(os.path.dirname(sys.argv[0]), "d.txt"), os.path.join(os.path.dirname(sys.argv[0]), "e.txt"), os.path.join(os.path.dirname(sys.argv[0]), "f.txt")]
+    files = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt", "f.txt"]
     result = [str(n)]
     result.extend(files)
     return result
@@ -109,9 +111,10 @@ benchmarks : List[Benchmark] = [
 def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     prog,fargs = b
     args = fargs(n)
+    prog_path = str(repo_root / prog)
 
-    command_seq = [vcy_exe, 'interp', '--time',           '--timeout', str(timeout), '../' + prog] + args # TODO: More time for inference?
-    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), '../' + prog] + args
+    command_seq = [vcy_exe, 'interp', '--time',           '--timeout', str(timeout), prog_path] + args # TODO: More time for inference?
+    command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), prog_path] + args
 
     def f(command : List[str], floatize : bool):
         popen = subprocess.Popen(
@@ -215,6 +218,9 @@ if __name__ == '__main__':
                 benchmarks = known
             else:
                 extra = [a for a in sys.argv[4:] if a != '--test']
+                # Relative to the current directory if it exists there,
+                # otherwise to the repository root
+                if os.path.exists(prog): prog = os.path.abspath(prog)
                 benchmarks = [(prog, lambda n: [str(n)] + extra)]
         build_file()
     except:
