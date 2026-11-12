@@ -8,7 +8,12 @@ open Ast
    cell counts as assigning the variable it is reached through, as CStore does
    in the Rocq semantics.  Variables declared in a body are not parameters, so
    assigning them is fine even if they shadow one.  Code outside the bodies
-   may assign parameters: that is what a loop increment does. *)
+   may assign parameters: that is what a loop increment does.
+
+   (Scope) A condition names only the parameters of the two labels it relates
+   and globals.  The scheduler evaluates it over just those bindings
+   (interp_phi_two), so a local of main would be IdNotFound at run time even
+   though verify, which treats it as state, accepts it. *)
 
 (* The variable that an lvalue or a label parameter is reached through. *)
 let rec root (e : exp node) : id option =
@@ -127,7 +132,40 @@ let w1_violations (g : global_env) : string list =
     g.group_commute
   |> List.sort_uniq compare
 
+(* Identifiers an expression reads, minus those a quantifier binds. *)
+let rec free_ids (e : exp node) : (id * Range.t) list =
+  match e.elt with
+  | Id x -> [x, e.loc]
+  | Exists (x, _, b) | Forall (x, _, b) ->
+    List.filter (fun (y, _) -> not (String.equal x y)) (free_ids b)
+  | _ -> List.concat_map free_ids (sub_exps e)
+
+(* One message for each identifier a condition reads that is neither a global
+   nor a parameter of every pair of labels the condition relates. *)
+let scope_violations (g : global_env) : string list =
+  let params (_, ps) = List.filter_map root (Option.value ~default:[] ps) in
+  List.concat_map (fun (gc : group_commute node) ->
+    match gc.elt with
+    | _, PhiInf -> []
+    | sides, PhiExp phi ->
+      let rec pairs = function
+        | [] -> []
+        | s :: tl -> List.concat_map (fun s' ->
+            List.concat_map (fun a -> List.map (fun b -> a, b) s') s) tl @ pairs tl in
+      List.concat_map (fun (a, b) ->
+        let bound = params a @ params b in
+        List.filter_map (fun (x, loc) ->
+          if List.mem x bound || List.mem_assoc x g.globals then None
+          else Some (Printf.sprintf
+            "%s: scope violation: the condition for %s and %s reads %s, \
+             which is neither a parameter of either label nor a global"
+            (Range.string_of_range loc) (fst a) (fst b) x))
+          (free_ids phi))
+        (pairs sides))
+    g.group_commute
+  |> List.sort_uniq compare
+
 let check (g : global_env) : unit =
-  match w1_violations g with
+  match w1_violations g @ scope_violations g with
   | [] -> ()
   | vs -> List.iter prerr_endline vs; exit 1

@@ -1,0 +1,21 @@
+/* The condition reads the labels' parameters and a global; the blocks write
+   only the global.  Expect: ok */
+int[] a = new int[10];
+
+commutativity {
+    {f(i_1,v_1)}, {f(i_2,v_2)}: (i_1 != i_2 || a[i_1] + v_1 + v_2 >= 0)
+}
+
+int main(int argc, string[] argv) {
+    int i = 0;
+    int v = 1;
+    int i_1 = 0;
+    int i_2 = 0;
+    int v_1 = 0;
+    int v_2 = 0;
+    while (i < 10) {
+        f(i,v): { a[i] = a[i] + v; }
+        i = i + 1;
+    }
+    return a[0];
+}

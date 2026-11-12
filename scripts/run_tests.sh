@@ -487,9 +487,10 @@ run_interp_ok() {
 }
 
 # run_wellformed BENCH_PATH
-#   The benchmark's "Expect:" line is either "ok" or the violation.  A violation
-#   must be reported on stderr with a non-zero exit, by verify and by interp,
-#   before any solver runs.  An ok benchmark must not report a violation.
+#   The benchmark's "Expect:" line is either "ok" or the violation (W1 or
+#   condition scope).  A violation must be reported on stderr with a non-zero
+#   exit, by verify and by interp, before any solver runs.  An ok benchmark
+#   must not report a violation.
 run_wellformed() {
     local label; label=$(_label "$1")
     local expect cmd out rc
@@ -497,12 +498,12 @@ run_wellformed() {
     for cmd in verify interp; do
         out=$(cd "$REPO_ROOT" && timeout 60 "$VCY" "$cmd" "$1" 2>&1 >/dev/null); rc=$?
         if [[ "$expect" == ok ]]; then
-            if printf '%s\n' "$out" | grep -q 'W1 violation'; then
-                _record fail "$label ($cmd)" "[$(printf '%s\n' "$out" | grep -m1 'W1 violation' | cut -c1-60)]"
+            if printf '%s\n' "$out" | grep -q ' violation: '; then
+                _record fail "$label ($cmd)" "[$(printf '%s\n' "$out" | grep -m1 ' violation: ' | cut -c1-60)]"
                 return
             fi
-        elif [[ "$rc" -ne 1 ]] || ! printf '%s\n' "$out" | grep -qF "W1 violation: $expect"; then
-            _record fail "$label ($cmd)" "[exit $rc, want W1 violation: $expect]"
+        elif [[ "$rc" -ne 1 ]] || ! printf '%s\n' "$out" | grep -qF "violation: $expect"; then
+            _record fail "$label ($cmd)" "[exit $rc, want violation: $expect]"
             return
         fi
     done
@@ -510,7 +511,7 @@ run_wellformed() {
 }
 
 echo ""
-echo "=== benchmarks/wellformed (W1 static check) ==="
+echo "=== benchmarks/wellformed (W1 and condition scope static checks) ==="
 for f in "$REPO_ROOT"/benchmarks/wellformed/*.vcy; do
     run_wellformed "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
 done
