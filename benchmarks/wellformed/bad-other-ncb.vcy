@@ -1,0 +1,20 @@
+/* W1 covers both NCBs of an entry: f assigns a parameter of g.
+   Expect: NCB f assigns u, a parameter of NCB g */
+commutativity {
+    {f(i_1)}, {g(u_2)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int u = 0;
+    int i = 0;
+    int i_1 = 0;
+    int u_2 = 0;
+    int y = 0;
+    f(i): {
+        u = 1;
+    }
+    g(u): {
+        y = u;
+    }
+    return y;
+}

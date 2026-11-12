@@ -1,0 +1,19 @@
+/* A called method assigns a global that the NCB names as a parameter.
+   Expect: NCB f assigns g, a parameter of NCB f */
+int g = 0;
+
+void bump() {
+    g = g + 1;
+    return;
+}
+
+commutativity {
+    {f(g)}, {f(g)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    f(g): {
+        bump();
+    }
+    return g;
+}

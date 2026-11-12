@@ -1,0 +1,20 @@
+/* A store into an array assigns the array (CStore in the Rocq semantics), so
+   a written array must stay shared rather than be named as a parameter.
+   Expect: NCB f assigns a, a parameter of NCB f */
+commutativity {
+    {f(a,i_1)}, {f(a,i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 10) {
+        f(a,i): {
+            a[i] = 1;
+        }
+        i = i + 1;
+    }
+    return a[0];
+}

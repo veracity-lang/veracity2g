@@ -1,0 +1,15 @@
+/* W1 applies to every entry, including one whose condition is to be inferred.
+   Expect: NCB f assigns x, a parameter of NCB f */
+commutativity {
+    {f(x_1)}, {f(x_2)}: _
+}
+
+int main(int argc, string[] argv) {
+    int x = 0;
+    int x_1 = 0;
+    int x_2 = 0;
+    f(x): {
+        x = 1;
+    }
+    return x;
+}

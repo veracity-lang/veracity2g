@@ -38,11 +38,35 @@ let flatten_value_option v = match v with
 type job = {
   tid: int;
   env: env;
+  (* set once the job is done waiting and starts its body *)
+  started: bool Atomic.t;
+  (* --overtake hybrid-locked: set, under guard, just before the job first
+     assigns a variable that a condition reads (Overtake.prepare) *)
+  dirty: bool Atomic.t;
+  guard: Mutex.t;
+  (* the jobs this job overtook while waiting, each with the dependence and
+     a way to wait for it; read by other jobs' re-checks (closure) *)
+  over: (job * dependency * (unit -> unit)) list Atomic.t;
+  (* set once the job's body has run *)
+  finished: bool Atomic.t;
   (* the environment will have in the stack the input variables:
   vals: (ty * id * value) list 
   exp will only be constants: CInt, CStr, CBool, etc
   *)
 }
+
+let make_job tid env =
+  { tid; env; started = Atomic.make false; dirty = Atomic.make false; guard = Mutex.create ();
+    over = Atomic.make []; finished = Atomic.make false }
+
+(* The job whose body this domain is running, for the dirty marker. *)
+let current_job : job option Domain.DLS.key = Domain.DLS.new_key (fun () -> None)
+
+let mark_dirty () =
+  match Domain.DLS.get current_job with
+  | Some jb when not (Atomic.get jb.dirty) ->
+    Mutex.protect jb.guard (fun () -> Atomic.set jb.dirty true)
+  | _ -> ()
 
 (*** ENVIRONMENT MANAGEMENT ***)
 
@@ -710,6 +734,8 @@ and interp_stmt (env : env) (stmt : stmt node) : env * value option =
   | Ret (Some en) ->
     let env, v = interp_exp env en in
     interp_return env v
+  | SCallRaw (f, []) when f = Overtake.dirty_marker ->
+    mark_dirty (); env, None
   | SCallRaw (f, args) ->
     (* Simply a call expression where return value is ignored *)
     let env, _ = interp_exp env @@ node_up stmt @@ CallRaw (f, args) in
@@ -882,11 +908,31 @@ and job_stats_mutex = Mutex.create ()
 and job_count = ref 0
 and job_pure_time = ref 0.
 and job_with_deps_time = ref 0.
+(* Condition held and the dependence was skipped (of those, how many skipped a
+   running job), or --overtake made the job wait anyway because the other job
+   had started (or, under hybrid-locked, had written what the condition reads). *)
+and overtake_count = Atomic.make 0
+and overtake_running = Atomic.make 0
+and overtake_denied = Atomic.make 0
+and overtake_dirty = Atomic.make 0
+(* First-step re-checks of a job that overtook others: passed, or failed so
+   that the job waited for the jobs it overtook. *)
+and recheck_passed = Atomic.make 0
+and recheck_failed = Atomic.make 0
+(* which part failed first: the condition, unordered, or a closure job that
+   still waits for a task that may spawn more jobs *)
+and recheck_failed_parts = Array.init 3 (fun _ -> Atomic.make 0)
 and run_job jb initial_waits deps = 
     let t0 = Unix.gettimeofday () in
     wait_deps jb initial_waits deps (load_task_def jb.tid).body;
+    if Overtake.recheck () then recheck jb;
+    Atomic.set jb.started true;
     let t1 = Unix.gettimeofday () in
-    let r = interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body in
+    let prev = Domain.DLS.get current_job in
+    Domain.DLS.set current_job (Some jb);
+    let r = Fun.protect ~finally:(fun () -> Domain.DLS.set current_job prev)
+      (fun () -> interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body) in
+    Atomic.set jb.finished true;
     let t2 = Unix.gettimeofday () in
     Mutex.protect job_stats_mutex (fun () ->
       incr job_count;
@@ -985,7 +1031,7 @@ and init_job task_id (env : env) =
   let env' = env in
   
   (* Now start the job *)
-  new_job {tid = task_id; env = env'} task.deps_in ~wait_on_init:true;
+  new_job (make_job task_id env') task.deps_in ~wait_on_init:true;
   
   (* Mark self as EOP *)
   (*
@@ -1114,17 +1160,40 @@ and wait_deps j init_waits deps self_body =
     (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " (fst e |> fst).tid) "" init_waits)
     (List.fold_left (fun acc e -> acc ^ Printf.sprintf "%d " e.pred_task) "" deps)));
   
-  let wait_job (j', promise) = function
-      | {commute_cond = { condition = None; _ }; _} ->
-          debug_print (lazy (Printf.sprintf "%d: Waiting on job dependency %d.\n" my_id j'.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore;
-          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
-      | {commute_cond = cond; _}
-        when not (interp_phi_two cond j.env j'.env self_body (load_task_def j'.tid).body) ->
-          debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j'.tid));
-          Domainslib.Task.await (get !pool) promise |> ignore;
-          debug_print (lazy (Printf.sprintf "%d: Done waiting on job dependency %d.\n" my_id j'.tid))
-      | _ -> debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid))
+  let wait_job (j', promise) d =
+    let wait () = Domainslib.Task.await (get !pool) promise |> ignore in
+    let holds () = interp_phi_two d.commute_cond j.env j'.env self_body (load_task_def j'.tid).body in
+    let skip () =
+      if Overtake.recheck () then
+        Atomic.set j.over ((j', d, wait) :: Atomic.get j.over);
+      if Atomic.get j'.started then Atomic.incr overtake_running;
+      Atomic.incr overtake_count;
+      debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid)) in
+    let refuse counter =
+      Atomic.incr counter;
+      debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met, but it has started. Waiting.\n" my_id j'.tid));
+      wait () in
+    let fixed = Overtake.reads_written d.commute_cond = [] in
+    match d.commute_cond.condition, !Overtake.rule with
+    | None, _ ->
+      debug_print (lazy (Printf.sprintf "%d: Waiting on job dependency %d.\n" my_id j'.tid));
+      wait ()
+    | Some _, Overtake.Hybrid_locked when not fixed ->
+      (* Read the condition only while the job cannot reach a write to what
+         it reads. *)
+      begin match Mutex.protect j'.guard (fun () ->
+        if Atomic.get j'.dirty then `Dirty else if holds () then `Holds else `Fails) with
+      | `Holds -> skip ()
+      | `Dirty -> refuse overtake_dirty
+      | `Fails -> wait ()
+      end
+    | Some _, rule when holds () ->
+      if Atomic.get j'.started && (rule = Overtake.Not_started || (rule <> Overtake.Any && not fixed))
+      then refuse overtake_denied
+      else skip ()
+    | Some _, _ ->
+      debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j'.tid));
+      wait ()
   in
   
   (* wait on every initial job *)
@@ -1142,14 +1211,8 @@ and wait_deps j init_waits deps self_body =
     let rec older = function
       | [] -> []
       | (j', _) :: rest -> if j' == j then rest else older rest in
-    let mutual = d.pred_task = j.tid
-      || List.exists (fun d' -> d'.pred_task = j.tid) (load_task_def d.pred_task).deps_in in
-    (* Two stages spawned by the same loop form a pipeline: the predecessor's
-       jobs for earlier iterations are already registered, and its later ones
-       come after this job in program order. *)
-    let same_loop = List.exists (fun s -> List.mem s (spawners_of j.tid)) (spawners_of d.pred_task) in
     let candidates =
-      if mutual || same_loop then older jobs
+      if waits_on_older j.tid d then older jobs
       else begin
         (* The predecessor is an earlier stage that may still be spawning
            jobs: wait until it has spawned all of them. *)
@@ -1160,6 +1223,99 @@ and wait_deps j init_waits deps self_body =
     let jobs_to_wait = List.filter (fun (j', _) -> j'.tid = d.pred_task) candidates in
     List.iter (flip wait_job d) jobs_to_wait
   ) deps;
+
+(* Whether a job of task tid waits only on the jobs of d's task registered
+   before it, rather than on all of them once that task is complete. *)
+and waits_on_older tid d =
+  (* When the predecessor task also depends on this one (a task on itself,
+     or two blocks with a commute dependence each way), waiting on its later
+     jobs too would let two jobs wait on each other forever. *)
+  let mutual = d.pred_task = tid
+    || List.exists (fun d' -> d'.pred_task = tid) (load_task_def d.pred_task).deps_in in
+  (* Two stages spawned by the same loop form a pipeline: the predecessor's
+     jobs for earlier iterations are already registered, and its later ones
+     come after this job in program order. *)
+  let same_loop = List.exists (fun s -> List.mem s (spawners_of tid)) (spawners_of d.pred_task) in
+  mutual || same_loop
+
+(* The first-step re-check (Rocq Jobs.v, still_ok in SC_Local).  Before w's
+   body starts, if w overtook jobs that have not finished, check in the
+   current state that
+   (1) w's condition still holds for each of them;
+   (2) the jobs of their closure, i.e. those jobs, every job a job of the
+       closure still waits for, and every job one has overtaken, are pairwise
+       unordered: no dependence relates them, or their conditions hold both
+       ways; and
+   (3) no job of the closure still waits for a task that may spawn more jobs.
+   The conditions are read under the synthesized locks of the variables they
+   read, as the bodies read them.  If the check fails, w waits for the jobs it
+   overtook, which then precede it in program order as they would have had it
+   not overtaken them; the check is then vacuous. *)
+and recheck w =
+  let live (j, _, _) = not (Atomic.get j.finished) in
+  let overtaken = List.filter live (Atomic.get w.over) in
+  if overtaken <> [] then begin
+    let body j = (load_task_def j.tid).body in
+    let holds d a b = interp_phi_two d.commute_cond a.env b.env (body a) (body b) in
+    let jobs = Mutex.protect jobs_mutex (fun () -> !all_jobs) in
+    (* what m still waits for, if it has not started: the live jobs of the
+       tasks it depends on, other than its spawner, as wait_deps picks them
+       (only those registered before m, or all of them) *)
+    let waits_of m =
+      let rec older = function
+        | [] -> [] | (j', _) :: rest -> if j' == m then rest else older rest in
+      List.concat_map (fun d ->
+        if d.make_new_job then [] else
+        List.filter_map (fun (j', _) ->
+          if j'.tid = d.pred_task && j' != m && not (Atomic.get j'.finished) then Some j' else None)
+          (if waits_on_older m.tid d then older jobs else jobs))
+        (load_task_def m.tid).deps_in in
+    let rec close acc = function
+      | [] -> acc
+      | m :: rest when List.memq m acc -> close acc rest
+      | m :: rest ->
+        let next = if Atomic.get m.started then []
+          else waits_of m @ List.filter_map (fun ((j', _, _) as o) ->
+            if live o then Some j' else None) (Atomic.get m.over) in
+        close (m :: acc) (next @ rest) in
+    let closure = close [] (List.map (fun (j', _, _) -> j') overtaken) in
+    (* Only the later task of a pair records the dependence, with the entry's
+       condition when there is one; an entry is valid in both orders, so one
+       evaluation suffices. *)
+    let unordered a b =
+      let between x y = List.filter (fun d -> d.pred_task = y.tid) (load_task_def x.tid).deps_in in
+      List.for_all (fun d -> d.commute_cond.condition <> None && holds d a b) (between a b)
+      && List.for_all (fun d -> d.commute_cond.condition <> None && holds d b a) (between b a) in
+    (* m will wait for every job of a task, and some may not be spawned yet *)
+    let unknown_jobs m = not (Atomic.get m.started) &&
+      List.exists (fun d -> not d.make_new_job && not (waits_on_older m.tid d)
+        && not (List.for_all task_done (spawners_of d.pred_task)))
+        (load_task_def m.tid).deps_in in
+    let still_ok () =
+      let fail part = Atomic.incr recheck_failed_parts.(part); false in
+      (List.for_all (fun (j', d, _) -> holds d w j') overtaken || fail 0)
+      && (List.for_all (fun a -> List.for_all (fun b -> a == b || unordered a b) closure) closure || fail 1)
+      && (not (List.exists unknown_jobs closure) || fail 2) in
+    let locks = List.filter_map (fun x -> List.assoc_opt x !Lock_synthesis.task_locks) !Overtake.cond_vars
+      |> List.sort_uniq Stdlib.compare |> List.map (fun i -> get_mutex (Int64.of_int i)) in
+    List.iter Mutex.lock locks;
+    let ok = Fun.protect ~finally:(fun () -> List.iter Mutex.unlock (List.rev locks)) still_ok in
+    if ok then Atomic.incr recheck_passed
+    else begin
+      Atomic.incr recheck_failed;
+      debug_print (lazy (Printf.sprintf "%d: First-step re-check failed. Waiting on the jobs it overtook.\n" w.tid));
+      List.iter (fun (_, _, wait) -> wait ()) overtaken
+    end
+  end;
+  Atomic.set w.over []
+
+(* Whether every job of task tid has been spawned and has finished, without
+   waiting: wait_complete, but as a test. *)
+and task_done tid =
+  Mutex.protect jobs_mutex (fun () -> List.mem tid !completed_tasks)
+  || (List.for_all task_done (spawners_of tid)
+      && List.for_all (fun (j', _) -> j'.tid <> tid || Atomic.get j'.finished)
+           (Mutex.protect jobs_mutex (fun () -> !all_jobs)))
 
 (* Tasks that spawn jobs of tid, i.e. whose body has a SendDep to it. *)
 and spawners_of tid =
@@ -1215,8 +1371,7 @@ and send_dep calling_tid tid env vals =
   
   (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
-  new_job {tid; 
-    env = env'} deps
+  new_job (make_job tid env') deps
 
 (* Draft of new scheduler that accumulates dependencies *)
 (*
@@ -1870,6 +2025,7 @@ let initialize_env (prog : prog) (infer_phis : bool) =
   let g, globals = construct_env g [] prog in
   let g = evaluate_globals g globals in
   let g = cook_calls g in
+  Wellformed.check g;
   let g = 
     if infer_phis
     then
@@ -1919,13 +2075,20 @@ let print_job_stats tasks =
   if !job_stats_flag then begin
     let n = !job_count in
     let avg t = if n = 0 then 0. else t /. float_of_int n in
-    Printf.eprintf "Tasks: %d\nJobs: %d\nAvg job exec (pure): %f s\nAvg job exec (+deps): %f s\n%!"
+    Printf.eprintf "Tasks: %d\nJobs: %d\nAvg job exec (pure): %f s\nAvg job exec (+deps): %f s\nOvertakes: %d\nOvertakes of running jobs: %d\nOvertakes denied (started): %d\nOvertakes denied (dirty): %d\nRe-checks passed: %d\nRe-checks failed: %d (condition %d, unordered %d, unspawned jobs %d)\n%!"
       (List.length tasks) n (avg !job_pure_time) (avg !job_with_deps_time)
+      (Atomic.get overtake_count) (Atomic.get overtake_running)
+      (Atomic.get overtake_denied) (Atomic.get overtake_dirty)
+      (Atomic.get recheck_passed) (Atomic.get recheck_failed)
+      (Atomic.get recheck_failed_parts.(0)) (Atomic.get recheck_failed_parts.(1)) (Atomic.get recheck_failed_parts.(2));
+    List.iter prerr_endline (Overtake.describe tasks)
   end
 
 let interp_tasks env0 decls init_task tasks : value =
+  let tasks = Overtake.prepare env0.g tasks in
   set_task_def tasks;
   job_count := 0; job_pure_time := 0.; job_with_deps_time := 0.;
+  List.iter (fun c -> Atomic.set c 0) ([overtake_count; overtake_running; overtake_denied; overtake_dirty; recheck_passed; recheck_failed] @ Array.to_list recheck_failed_parts);
   (* create a job for each task with no deps_in -- REMOVED, just start job 0 in scheduler. *)
   (* let jobs = List.filter (fun task -> null task.deps_in (* && task.id <> 0 *)) !task_defs
     |> List.map (fun task -> {tid=task.id; env=env0}) in *)

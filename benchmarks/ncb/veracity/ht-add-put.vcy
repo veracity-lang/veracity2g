@@ -1,10 +1,11 @@
+hashtable[int,int] tbl = new hashtable_seq[int,int];
+
 commutativity {
-    {f1(tbl,y,u)}, {f2(tbl,z)}: (tbl[z] == u + 1 && u + 1 != z)
+    {f1(u)}, {f2(z)}: (tbl[z] == u + 1 && u + 1 != z)
 }
 
 
 int main(int argc, string[] argv) {
-	hashtable[int,int] tbl = new hashtable_seq[int,int];
 	int n = int_of_string(argv[1]);
 	int y = int_of_string(argv[2]);
 	int z = int_of_string(argv[3]);
@@ -12,12 +13,12 @@ int main(int argc, string[] argv) {
 	
 	tbl[z] = u + 1;
 
-	f1(tbl,y,u):{ 	
+	f1(u):{ 	
 		busy_wait(n);
 		y = u + 1;
 		ht_put(tbl, y, u);
 	}
-	f2(tbl,z):{ 	
+	f2(z):{ 	
 		y = ht_get(tbl, z);
 		busy_wait(n);
 	}

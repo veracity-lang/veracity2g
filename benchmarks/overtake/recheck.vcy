@@ -1,0 +1,18 @@
+/* g may overtake f while x == 0, but g also waits for h (it reads y), and h
+   sets x = 1 first.  So whenever g has overtaken f, its first-step re-check
+   finds the condition false and g waits for f: under every rule but any,
+   --job-stats must report as many failed re-checks as overtakes, and no
+   passed one.  Every rule must return 4. */
+int x = 0;
+int[] a = new int[3];
+commutativity {
+    {f()}, {g()}: (x == 0)
+}
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    int y = 0;
+    f(): { busy_wait(n); a[0] = 1; }
+    h(): { busy_wait(n / 4); x = 1; y = 2; }
+    g(): { a[1] = y; busy_wait(n / 8); }
+    return a[0] + a[1] + x;
+}

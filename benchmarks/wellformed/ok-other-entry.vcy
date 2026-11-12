@@ -1,0 +1,29 @@
+/* W1 is per entry.  h assigns u, which is a parameter of g, but h and g share
+   no entry.  The label k is in no entry at all, so nothing constrains it.
+   Expect: ok */
+int[] a = new int[10];
+
+commutativity {
+    {g(u_1)}, {g(u_2)}: (u_1 != u_2);
+    {h(i_1)}, {h(i_2)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int u = 0;
+    int i = 0;
+    int v = 0;
+    int u_1 = 0;
+    int u_2 = 1;
+    int i_1 = 0;
+    int i_2 = 0;
+    g(u): {
+        a[u] = 1;
+    }
+    h(i): {
+        u = 2;
+    }
+    k(v): {
+        v = 1;
+    }
+    return a[0];
+}

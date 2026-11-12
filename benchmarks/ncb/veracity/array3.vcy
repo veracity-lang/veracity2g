@@ -1,9 +1,10 @@
+int a = 0;
+
 commutativity {
-    {f1(a,b,e)}, {f2(a,d)}: (!(d == e) && !(a == b) || a == b)
+    {f1(b,e)}, {f2(d)}: (!(d == e) && !(a == b) || a == b)
 }
 
 int main(int argc, string[] argv) {
-    int a = 0;
     int b = 0;
     int c = 0;
     int d = 0;
@@ -12,8 +13,8 @@ int main(int argc, string[] argv) {
     
     int e = c % n;
 
-    f1(a,b,e): { busy_wait(n); a = a + 1; arr[e] = b; a = a - 1; }
-    f2(a,d): { arr[d] = a; busy_wait(n); }
+    f1(b,e): { busy_wait(n); a = a + 1; arr[e] = b; a = a - 1; }
+    f2(d): { arr[d] = a; busy_wait(n); }
     
     return 0;
 }

@@ -1,0 +1,17 @@
+/* The write is in the step of a for loop in the body.
+   Expect: NCB f assigns x, a parameter of NCB f */
+commutativity {
+    {f(x_1)}, {f(x_2)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int x = 0;
+    int x_1 = 0;
+    int x_2 = 0;
+    f(x): {
+        for (int n = 0; n < 3; x = x + 1;) {
+            n = n + 1;
+        }
+    }
+    return x;
+}

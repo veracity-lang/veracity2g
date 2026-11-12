@@ -1,0 +1,24 @@
+/* The written array is shared and the index is the only parameter.  The
+   condition reads the array, so it is global, as in ncb/motivation.vcy.
+   The loop assigns i, but outside the body.
+   Expect: ok */
+int[] a = new int[10];
+
+commutativity {
+    {f(i_1)}, {f(i_2)}: (i_1 != i_2 || a[i_1] == 0)
+}
+
+int main(int argc, string[] argv) {
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 10) {
+        f(i): {
+            if (a[i] != 0) {
+                a[i] = 0;
+            }
+        }
+        i = i + 1;
+    }
+    return a[0];
+}

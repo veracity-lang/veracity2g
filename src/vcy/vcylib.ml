@@ -24,6 +24,18 @@ let counters : (int64 * Concurrent_counter.t) list ref = ref []
 let mutexes : (int64 * Mutex.t) list ref = ref []
 let mutexes_mutex = Mutex.create ()
 
+(* The mutex with this id, created on first use: lock synthesis emits
+   mutex_lock without a matching mutex_init. *)
+let get_mutex (index : int64) : Mutex.t =
+  Mutex.protect mutexes_mutex begin fun () ->
+    match List.assoc_opt index !mutexes with
+    | Some m -> m
+    | None ->
+      let m = Mutex.create () in
+      mutexes := (index, m) :: !mutexes;
+      m
+  end
+
 type method_library = lib_method bindlist
 
 let lib_string : method_library =
@@ -830,18 +842,7 @@ let lib_mutex : method_library =
     { pure = false
     ; func = begin function
       | env, [VInt index] ->
-        (* Lock synthesis emits mutex_lock without a matching mutex_init,
-           so create the mutex on first use. *)
-        let m = Mutex.protect mutexes_mutex begin fun () ->
-          match List.assoc_opt index !mutexes with
-          | Some m -> m
-          | None ->
-            debug_print (lazy (Printf.sprintf "Warning: mutex %d not initialized. Auto-initializing.\n" (Int64.to_int index)));
-            let m = Mutex.create () in
-            mutexes := (index, m) :: !mutexes;
-            m
-        end in
-        Mutex.lock m;
+        Mutex.lock (get_mutex index);
         env, VVoid
       | _ -> raise @@ TypeFailure ("mutex_lock arguments", Range.norange)
       end

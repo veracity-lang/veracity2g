@@ -1,15 +1,18 @@
+int x = 0;
+int y = 0;
+
 commutativity{
-	{f1(x,y,z)}, {f2(x,y)}: (y > 0 || 0 == y && x + 2 == z)
+	{f1(z)}, {f2()}: (y > 0 || 0 == y && x + 2 == z)
 }
 int main(int argc, string[] argv) {
 	int size = int_of_string(argv[1]);
 	
-	int x = int_of_string(argv[2]);
-	int y = int_of_string(argv[3]);
+	x = int_of_string(argv[2]);
+	y = int_of_string(argv[3]);
 	int z = int_of_string(argv[4]);
 
 
-	f1(x,y,z):{ 
+	f1(z):{ 
 		busy_wait(size);
 		if (y > 0) {
 			x = x + 2;
@@ -17,7 +20,7 @@ int main(int argc, string[] argv) {
 			x = z;
 		}
 	}
-	f2(x,y):{ x = x + 1; y = y + 1; busy_wait(size); }
+	f2():{ x = x + 1; y = y + 1; busy_wait(size); }
 	
 
 	print(

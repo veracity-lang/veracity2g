@@ -1,15 +1,16 @@
+int[] a = new int[1];
+
 commutativity {
-    {f1(a)}, {f2(x, a)}: (0 > a[0] && !(1 == x) || 1 == x)
+    {f1()}, {f2(x)}: (0 > a[0] && !(1 == x) || 1 == x)
 }
 
 int main(int argc, string[] argv) {
     int n = int_of_string(argv[1]);
     int x = int_of_string(argv[2]);
-    int[] a = new int[1];
     a[0] = 69;
     
-    f1(a):{ busy_wait(n); a[0] = a[0] + 1; }
-    f2(x,a):{ if(a[0] > 0) {a[0] = a[0] * x; } busy_wait(n); }
+    f1():{ busy_wait(n); a[0] = a[0] + 1; }
+    f2(x):{ if(a[0] > 0) {a[0] = a[0] * x; } busy_wait(n); }
     
     
     return 0;

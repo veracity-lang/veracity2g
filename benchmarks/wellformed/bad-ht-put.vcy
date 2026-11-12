@@ -1,0 +1,19 @@
+/* ht_put stores through its first argument.
+   Expect: NCB f assigns t, a parameter of NCB f */
+commutativity {
+    {f(t,k_1)}, {f(t,k_2)}: (k_1 != k_2)
+}
+
+int main(int argc, string[] argv) {
+    hashtable[int,int] t = new hashtable[int,int];
+    int k = 0;
+    int k_1 = 0;
+    int k_2 = 0;
+    while (k < 4) {
+        f(t,k): {
+            ht_put(t, k, 1);
+        }
+        k = k + 1;
+    }
+    return ht_size(t);
+}

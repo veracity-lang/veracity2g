@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overtaking Rule Cost</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #fcfcfb; --surface: #ffffff; --border: #e4e3de; --grid: #ecebe6;
+  --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+  --r0: #8a8984; --r1: #e0602b; --r2: #2a78d6; --r3: #138a63;
+  --link: #1c5cab;
+  --q1: #cde2fb; --q2: #9ec5f4; --q3: #6da7ec; --q4: #3987e5; --q5: #256abf; --q6: #104281;
+  --qt0: #0b0b0b; --qt1: #0b0b0b; --qt2: #0b0b0b; --qt3: #ffffff; --qt4: #ffffff; --qt5: #ffffff;
+  --tag-bg: #fdf0e8; --tag-fg: #8a3a12; --tag2-bg: #e9f2fc; --tag2-fg: #184f95;
+  --ok-bg: #e7f4ee; --ok-fg: #0d5e43;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #141413; --surface: #1a1a19; --border: #33332f; --grid: #2a2a27;
+    --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
+    --r0: #9d9c95; --r1: #f0844f; --r2: #5598e7; --r3: #33b88a;
+    --link: #86b6ef;
+    --q1: #1f2d40; --q2: #184f95; --q3: #1c5cab; --q4: #2a78d6; --q5: #5598e7; --q6: #9ec5f4;
+    --qt0: #f0efec; --qt1: #f0efec; --qt2: #f0efec; --qt3: #ffffff; --qt4: #0b0b0b; --qt5: #0b0b0b;
+    --tag-bg: #3a2116; --tag-fg: #f0a682; --tag2-bg: #172a42; --tag2-fg: #9ec5f4;
+    --ok-bg: #12301f; --ok-fg: #7fd8b1;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #141413; --surface: #1a1a19; --border: #33332f; --grid: #2a2a27;
+  --text: #f0efec; --text-2: #c3c2b7; --muted: #8f8e86;
+  --r0: #9d9c95; --r1: #f0844f; --r2: #5598e7; --r3: #33b88a;
+  --link: #86b6ef;
+  --q1: #1f2d40; --q2: #184f95; --q3: #1c5cab; --q4: #2a78d6; --q5: #5598e7; --q6: #9ec5f4;
+  --qt0: #f0efec; --qt1: #f0efec; --qt2: #f0efec; --qt3: #ffffff; --qt4: #0b0b0b; --qt5: #0b0b0b;
+  --tag-bg: #3a2116; --tag-fg: #f0a682; --tag2-bg: #172a42; --tag2-fg: #9ec5f4;
+  --ok-bg: #12301f; --ok-fg: #7fd8b1;
+}
+/* Printing is always light, whatever the toggle says. */
+@media print {
+  :root:root:root {
+    color-scheme: light;
+    --bg: #ffffff; --surface: #ffffff; --border: #d9d8d3; --grid: #ecebe6;
+    --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974;
+    --r0: #8a8984; --r1: #e0602b; --r2: #2a78d6; --r3: #138a63;
+    --link: #1c5cab;
+    --q1: #cde2fb; --q2: #9ec5f4; --q3: #6da7ec; --q4: #3987e5; --q5: #256abf; --q6: #104281;
+    --qt0: #0b0b0b; --qt1: #0b0b0b; --qt2: #0b0b0b; --qt3: #ffffff; --qt4: #ffffff; --qt5: #ffffff;
+    --tag-bg: #fdf0e8; --tag-fg: #8a3a12; --tag2-bg: #e9f2fc; --tag2-fg: #184f95;
+    --ok-bg: #e7f4ee; --ok-fg: #0d5e43;
+  }
+  .theme-btn, .tip { display: none !important; }
+  main { padding-top: 0; }
+  .card, .kpi, table, svg { break-inside: avoid; }
+  h2 { break-after: avoid; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+main { max-width: 900px; margin: 0 auto; padding: 32px 16px 64px; }
+header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -0.01em; }
+h2 { font-size: 18px; margin: 40px 0 8px; }
+h3 { font-size: 15px; margin: 20px 0 6px; }
+.sub { color: var(--text-2); margin: 0 0 24px; }
+a { color: var(--link); }
+code { font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--grid); padding: 1px 4px; border-radius: 4px; }
+.theme-btn { flex: none; font: inherit; font-size: 13px; color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; cursor: pointer; }
+.theme-btn:hover { border-color: var(--muted); }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin: 16px 0 8px; }
+.kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+.kpi .v { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; }
+.kpi .l { color: var(--text-2); font-size: 13px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; margin: 12px 0; }
+.card h3 { margin-top: 0; }
+.card p:last-child { margin-bottom: 0; }
+.note { color: var(--text-2); font-size: 13px; margin: 8px 0 0; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13px; color: var(--text-2); margin: 0 0 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--text-2); font: 12px system-ui, sans-serif; }
+svg .lab { fill: var(--text); }
+svg .panel { fill: var(--text); font-weight: 600; }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--text);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; z-index: 10; max-width: 280px; }
+.tip b { display: block; margin-bottom: 2px; }
+.tabwrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--text-2); font-weight: 600; }
+td.l, th.l { text-align: left; white-space: normal; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 10px; background: var(--tag-bg); color: var(--tag-fg); white-space: nowrap; }
+.tag.p { background: var(--tag2-bg); color: var(--tag2-fg); }
+.tag.ok { background: var(--ok-bg); color: var(--ok-fg); }
+.modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 12px; }
+.modes .card { margin: 0; border-top: 3px solid var(--c); }
+.modes .card h3 { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.status { border-left: 3px solid var(--r3); padding: 4px 12px; background: var(--surface); }
+footer { color: var(--muted); font-size: 12px; margin-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div>
+    <h1>What the overtaking rules cost</h1>
+    <p class="sub">Veracity2G scheduler · four <code>--overtake</code> rules with the first-step re-check · measured 2026-11-10 and 2026-11-12</p>
+  </div>
+  <button class="theme-btn" id="themeBtn" type="button" aria-label="Switch between light and dark mode">Dark mode</button>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><div class="v">1.05×</div><div class="l"><code>hybrid-locked</code> with re-check vs. today's (unsound) scheduler, 12 DSWP benchmarks (geomean)</div></div>
+  <div class="kpi"><div class="v">1.38×</div><div class="l"><code>not-started</code> on the same benchmarks: the rule the old Rocq rule allowed</div></div>
+  <div class="kpi"><div class="v">≈ 0</div><div class="l">cost of the re-check where there is a speedup: no re-check failed on any of those benchmarks</div></div>
+  <div class="kpi"><div class="v">13 of 16</div><div class="l">Veracity programs with a speedup keep it under <code>hybrid-locked</code>; 1 under <code>hybrid</code> or <code>not-started</code></div></div>
+</div>
+
+<h2>Summary</h2>
+<p>A job may <em>overtake</em> (skip) an earlier job when their commutativity condition φ holds. Today's scheduler does so whenever φ holds, which is unsound. The rules below restrict when it may, and every rule but <code>any</code> now ends with the re-check that the Rocq proof relies on. <code>hybrid-locked</code>, the most permissive of the sound-intended rules, costs about 5% on the DSWP benchmarks and keeps most of the speedup of the Veracity-style programs. The re-check itself costs nothing measurable wherever there is a speedup.</p>
+<p>The Rocq development now lets a job overtake a <em>running</em> job, with no new proof: every fact the soundness proof needs comes from the re-check at the overtaking job's first step, not from the condition read when it overtakes. That read only decides when to stop waiting, so the rules are performance choices, and the re-check is what has to be right.</p>
+
+<h2>The flags</h2>
+<p>All flags apply to <code>vcy interp --dswp</code>. The rule decides when a waiting job may stop waiting for an earlier job whose condition holds.</p>
+<div class="modes">
+  <div class="card" style="--c: var(--r0)"><h3><code>--overtake any</code> <span class="tag">default, unsound</span></h3>
+    <p>Today's behaviour: skip whenever φ holds, whether the other job is waiting, running or done. No re-check.</p></div>
+  <div class="card" style="--c: var(--r1)"><h3><code>--overtake not-started</code></h3>
+    <p>Skip only a job that has not started yet; wait for a running one. This was the Rocq rule until 2026-11-12. <code>--overtake-waiting-only</code> is an alias.</p></div>
+  <div class="card" style="--c: var(--r2)"><h3><code>--overtake hybrid</code></h3>
+    <p>As <code>not-started</code>, except that a condition reading only parameters and variables that no task writes may also skip a running job: nothing it reads can change while that job runs.</p></div>
+  <div class="card" style="--c: var(--r3)"><h3><code>--overtake hybrid-locked</code></h3>
+    <p>As <code>hybrid</code>, except that a condition reading written state may skip a running job until that job first writes a variable some condition reads. Each job has a guard and a <em>dirty</em> flag; φ is read under the guard.</p></div>
+</div>
+
+<h3>The first-step re-check</h3>
+<p>Under every rule but <code>any</code>, a job that overtook others checks again, just before its body starts (Rocq <code>still_ok</code> in <code>SC_Local</code>):</p>
+<ol>
+  <li><b>Condition.</b> φ still holds for each overtaken job that has not finished.</li>
+  <li><b>Unordered.</b> The jobs of the <em>closure</em> (the overtaken jobs, every job one of them still waits for, and every job one has overtaken, and so on) are pairwise unordered: no dependence relates them, or the condition of every dependence between them holds.</li>
+  <li><b>Unspawned jobs.</b> No job of the closure still waits for all jobs of a task that may spawn more.</li>
+</ol>
+<p>It reads the conditions under the synthesized locks of the variables they read. If it fails, the job waits for the jobs it overtook, which then precede it as they would have had it never overtaken them.</p>
+
+<h3>Other flags</h3>
+<div class="card tabwrap"><table>
+<thead><tr><th>Flag</th><th class="l">Effect</th></tr></thead>
+<tbody>
+<tr><td><code>--no-recheck</code></td><td class="l">Turn the re-check off (to measure its cost). Unsound.</td></tr>
+<tr><td><code>--job-stats</code></td><td class="l">After the run, print overtakes, overtakes of running jobs, overtakes refused (started, or dirty), re-checks passed and failed with the part that failed, and for each condition whether it reads written state.</td></tr>
+<tr><td><code>--synthesize-locks</code></td><td class="l">Needed for the re-check's locks: without it there is no lock map, and conditions are read unlocked.</td></tr>
+</tbody></table></div>
+
+<h2>Speedup at N = 10⁶ by rule</h2>
+<div class="card">
+  <div class="legend">
+    <span><i class="dot" style="background:var(--r0)"></i><code>any</code></span>
+    <span><i class="dot" style="background:var(--r1)"></i><code>not-started</code></span>
+    <span><i class="dot" style="background:var(--r2)"></i><code>hybrid</code></span>
+    <span><i class="dot" style="background:var(--r3)"></i><code>hybrid-locked</code></span>
+    <span><svg width="10" height="10" style="display:inline;width:10px"><circle cx="5" cy="5" r="3.5" fill="none" stroke="var(--muted)" stroke-width="1.5"/></svg>φ reads written state</span>
+  </div>
+  <div id="dots"></div>
+  <p class="note">Speedup is sequential time ÷ parallel time, median of 3 runs, on a log scale. The dashed line is 1.0 (as fast as sequential). Every rule but <code>any</code> includes the re-check. The Veracity programs are scratch rewrites made to pass W1 (see Caveats); <code>loop-amt</code> is left out because its runs time out.</p>
+</div>
+
+<h2>Cost of the re-check</h2>
+<p>Comparing <code>hybrid-locked</code> with and without <code>--no-recheck</code>: geomean 1.05× vs. 1.00× of <code>any</code> on the DSWP benchmarks, 1.10× vs. 1.10× on the Veracity programs. The remaining cost is in <code>erc20</code> and <code>banking</code>, which run slower than sequential under every rule; there the closure check fails on some re-checks.</p>
+<div class="card tabwrap"><table id="rtbl"></table>
+<p class="note">Re-checks failed: summed over 3 runs. A first sweep with two bugs in the re-check (it required dependences in both directions, and treated a task whose jobs had not all finished as one that may still spawn jobs) gave 1.56×; both are fixed.</p></div>
+
+<h2>Can stability be checked statically?</h2>
+<p>For many conditions, yes. Each part of the re-check needs a different analysis:</p>
+<ul>
+  <li><b>Condition.</b> (a) If no task writes a variable φ reads, φ cannot change: a syntactic read/write analysis the tool already does (the per-condition line of <code>--job-stats</code>). That covers every condition of <code>vote</code>, <code>commset</code>, <code>commset-potrace</code>, <code>commset-kmeans</code>, <code>banking</code>, <code>sollve_dotprod</code> and <code>simple-vector</code>. (b) Otherwise, an SMT query <code>{φ} s_t {φ}</code> for each task t that may write what φ reads and may run in between, with t's parameters unconstrained. This is stronger than <code>stable3</code>, which only covers jobs whose own conditions hold.</li>
+  <li><b>Unspawned jobs.</b> Decided per task from the task graph: it can fail only for a task with a dependence on which its jobs wait for all jobs of the predecessor.</li>
+  <li><b>Unordered.</b> Static when every pair of tasks whose jobs can share a closure is independent or related only by parameter-only conditions, which can then be evaluated once when the job overtakes.</li>
+</ul>
+<p>Since the runtime re-check almost never fails and costs little, a static check would mostly let the paper say that most conditions are discharged statically; it would not buy much speed here.</p>
+
+<h2>Input size (2026-11-10 sweep)</h2>
+<div class="card">
+  <div id="heat"></div>
+  <p class="note">Slowdown of <code>not-started</code> (then without closure or re-check) relative to <code>any</code>, at three input sizes, median of 5 runs. Darker means a bigger cost. Benchmarks with few, large jobs lose at every size, because their jobs start almost as soon as they are created.</p>
+</div>
+
+<h2>All data (2026-11-12)</h2>
+<div class="card tabwrap"><table id="tbl"></table>
+<p class="note">Times are medians in seconds over 3 runs at N = 10⁶ (Veracity programs: busy-wait 4·10⁸). Skips of running jobs are summed over 3 runs.</p></div>
+
+<h2>Method</h2>
+<ul>
+  <li>Tool: <code>--overtake</code> in <code>src/vcy/overtake.ml</code>; the re-check is <code>recheck</code> in <code>src/vcy/interp.ml</code>; the lock map is <code>Lock_synthesis.task_locks</code>. Tests: <code>benchmarks/overtake/</code> in <code>make test</code>. Uncommitted.</li>
+  <li>The 12 benchmarks of <code>reports/speedup_dswp.py</code> with its inputs at N = 10⁶, and 17 W1 rewrites of <code>benchmarks/ncb/veracity/</code>. 3 trials each, alternating sequential and the five configurations. 8 workers, <code>--synthesize-locks</code>, a 128-core machine.</li>
+  <li>Rocq: <code>SC_DepElim</code> in <code>rocq/Jobs.v</code> accepts a running job; everything rebuilds unchanged, and the main theorems use only functional extensionality.</li>
+</ul>
+
+<h2>Caveats</h2>
+<ul>
+  <li>The re-check releases its locks before the body starts, matching the tool's statement-level locking. Holding the check and the whole body as one serializable unit would need whole-body two-phase locking.</li>
+  <li>What a waiting job still waits for is over-approximated (every unfinished job of its predecessor tasks that it would wait on). This can only add failed re-checks; it may explain some in <code>erc20</code> and <code>banking</code>.</li>
+  <li><code>motivation</code> seeds its array with <code>random()</code>, so its return value differs on every run, even sequentially. All other programs returned the same value under every configuration.</li>
+  <li><code>erc20</code> never resets <code>j</code>, so only agent 0 makes transfers (2 of them). Its numbers say little about conditions that read shared state.</li>
+  <li>The Veracity programs are scratch rewrites (written parameters dropped from labels, condition-read variables made global). The repository versions are still rejected by W1.</li>
+  <li>Whether a job overtakes depends on timing; small speedups (under about 1.3×) are within run-to-run variation. Under <code>hybrid-locked</code>, <code>conditional</code> and <code>counter</code>, whose first block writes the condition variable before its long computation, kept or lost their speedup from one sweep to the next.</li>
+</ul>
+
+<h2>Next steps</h2>
+<ol>
+  <li>Choose the default rule. <code>hybrid-locked</code> with the re-check is the candidate.</li>
+  <li>Add the unordered check when a job overtakes (Rocq's <code>DepElim</code> premise), so the re-check fails less.</li>
+  <li>Rewrite the <code>ncb/veracity</code> programs to pass W1, and fix <code>erc20</code>'s loop.</li>
+  <li>Re-enable the stability text in the POPL'27 camera-ready (<code>%%% overtaking rule (paused)</code>); the Rocq-related changes are marked <code>\claudeRocq</code> (purple).</li>
+</ol>
+
+<footer>Raw data: /tmp/claude-1012/-workspace/f21b03e9-efda-40dd-864c-ed054bbcb500/scratchpad/sweep3/results.csv (2026-11-12). The 2026-11-10 data is embedded in this page.</footer>
+</main>
+<div class="tip" id="tip"></div>
+<script>
+const NEW = [{"b":"sollve_dotprod","seq":36.6703,"any":10.5808,"ns":14.5004,"hy":10.4847,"hl":10.7086,"hlnr":10.612,"rf":[0,0,0],"run":[60,43,50],"ret":true},{"b":"simple-vector","seq":0.6284,"any":0.3552,"ns":0.3541,"hy":0.351,"hl":0.3541,"hlnr":0.3547,"rf":[0,0,0],"run":[0,0,0],"ret":true},{"b":"2d-array","seq":3.0562,"any":0.5907,"ns":0.5903,"hy":0.592,"hl":0.5938,"hlnr":0.5892,"rf":[0,0,0],"run":[0,0,0],"ret":true},{"b":"vote","seq":1.2351,"any":0.329,"ns":0.9425,"hy":0.3293,"hl":0.3304,"hlnr":0.3309,"rf":[0,0,0],"run":[16,13,13],"ret":true},{"b":"commset","seq":0.1217,"any":0.0724,"ns":0.1133,"hy":0.0772,"hl":0.0732,"hlnr":0.0774,"rf":[0,0,0],"run":[15,13,14],"ret":true},{"b":"multi-blocks","seq":1.5395,"any":0.7366,"ns":1.0394,"hy":0.7339,"hl":0.7327,"hlnr":0.736,"rf":[0,0,0],"run":[27,22,26],"ret":true},{"b":"simple-io","seq":0.093,"any":0.0696,"ns":0.1094,"hy":0.0682,"hl":0.0671,"hlnr":0.068,"rf":[0,0,0],"run":[3,3,3],"ret":true},{"b":"motivation","seq":0.621,"any":0.1329,"ns":0.166,"hy":0.1351,"hl":0.1355,"hlnr":0.1328,"rf":[0,0,0],"run":[90,113,91],"ret":false},{"b":"erc20","seq":0.0276,"any":0.4271,"ns":0.5643,"hy":0.584,"hl":0.5607,"hlnr":0.4233,"rf":[23,19,40],"run":[2686,596,1979],"ret":true},{"b":"banking","seq":0.3302,"any":4.2573,"ns":4.6603,"hy":4.4899,"hl":4.5756,"hlnr":4.2429,"rf":[543,228,235],"run":[1354541,1359438,1358562],"ret":true},{"b":"commset-potrace","seq":0.1095,"any":0.0672,"ns":0.1156,"hy":0.0733,"hl":0.07,"hlnr":0.0689,"rf":[0,0,0],"run":[8,8,7],"ret":true},{"b":"commset-kmeans","seq":0.0491,"any":0.0967,"ns":0.1064,"hy":0.1143,"hl":0.1137,"hlnr":0.0965,"rf":[0,0,0],"run":[1090,4004,4075],"ret":true},{"b":"veracity/array1","seq":0.2504,"any":0.1389,"ns":0.2609,"hy":0.2621,"hl":0.2611,"hlnr":0.2628,"rf":[0,0,1],"run":[2,0,1],"ret":true},{"b":"veracity/array2","seq":0.2507,"any":0.1368,"ns":0.2599,"hy":0.2594,"hl":0.136,"hlnr":0.1361,"rf":[0,0,0],"run":[2,0,3],"ret":true},{"b":"veracity/array3","seq":0.25,"any":0.1412,"ns":0.263,"hy":0.2636,"hl":0.1409,"hlnr":0.1413,"rf":[0,0,0],"run":[3,0,3],"ret":true},{"b":"veracity/calc","seq":0.2504,"any":0.1406,"ns":0.263,"hy":0.2623,"hl":0.1397,"hlnr":0.1399,"rf":[0,0,0],"run":[3,0,3],"ret":true},{"b":"veracity/conditional","seq":0.2505,"any":0.1368,"ns":0.2591,"hy":0.2587,"hl":0.1381,"hlnr":0.2579,"rf":[0,0,0],"run":[2,0,2],"ret":true},{"b":"veracity/counter","seq":0.252,"any":0.1393,"ns":0.261,"hy":0.2617,"hl":0.2607,"hlnr":0.1392,"rf":[0,0,0],"run":[3,0,1],"ret":true},{"b":"veracity/dict","seq":0.2505,"any":0.1547,"ns":0.2773,"hy":0.277,"hl":0.1543,"hlnr":0.1549,"rf":[0,0,0],"run":[3,0,3],"ret":true},{"b":"veracity/even-odd","seq":0.2509,"any":0.2613,"ns":0.2603,"hy":0.2605,"hl":0.2608,"hlnr":0.2603,"rf":[0,0,0],"run":[0,0,0],"ret":true},{"b":"veracity/ht-add-put","seq":0.2507,"any":0.1406,"ns":0.2627,"hy":0.2626,"hl":0.14,"hlnr":0.1404,"rf":[0,0,0],"run":[3,0,2],"ret":true},{"b":"veracity/ht-cond-size-get","seq":0.2502,"any":0.1383,"ns":0.1377,"hy":0.1374,"hl":0.1369,"hlnr":0.1372,"rf":[0,0,0],"run":[3,3,3],"ret":true},{"b":"veracity/ht-simple","seq":0.2513,"any":0.1435,"ns":0.2657,"hy":0.2652,"hl":0.1431,"hlnr":0.1433,"rf":[0,0,0],"run":[3,0,3],"ret":true},{"b":"veracity/linear-bool","seq":0.2507,"any":0.1401,"ns":0.2633,"hy":0.2618,"hl":0.14,"hlnr":0.1404,"rf":[0,0,0],"run":[3,0,3],"ret":true},{"b":"veracity/linear-cond","seq":0.2509,"any":0.1436,"ns":0.2654,"hy":0.2661,"hl":0.1444,"hlnr":0.1439,"rf":[0,0,0],"run":[2,0,3],"ret":true},{"b":"veracity/loop-inter","seq":0.3733,"any":0.2622,"ns":0.3861,"hy":0.3859,"hl":0.3859,"hlnr":0.3865,"rf":[0,0,0],"run":[3,0,0],"ret":true},{"b":"veracity/matrix","seq":0.2508,"any":0.1442,"ns":0.2675,"hy":0.2662,"hl":0.1444,"hlnr":0.1447,"rf":[0,0,0],"run":[1,0,3],"ret":true},{"b":"veracity/nonlinear","seq":0.2506,"any":0.1439,"ns":0.2665,"hy":0.2661,"hl":0.1431,"hlnr":0.1442,"rf":[0,0,0],"run":[2,0,3],"ret":true},{"b":"veracity/simple","seq":0.2492,"any":0.1395,"ns":0.2621,"hy":0.2629,"hl":0.1404,"hlnr":0.1403,"rf":[0,0,0],"run":[3,0,3],"ret":true}];
+// 2026-11-10 sweep: par = today's scheduler, wo = not-started (no closure, no re-check)
+const OLD = [{"b":"sollve_dotprod","n":10000,"par":8.997,"wo":9.5249},{"b":"sollve_dotprod","n":100000,"par":13.8429,"wo":14.0419},{"b":"sollve_dotprod","n":1000000,"par":10.2504,"wo":14.2631},{"b":"simple-vector","n":10000,"par":0.0197,"wo":0.0192},{"b":"simple-vector","n":100000,"par":0.047,"wo":0.0465},{"b":"simple-vector","n":1000000,"par":0.3209,"wo":0.3204},{"b":"2d-array","n":10000,"par":0.0102,"wo":0.0103},{"b":"2d-array","n":100000,"par":0.0415,"wo":0.0412},{"b":"2d-array","n":1000000,"par":0.3673,"wo":0.3669},{"b":"vote","n":10000,"par":0.0032,"wo":0.0093},{"b":"vote","n":100000,"par":0.0308,"wo":0.0915},{"b":"vote","n":1000000,"par":0.3061,"wo":0.9198},{"b":"commset","n":10000,"par":0.0009,"wo":0.0015},{"b":"commset","n":100000,"par":0.0065,"wo":0.0107},{"b":"commset","n":1000000,"par":0.0497,"wo":0.0861},{"b":"multi-blocks","n":10000,"par":0.0064,"wo":0.0154},{"b":"multi-blocks","n":100000,"par":0.0611,"wo":0.0921},{"b":"multi-blocks","n":1000000,"par":0.6094,"wo":1.2207},{"b":"simple-io","n":10000,"par":0.0439,"wo":0.0456},{"b":"simple-io","n":100000,"par":0.0445,"wo":0.0506},{"b":"simple-io","n":1000000,"par":0.0461,"wo":0.088},{"b":"motivation","n":10000,"par":0.0067,"wo":0.007},{"b":"motivation","n":100000,"par":0.0149,"wo":0.018},{"b":"motivation","n":1000000,"par":0.0969,"wo":0.1285},{"b":"erc20","n":10000,"par":0.0048,"wo":0.0048},{"b":"erc20","n":100000,"par":0.005,"wo":0.005},{"b":"erc20","n":1000000,"par":0.0065,"wo":0.0069},{"b":"banking","n":10000,"par":0.1204,"wo":0.1235},{"b":"banking","n":100000,"par":0.1225,"wo":0.1252},{"b":"banking","n":1000000,"par":0.1362,"wo":0.1408},{"b":"commset-potrace","n":10000,"par":0.002,"wo":0.0034},{"b":"commset-potrace","n":100000,"par":0.0076,"wo":0.0129},{"b":"commset-potrace","n":1000000,"par":0.0458,"wo":0.0814},{"b":"commset-kmeans","n":10000,"par":0.0202,"wo":0.0212},{"b":"commset-kmeans","n":100000,"par":0.0204,"wo":0.0204},{"b":"commset-kmeans","n":1000000,"par":0.0198,"wo":0.0218}];
+// From --job-stats: which variables written by some task a condition reads.
+const READS = {"multi-blocks": "files", "motivation": "arr", "erc20": "account",
+  "veracity/array1": "r", "veracity/array2": "a", "veracity/array3": "a", "veracity/calc": "c",
+  "veracity/conditional": "x", "veracity/counter": "c", "veracity/dict": "y", "veracity/even-odd": "x",
+  "veracity/ht-add-put": "tbl", "veracity/ht-simple": "tbl", "veracity/linear-bool": "x, y",
+  "veracity/linear-cond": "x, y", "veracity/loop-inter": "x, y", "veracity/matrix": "y",
+  "veracity/nonlinear": "y", "veracity/simple": "a"};
+const NOCOND = new Set(["2d-array"]);
+const RULES = [["any", "any", "--r0"], ["ns", "not-started", "--r1"], ["hy", "hybrid", "--r2"], ["hl", "hybrid-locked", "--r3"]];
+const SVGNS = "http://www.w3.org/2000/svg";
+
+// ---- theme toggle (stored per viewer; printing is always light) ----
+const root = document.documentElement, btn = document.getElementById("themeBtn");
+function store(v) { try { v ? localStorage.setItem("theme", v) : localStorage.removeItem("theme"); } catch (e) {} }
+function stored() { try { return localStorage.getItem("theme"); } catch (e) { return null; } }
+function isDark() {
+  const t = root.getAttribute("data-theme");
+  return t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+}
+function label() { btn.textContent = isDark() ? "Light mode" : "Dark mode"; }
+const s0 = stored(); if (s0 === "light" || s0 === "dark") root.setAttribute("data-theme", s0);
+label();
+btn.addEventListener("click", () => {
+  const next = isDark() ? "light" : "dark";
+  root.setAttribute("data-theme", next); store(next); label();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", label);
+
+// ---- helpers ----
+const tip = document.getElementById("tip");
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(SVGNS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function showTip(ev, html) { tip.innerHTML = html; tip.style.display = "block"; moveTip(ev); }
+function moveTip(ev) {
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = ev.clientX + 14, y = ev.clientY + 14;
+  if (x + w > innerWidth - 8) x = ev.clientX - w - 14;
+  if (y + h > innerHeight - 8) y = ev.clientY - h - 14;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+function hover(node, html) {
+  node.addEventListener("pointerenter", e => showTip(e, html));
+  node.addEventListener("pointermove", moveTip);
+  node.addEventListener("pointerleave", hideTip);
+}
+const sp = (d, k) => d.seq / d[k];
+const isVer = d => d.b.startsWith("veracity/");
+const short = (s, narrow) => (narrow && s.length > 17) ? s.slice(0, 16) + "…" : s;
+
+// ---- dot plot: speedup per rule ----
+function dots() {
+  const host = document.getElementById("dots");
+  const W = Math.max(host.clientWidth, 320), narrow = W < 560;
+  const L = narrow ? 128 : 170, R = 16, rowH = 24, panelGap = 34;
+  const groups = [["DSWP benchmarks (reports/speedup_dswp.py)", NEW.filter(d => !isVer(d))],
+                  ["Veracity programs (W1 rewrites)", NEW.filter(isVer)]];
+  groups.forEach(g => g[1].sort((a, b) => sp(b, "any") - sp(a, "any")));
+  const rows = groups[0][1].length + groups[1][1].length;
+  const H = 8 + 2 * panelGap + rows * rowH + 28;
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Speedup per benchmark under each overtaking rule"}, host);
+  const lo = Math.log(0.04), hi = Math.log(8), x = v => L + (W - L - R) * (Math.log(Math.max(v, 0.04)) - lo) / (hi - lo);
+  const ticks = narrow ? [0.05, 0.25, 1, 4] : [0.05, 0.1, 0.25, 0.5, 1, 2, 4, 8];
+  const top = 8, bottom = H - 24;
+  ticks.forEach(v => {
+    el("line", {x1: x(v), x2: x(v), y1: top, y2: bottom, stroke: "var(--grid)", "stroke-width": 1}, svg);
+    el("text", {x: x(v), y: H - 8, "text-anchor": "middle"}, svg, v + "×");
+  });
+  el("line", {x1: x(1), x2: x(1), y1: top, y2: bottom, stroke: "var(--muted)", "stroke-dasharray": "4 3", "stroke-width": 1}, svg);
+  let y = top;
+  groups.forEach(([title, list]) => {
+    y += panelGap;
+    el("text", {x: 0, y: y - 12, class: "panel"}, svg, title);
+    list.forEach(d => {
+      const cy = y + rowH / 2;
+      el("text", {x: L - 10, y: cy + 4, "text-anchor": "end", class: "lab"}, svg, short(d.b.replace("veracity/", ""), narrow));
+      if (READS[d.b]) el("circle", {cx: 6, cy, r: 3.5, fill: "none", stroke: "var(--muted)", "stroke-width": 1.5}, svg);
+      const vals = RULES.map(([k]) => sp(d, k));
+      el("line", {x1: x(Math.min(...vals)), x2: x(Math.max(...vals)), y1: cy, y2: cy, stroke: "var(--border)", "stroke-width": 2}, svg);
+      // jitter dots that sit on top of each other
+      const placed = [];
+      RULES.forEach(([k, , c], i) => {
+        const px = x(sp(d, k));
+        const n = placed.filter(p => Math.abs(p - px) < 7).length; placed.push(px);
+        el("circle", {cx: px, cy: cy + (n ? (n % 2 ? -4 : 4) * Math.ceil(n / 2) : 0), r: 4.5,
+          fill: `var(${c})`, stroke: "var(--surface)", "stroke-width": 1.5}, svg);
+      });
+      const hit = el("rect", {x: 0, y, width: W, height: rowH, fill: "transparent"}, svg);
+      hover(hit, `<b>${d.b}</b>${READS[d.b] ? "φ reads written state: " + READS[d.b] + "<br>" : ""}` +
+        RULES.map(([k, n]) => `${n}: ${sp(d, k).toFixed(2)}×`).join("<br>") +
+        `<br>sequential: ${d.seq.toFixed(3)} s`);
+      y += rowH;
+    });
+  });
+}
+
+// ---- heat map: 2026-11-10 sweep ----
+function heat() {
+  const host = document.getElementById("heat");
+  const W = Math.max(host.clientWidth, 320), narrow = W < 560;
+  const NS = [10000, 100000, 1000000], NL = {10000: "10⁴", 100000: "10⁵", 1000000: "10⁶"};
+  const get = (b, n) => OLD.find(d => d.b === b && d.n === n);
+  const benches = [...new Set(OLD.map(d => d.b))]
+    .sort((a, b) => get(b, 1000000).wo / get(b, 1000000).par - get(a, 1000000).wo / get(a, 1000000).par);
+  const L = narrow ? 112 : 132, T = 26, rowH = 26, cw = (Math.min(W, 520) - L) / 3;
+  const H = T + benches.length * rowH + 4;
+  const svg = el("svg", {viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Slowdown of not-started by benchmark and input size"}, host);
+  const steps = [1.05, 1.2, 1.5, 2, 2.5];
+  const fills = ["var(--q1)", "var(--q2)", "var(--q3)", "var(--q4)", "var(--q5)", "var(--q6)"];
+  NS.forEach((n, j) => el("text", {x: L + j * cw + cw / 2, y: 16, "text-anchor": "middle"}, svg, "N = " + NL[n]));
+  benches.forEach((b, i) => {
+    const y = T + i * rowH;
+    el("text", {x: L - 10, y: y + rowH / 2 + 4, "text-anchor": "end", class: "lab"}, svg, short(b, narrow));
+    NS.forEach((n, j) => {
+      const d = get(b, n), v = d.wo / d.par, k = steps.filter(s => v >= s).length;
+      const r = el("rect", {x: L + j * cw + 1, y: y + 1, width: cw - 2, height: rowH - 2, rx: 3, fill: fills[k]}, svg);
+      el("text", {x: L + j * cw + cw / 2, y: y + rowH / 2 + 4, "text-anchor": "middle", style: `fill:var(--qt${k}); pointer-events:none`}, svg, v.toFixed(2) + "×");
+      hover(r, `<b>${b}, N = ${NL[n]}</b>any: ${d.par.toFixed(4)} s<br>not-started: ${d.wo.toFixed(4)} s<br>Slowdown: ${v.toFixed(2)}×`);
+    });
+  });
+}
+
+// ---- tables ----
+function tables() {
+  const cls = d => READS[d.b] ? `<span class="tag">written: ${READS[d.b]}</span>`
+    : NOCOND.has(d.b) ? "no conditions" : '<span class="tag p">no written state</span>';
+  let h = "<thead><tr><th>Program</th><th>Sequential</th><th>any</th><th>not-started</th><th>hybrid</th><th>hybrid-locked</th><th>no re-check</th><th>Skipped running (any / hybrid / locked)</th><th>Same result</th><th>φ reads</th></tr></thead><tbody>";
+  for (const d of NEW) {
+    h += `<tr><td>${d.b}</td><td>${d.seq.toFixed(3)}</td><td>${d.any.toFixed(3)}</td><td>${d.ns.toFixed(3)}</td><td>${d.hy.toFixed(3)}</td><td>${d.hl.toFixed(3)}</td><td>${d.hlnr.toFixed(3)}</td><td>${d.run.join(" / ")}</td><td>${d.ret ? '<span class="tag ok">yes</span>' : '<span class="tag">random input</span>'}</td><td>${cls(d)}</td></tr>`;
+  }
+  document.getElementById("tbl").innerHTML = h + "</tbody>";
+  let r = "<thead><tr><th>Program</th><th>hybrid-locked (s)</th><th>--no-recheck (s)</th><th>Ratio</th><th>Re-checks failed (not-started / hybrid / locked)</th></tr></thead><tbody>";
+  for (const d of NEW.filter(d => d.rf.some(v => v > 0) || ["vote", "motivation", "multi-blocks", "sollve_dotprod"].includes(d.b))) {
+    r += `<tr><td>${d.b}</td><td>${d.hl.toFixed(3)}</td><td>${d.hlnr.toFixed(3)}</td><td>${(d.hl / d.hlnr).toFixed(2)}×</td><td>${d.rf.join(" / ")}</td></tr>`;
+  }
+  document.getElementById("rtbl").innerHTML = r + "</tbody>";
+}
+
+function draw() {
+  document.getElementById("dots").innerHTML = "";
+  document.getElementById("heat").innerHTML = "";
+  dots(); heat();
+}
+tables(); draw();
+let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(draw, 150); });
+</script>
+</body>
+</html>

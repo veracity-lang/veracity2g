@@ -1,0 +1,21 @@
+/* The write is under a loop inside a conditional.
+   Expect: NCB f assigns x, a parameter of NCB f */
+commutativity {
+    {f(x_1)}, {f(x_2)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int x = 0;
+    int x_1 = 0;
+    int x_2 = 0;
+    f(x): {
+        int n = 0;
+        if (n == 0) {
+            while (n < 3) {
+                x = n;
+                n = n + 1;
+            }
+        }
+    }
+    return x;
+}
