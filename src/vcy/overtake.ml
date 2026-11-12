@@ -5,8 +5,9 @@ open Dswp_task
    holds.  Selected with --overtake.
 
    Any            skip whenever the condition holds, whether the other job is
-                  waiting, running or done.  Today's scheduler; unsound.
-   Not_started    skip only a job that has not started (Rocq Jobs.SC_DepElim).
+                  waiting, running or done.  The old scheduler; unsound.
+   Not_started    skip only a job that has not started (the Rocq rule until
+                  2026-11-12; SC_DepElim now also admits running jobs).
    Hybrid         as Not_started, except that a condition that reads only
                   parameters and variables no task writes may also skip a
                   running job: nothing it reads can change while that job runs.
@@ -15,14 +16,15 @@ open Dswp_task
                   variable some condition reads.  The condition is evaluated
                   under the job's guard, which the job takes to mark itself
                   dirty, so the job cannot reach that write in the meantime.
+                  The default.
 
    Under every rule but Any, a job that overtook others re-checks before its
    first step (Rocq SC_Local, still_ok; Interp.recheck), unless --no-recheck.
-   Any keeps today's behaviour and does not re-check.  The re-check is what
+   Any keeps the old behaviour and does not re-check.  The re-check is what
    the Rocq proof relies on; the rules above only decide when to stop waiting. *)
 type rule = Any | Not_started | Hybrid | Hybrid_locked
 
-let rule = ref Any
+let rule = ref Hybrid_locked
 
 let recheck_disabled = ref false
 let recheck () = !rule <> Any && not !recheck_disabled

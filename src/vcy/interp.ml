@@ -1163,10 +1163,12 @@ and wait_deps j init_waits deps self_body =
   let wait_job (j', promise) d =
     let wait () = Domainslib.Task.await (get !pool) promise |> ignore in
     let holds () = interp_phi_two d.commute_cond j.env j'.env self_body (load_task_def j'.tid).body in
-    let skip () =
+    (* [started] is the value the rule decided on: j' may start right after,
+       which the re-check covers, but it was not a running job when skipped. *)
+    let skip started =
       if Overtake.recheck () then
         Atomic.set j.over ((j', d, wait) :: Atomic.get j.over);
-      if Atomic.get j'.started then Atomic.incr overtake_running;
+      if started then Atomic.incr overtake_running;
       Atomic.incr overtake_count;
       debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid)) in
     let refuse counter =
@@ -1182,15 +1184,17 @@ and wait_deps j init_waits deps self_body =
       (* Read the condition only while the job cannot reach a write to what
          it reads. *)
       begin match Mutex.protect j'.guard (fun () ->
-        if Atomic.get j'.dirty then `Dirty else if holds () then `Holds else `Fails) with
-      | `Holds -> skip ()
+        if Atomic.get j'.dirty then `Dirty
+        else if holds () then `Holds (Atomic.get j'.started) else `Fails) with
+      | `Holds started -> skip started
       | `Dirty -> refuse overtake_dirty
       | `Fails -> wait ()
       end
     | Some _, rule when holds () ->
-      if Atomic.get j'.started && (rule = Overtake.Not_started || (rule <> Overtake.Any && not fixed))
+      let started = Atomic.get j'.started in
+      if started && (rule = Overtake.Not_started || (rule <> Overtake.Any && not fixed))
       then refuse overtake_denied
-      else skip ()
+      else skip started
     | Some _, _ ->
       debug_print (lazy (Printf.sprintf "%d: Commute condition not met. Waiting on job %d.\n" my_id j'.tid));
       wait ()
