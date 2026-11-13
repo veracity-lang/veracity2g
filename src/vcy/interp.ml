@@ -1254,6 +1254,8 @@ and waits_on_older tid d =
        unordered: no dependence relates them, or their conditions hold both
        ways; and
    (3) no job of the closure still waits for a task that may spawn more jobs.
+   (2) and (3) are skipped when each condition in (1) reads only the two
+   jobs' parameters: then no job can change it.
    The conditions are read under the synthesized locks of the variables they
    read, as the bodies read them.  If the check fails, w waits for the jobs it
    overtook, which then precede it in program order as they would have had it
@@ -1285,7 +1287,12 @@ and recheck w =
           else waits_of m @ List.filter_map (fun ((j', _, _) as o) ->
             if live o then Some j' else None) (Atomic.get m.over) in
         close (m :: acc) (next @ rest) in
-    let closure = close [] (List.map (fun (j', _, _) -> j') overtaken) in
+    (* If each condition w checks reads only the two jobs' parameters, no
+       job can change it, and the closure need not be checked (Rocq
+       fixed_over in still_ok). *)
+    let params_only =
+      List.for_all (fun (_, d, _) -> Overtake.shared_reads d.commute_cond = []) overtaken in
+    let closure = if params_only then [] else close [] (List.map (fun (j', _, _) -> j') overtaken) in
     (* Only the later task of a pair records the dependence, with the entry's
        condition when there is one; an entry is valid in both orders, so one
        evaluation suffices. *)
@@ -1319,11 +1326,11 @@ and recheck w =
     let still_ok () =
       let fail part = Atomic.incr recheck_failed_parts.(part); false in
       (List.for_all (fun (j', d, _) -> holds d w j') overtaken || fail 0)
-      && (let rec go = function
+      && (params_only || let rec go = function
             | [] -> true
             | g :: rest -> groups_unordered g g true && List.for_all (fun g' -> groups_unordered g g' false) rest && go rest in
           go groups || fail 1)
-      && (not (List.exists unknown_jobs closure) || fail 2) in
+      && (params_only || not (List.exists unknown_jobs closure) || fail 2) in
     let locks = List.filter_map (fun x -> List.assoc_opt x !Lock_synthesis.task_locks) !Overtake.cond_vars
       |> List.sort_uniq Stdlib.compare |> List.map (fun i -> get_mutex (Int64.of_int i)) in
     List.iter Mutex.lock locks;
