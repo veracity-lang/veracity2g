@@ -104,7 +104,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/ncb/simple-io.vcy", prep_simpleio),
     ("benchmarks/ncb/motivation.vcy", lambda n : [str(n * 100), "10"]),
     ("benchmarks/ncb/erc20.vcy", lambda n : [str(n), str(1), str(2)]),
-    ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "100", "1000"]),
+    ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "1000", "1000"]),
     ("benchmarks/ncb/commset-potrace.vcy", prep_potrace),
     ("benchmarks/ncb/commset-kmeans.vcy", lambda n : [str(n)])
 ]
@@ -163,7 +163,7 @@ def run_benchmark(index: int, n: int, b: Benchmark) -> Result:
             temp_file.write(modified_code)
 
         # Run the benchmark using the temporary file
-        command_seq = [vcy_exe, 'interp', '--time', '--timeout', str(timeout), temp_file_path] + args
+        command_seq = [vcy_exe, 'interp', '--time', '--force-sequential', '--timeout', str(timeout), temp_file_path] + args
         command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), temp_file_path] + args
 
         def f(command: List[str], floatize: bool):

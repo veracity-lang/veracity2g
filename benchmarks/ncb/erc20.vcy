@@ -37,7 +37,7 @@ int main(int argc, string[] argv) {
     while(i < nAgents){
         nTxns[i] = 2;
         pendingPoolSize[i] = 10;
-        account[i] = i * 100;
+        account[i] = i * 100 + 100;
         maxSpend[i] = i * 20;
         i = i + 1;
     }

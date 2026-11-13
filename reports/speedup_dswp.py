@@ -102,7 +102,7 @@ benchmarks : List[Benchmark] = [
     ("benchmarks/ncb/simple-io.vcy", prep_simpleio),
     ("benchmarks/ncb/motivation.vcy", lambda n : [str(n * 100), "10"]),
     ("benchmarks/ncb/erc20.vcy", lambda n : [str(n), str(1), str(2)]),
-    ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "100", "1000"]),
+    ("benchmarks/ncb/banking.vcy", lambda n : [str(n), "1000", "1000"]),
     ("benchmarks/ncb/commset-potrace.vcy", prep_potrace),
     ("benchmarks/ncb/commset-kmeans.vcy", lambda n : [str(n)])
 ]
@@ -113,7 +113,7 @@ def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     args = fargs(n)
     prog_path = str(repo_root / prog)
 
-    command_seq = [vcy_exe, 'interp', '--time',           '--timeout', str(timeout), prog_path] + args # TODO: More time for inference?
+    command_seq = [vcy_exe, 'interp', '--time', '--force-sequential', '--timeout', str(timeout), prog_path] + args # TODO: More time for inference?
     command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--timeout', str(timeout), prog_path] + args
 
     def f(command : List[str], floatize : bool):

@@ -83,7 +83,7 @@ def run_benchmark(index : int, n : int, b : Benchmark) -> Result:
     prog,fargs = b
     args = fargs(n)
 
-    command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args # TODO: More time for inference?
+    command_seq = [vcy_exe, 'interp', '--time', '--prover', 'cvc5', '--timeout', str(timeout), '--force-sequential', '../' + prog] + args # TODO: More time for inference?
     command_par = [vcy_exe, 'interp', '--time', '--dswp', '--synthesize-locks' , '--prover', 'cvc5', '--timeout', str(timeout), '../' + prog] + args
 
     def f(command : List[str], floatize : bool):

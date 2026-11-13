@@ -310,7 +310,7 @@ NCB examples are located in `benchmarks/ncb/`.
 | `test/ncb_histogram.vcy`       | `(true)` condition and shared bucket update               | `8`                        |
 | `other/ncb_max_reduce.vcy`     | Max-reduction pattern                                     | `10`                       |
 | `motivation.vcy`               | Paper running example with conditional commutativity      | `100 10`                   |
-| `banking.vcy`                  | Deposits, withdrawals, and transfers on distinct accounts | `1 100 1000`               |
+| `banking.vcy`                  | Deposits, withdrawals, and transfers on distinct accounts | `1 1000 1000`              |
 | `erc20.vcy`                    | ERC20 transfers                                           | `1 1 2`                    |
 | `vote.vcy`                 | Smart-contract voting                                     | `1`                        |
 | `multi-blocks.vcy`             | Multiple NCBs and hashtable conditions                    | `1`                        |
@@ -432,16 +432,17 @@ To plot a single result directory instead, run
 ### Table 3
 
 Each row uses, for that benchmark, the computation size N with the highest
-speedup in `ratio.csv` from `speedup_dswp.py`:
+speedup in `ratio.csv` from `speedup_dswp.py`, and the arguments the
+`benchmarks` list in `speedup_dswp.py` gives it at that N:
 
-| Benchmark      | N          |
-| -------------- | ---------- |
-| `motivation`   | 50,000,000 |
-| `simple-io`    | 1,000,000  |
-| `multi-blocks` | 1,000,000  |
-| `vote`         | 50,000,000 |
-| `erc20`        | 50,000,000 |
-| `banking`      | 50,000,000 |
+| Benchmark      | N          | Arguments                                   |
+| -------------- | ---------- | ------------------------------------------- |
+| `motivation`   | 50,000,000 | `5000000000 10` (N × 100)                   |
+| `simple-io`    | 1,000,000  | Four files: `a.txt` = `A`, the others N characters |
+| `multi-blocks` | 1,000,000  | `1000000`                                   |
+| `vote`         | 50,000,000 | `50000000`                                  |
+| `erc20`        | 50,000,000 | `50000000 1 2`                              |
+| `banking`      | 50,000,000 | `50000000 1000 1000` (1000 accounts, 1000 transactions) |
 
 | Column                     | Source                                                                                                        |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------- |
