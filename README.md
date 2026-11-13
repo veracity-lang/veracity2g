@@ -438,7 +438,7 @@ speedup in `ratio.csv` from `speedup_dswp.py`:
 | -------------- | ---------- |
 | `motivation`   | 50,000,000 |
 | `simple-io`    | 1,000,000  |
-| `multi-blocks` | 10,000,000 |
+| `multi-blocks` | 1,000,000  |
 | `vote`         | 50,000,000 |
 | `erc20`        | 50,000,000 |
 | `banking`      | 50,000,000 |

@@ -270,12 +270,13 @@ if __name__ == '__main__':
         if '--test' in sys.argv: n_values = [1e6]
         num_trials = int(sys.argv[2])
         if len(sys.argv) > 3 and sys.argv[3] != '--test':
-            # A program from the built-in list (by path, file name or stem)
-            # keeps its own inputs; any other program gets N followed by the
-            # remaining command-line arguments.
+            # Programs from the built-in list (by path, file name or stem)
+            # keep their own inputs, and several may be given; any other
+            # program gets N followed by the remaining command-line arguments.
             prog = sys.argv[3]
-            known = [b for b in benchmarks if Path(b[0]).stem == Path(prog).stem]
-            if known:
+            names = {Path(a).stem for a in sys.argv[3:] if a != '--test'}
+            known = [b for b in benchmarks if Path(b[0]).stem in names]
+            if len(known) == len(names):
                 benchmarks = known
             else:
                 extra = [a for a in sys.argv[4:] if a != '--test']
@@ -285,4 +286,4 @@ if __name__ == '__main__':
                 benchmarks = [(prog, lambda n: [str(n)] + extra)]
         build_file()
     except:
-        print(f'Usage: {sys.argv[0]} <output-dir> <num-trials> [program] [--test]')
+        print(f'Usage: {sys.argv[0]} <output-dir> <num-trials> [program [args...] | benchmark...] [--test]')

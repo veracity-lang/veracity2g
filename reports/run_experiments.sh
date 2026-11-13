@@ -3,25 +3,37 @@
 # Avg Job Exec columns of Table 3. See "Reproducing the Paper's Results" in
 # README.md.
 #
-# Usage: ./bench_all.sh [trials] [--test]
-#   trials  trials per benchmark and N (default 5)
-#   --test  run only N = 10^6 in the speedup scripts, as a quick check
+# Usage: ./run_experiments.sh [trials] [--test] [benchmark...]
+#   trials     trials per benchmark and N (default 5)
+#   --test     run only N = 10^6 in the speedup scripts, as a quick check
+#   benchmark  names from the benchmarks list in speedup_dswp.py (e.g. vote
+#              erc20); runs only those. Default: the paper's six, listed in
+#              DEFAULT_BENCHES below.
 
 set -u
 cd "$(dirname "$0")"
 
-TRIALS=${1:-5}
+DEFAULT_BENCHES=(motivation vote simple-io multi-blocks banking erc20)
+
+TRIALS=5
 TEST=""
-for a in "$@"; do [ "$a" = "--test" ] && TEST="--test"; done
-[ "$TRIALS" = "--test" ] && TRIALS=5
+BENCHES=()
+for a in "$@"; do
+  case "$a" in
+    --test) TEST="--test" ;;
+    *[!0-9]*|"") BENCHES+=("$a") ;;
+    *) TRIALS=$a ;;
+  esac
+done
+[ ${#BENCHES[@]} -eq 0 ] && BENCHES=("${DEFAULT_BENCHES[@]}")
 
 VCY=../vcy
 [ -x "$VCY" ] || { echo "error: $VCY not found, run make in the repository root first" >&2; exit 1; }
 
 # Speedup measurements (seq.csv, par.csv, ratio.csv, ratio_std.csv)
-python3 ./speedup_dswp.py      out-ncbpar "$TRIALS" $TEST   # NCBPar.
-python3 ./speedup_dswp_nc.py   out-nc     "$TRIALS" $TEST   # False-Comm.
-python3 ./speedup_dswp_noNB.py out-noNB   "$TRIALS" $TEST   # No-NCB.
+python3 ./speedup_dswp.py      out-ncbpar "$TRIALS" "${BENCHES[@]}" $TEST   # NCBPar.
+python3 ./speedup_dswp_nc.py   out-nc     "$TRIALS" "${BENCHES[@]}" $TEST   # False-Comm.
+python3 ./speedup_dswp_noNB.py out-noNB   "$TRIALS" "${BENCHES[@]}" $TEST   # No-NCB.
 
 # Fig. 6
 python3 ./speedup_plot_compare.py out-ncbpar out-nc out-noNB fig6 --err
@@ -31,8 +43,13 @@ python3 ./speedup_plot_compare.py out-ncbpar out-nc out-noNB fig6 --err
 # N*100, simple-io reads files of N characters).
 OUT=table3-jobstats.txt
 : > "$OUT"
+selected() {
+  for b in "${BENCHES[@]}"; do [ "$(basename "$b" .vcy)" = "$1" ] && return 0; done
+  return 1
+}
 job_stats() {
   local name=$1; shift
+  selected "$name" || return 0
   echo "== $name" | tee -a "$OUT"
   "$VCY" interp --dswp --synthesize-locks --time --job-stats "$@" 2>&1 | tee -a "$OUT"
 }
@@ -48,3 +65,4 @@ job_stats erc20        ../benchmarks/ncb/erc20.vcy        50000000 1 2
 job_stats banking      ../benchmarks/ncb/banking.vcy      50000000 100 1000
 
 echo "Table 3 job statistics written to reports/$OUT"
+python3 ./table3_latex.py "$OUT" out-ncbpar table3.tex
