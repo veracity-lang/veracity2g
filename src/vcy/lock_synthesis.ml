@@ -564,7 +564,13 @@ let transform_prog (prog : prog) : prog =
        instances within a single task.
    A single shared lock_state ensures the same variable always gets the
    same lock ID across all tasks. *)
+(* The variable -> lock id map of the last synthesize_tasks, so that the
+   scheduler's first-step re-check can read a condition under the same locks
+   as the bodies. *)
+let task_locks : (id * int) list ref = ref []
+
 let synthesize_tasks (prog : prog) (tasks : dswp_task list) : dswp_task list =
+  task_locks := [];
   let safe_pos_map  = build_safe_pos_map prog in
   let inter_set     = inter_task_conflict_set tasks in
   let intra_set     = compute_inter_block_conflict_set prog safe_pos_map in
@@ -590,5 +596,6 @@ let synthesize_tasks (prog : prog) (tasks : dswp_task list) : dswp_task list =
       (String.concat ", " (List.map string_of_int (List.rev !instrumented)));
     Servois2.Util.pfvv "  locks synthesized:\n";
     print_lock_state lock_st;
+    task_locks := lock_st.var_to_lock;
     result
   end

@@ -1,0 +1,14 @@
+/* The condition reads c, a local of main that neither label names.  The
+   scheduler evaluates a condition over the two labels' parameters and the
+   globals only, so c is out of scope there (verify alone would accept it).
+   Expect: the condition for f1 and f2 reads c */
+commutativity {
+    {f1()}, {f2()}: (c != 0)
+}
+
+int main(int argc, string[] argv) {
+    int c = 42;
+    f1(): { c = c + 1; }
+    f2(): { if (c > 0) { c = c - 1; } }
+    return c;
+}

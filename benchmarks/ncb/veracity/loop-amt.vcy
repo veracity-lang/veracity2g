@@ -16,16 +16,17 @@ int main(int argc, string[] argv) {
             /* this only works if i is initially even. */
             amt_pre = amt;
             i_pre = i;
-            while(i>0) invariant ( amt == amt_pre || i_pre%2!=0 ) { 
-                if(i%2 == 0) {
+            int k = i;
+            while(k>0) invariant ( amt == amt_pre || i_pre%2!=0 ) { 
+                if(k%2 == 0) {
                     amt = amt * -1;
                 } else {
-                    amt = amt * i * -1;
+                    amt = amt * k * -1;
                 }
-                i = i - 1;
+                k = k - 1;
             }
             ctr = ctr + amt;
-            i = 0; amt = 0; i_pre = 0; amt_pre = 0;
+            amt = 0; i_pre = 0; amt_pre = 0;
         }
     g() :
         {   

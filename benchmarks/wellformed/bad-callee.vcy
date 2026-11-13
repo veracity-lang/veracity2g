@@ -1,0 +1,21 @@
+/* The store happens in a method the body calls.
+   Expect: NCB f assigns a, a parameter of NCB f */
+void put(int[] b, int k) {
+    b[k] = 1;
+    return;
+}
+
+commutativity {
+    {f(a,i_1)}, {f(a,i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    f(a,i): {
+        put(a, i);
+    }
+    return a[0];
+}

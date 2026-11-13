@@ -1,5 +1,5 @@
 commutativity {
-    {f1(tbl,y,z)}, {f2(tbl,y,z)}: (!(ht_size(tbl) > 0) && !(0 == z) || 0 == z)
+    {f1(tbl,z)}, {f2(tbl,z)}: (!(ht_size(tbl) > 0) && !(0 == z) || 0 == z)
 }
 
 int main(int argc, string[] argv) {
@@ -8,13 +8,13 @@ int main(int argc, string[] argv) {
 	int y = int_of_string(argv[2]);
 	int z = int_of_string(argv[3]);
 
-	f1(tbl,y,z):{ 	
+	f1(tbl,z):{ 	
 		busy_wait(n);
 		if(ht_size(tbl) > 0) { 
 		y = y + z;
 		}
 	}
-	f2(tbl,y,z):{ 	
+	f2(tbl,z):{ 	
 		y = ht_get(tbl,z);
 		busy_wait(n);
 	}

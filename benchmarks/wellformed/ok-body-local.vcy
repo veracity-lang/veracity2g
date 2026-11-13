@@ -1,0 +1,21 @@
+/* Variables declared in a body are not parameters, so assigning them is fine.
+   Expect: ok */
+commutativity {
+    {f(i_1)}, {f(i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 10) {
+        f(i): {
+            int t = i;
+            t = t + 1;
+            a[i] = t;
+        }
+        i = i + 1;
+    }
+    return a[0];
+}

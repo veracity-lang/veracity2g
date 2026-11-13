@@ -1,0 +1,16 @@
+/* The condition reads nothing, so hybrid and hybrid-locked may skip f even
+   while it runs; not-started must not.  Every rule must return 3. */
+int x = 0;
+int[] a = new int[2];
+commutativity {
+    {f()}, {g()}: (true)
+}
+int main(int argc, string[] argv) {
+    int n = int_of_string(argv[1]);
+    f(): { busy_wait(n); x = 1; }
+    int y = 0;
+    busy_wait(n / 4);
+    y = 2;
+    g(): { busy_wait(n); a[1] = y; }
+    return a[1] + x;
+}

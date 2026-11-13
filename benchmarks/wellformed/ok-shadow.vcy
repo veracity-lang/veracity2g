@@ -1,0 +1,21 @@
+/* The body declares its own x, so assigning it leaves parameter x alone.
+   Expect: ok */
+commutativity {
+    {f(x_1,i_1)}, {f(x_2,i_2)}: (i_1 != i_2)
+}
+
+int main(int argc, string[] argv) {
+    int[] a = new int[10];
+    int x = 0;
+    int i = 0;
+    int x_1 = 0;
+    int x_2 = 0;
+    int i_1 = 0;
+    int i_2 = 1;
+    f(x,i): {
+        int x = 3;
+        x = x + 1;
+        a[i] = x;
+    }
+    return a[0];
+}

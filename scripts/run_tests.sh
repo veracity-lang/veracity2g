@@ -486,6 +486,95 @@ run_interp_ok() {
     fi
 }
 
+# run_wellformed BENCH_PATH
+#   The benchmark's "Expect:" line is either "ok" or the violation (W1 or
+#   condition scope).  A violation must be reported on stderr with a non-zero
+#   exit, by verify and by interp, before any solver runs.  An ok benchmark
+#   must not report a violation.
+run_wellformed() {
+    local label; label=$(_label "$1")
+    local expect cmd out rc
+    expect=$(sed -n 's/.*Expect: \(.*\)$/\1/p' "$REPO_ROOT/$1" | head -1 | sed 's/ *\*\/$//')
+    for cmd in verify interp; do
+        out=$(cd "$REPO_ROOT" && timeout 60 "$VCY" "$cmd" "$1" 2>&1 >/dev/null); rc=$?
+        if [[ "$expect" == ok ]]; then
+            if printf '%s\n' "$out" | grep -q ' violation: '; then
+                _record fail "$label ($cmd)" "[$(printf '%s\n' "$out" | grep -m1 ' violation: ' | cut -c1-60)]"
+                return
+            fi
+        elif [[ "$rc" -ne 1 ]] || ! printf '%s\n' "$out" | grep -qF "violation: $expect"; then
+            _record fail "$label ($cmd)" "[exit $rc, want violation: $expect]"
+            return
+        fi
+    done
+    _record pass "$label" "[$expect]"
+}
+
+echo ""
+echo "=== benchmarks/wellformed (W1 and condition scope static checks) ==="
+for f in "$REPO_ROOT"/benchmarks/wellformed/*.vcy; do
+    run_wellformed "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+done
+
+# run_overtake BENCH_PATH RULE MAY_SKIP_RUNNING
+#   Run the benchmark 3 times under --overtake RULE.  Each run must return 3,
+#   and if MAY_SKIP_RUNNING is no, --job-stats must report that no running job
+#   was skipped.  Whether a skip happens depends on timing; that the rule
+#   forbids one does not.
+run_overtake() {
+    local label; label="$(_label "$1") $2"
+    local out ret running bad=""
+    for _ in 1 2 3; do
+        out=$(cd "$REPO_ROOT" && timeout 60 "$VCY" interp --dswp --job-stats --overtake "$2" "$1" 20000000 2>&1)
+        ret=$(printf '%s\n' "$out" | grep -o 'Return: [-0-9]*' | tail -1)
+        running=$(printf '%s\n' "$out" | sed -n 's/^Overtakes of running jobs: //p')
+        [[ "$ret" == "Return: 3" ]] || bad="[$ret]"
+        [[ "$3" == no && "${running:-x}" != 0 ]] && bad="[skipped a running job]"
+    done
+    if [[ -z "$bad" ]]; then _record pass "$label" "[ok x3]"; else _record fail "$label" "$bad"; fi
+}
+
+echo ""
+echo "=== benchmarks/overtake (--overtake rules) ==="
+for rule in any not-started hybrid hybrid-locked; do
+    case "$rule" in
+        any)           late=yes early=yes fixed=yes ;;
+        not-started)   late=no  early=no  fixed=no ;;
+        hybrid)        late=no  early=no  fixed=yes ;;
+        hybrid-locked) late=yes early=yes fixed=yes ;;
+    esac
+    run_overtake benchmarks/overtake/late.vcy  "$rule" "$late"
+    run_overtake benchmarks/overtake/early.vcy "$rule" "$early"
+    run_overtake benchmarks/overtake/fixed.vcy "$rule" "$fixed"
+done
+
+# run_recheck RULE [FLAGS...]
+#   benchmarks/overtake/recheck.vcy, 3 times: each overtake must end in a
+#   failed first-step re-check (none when FLAGS has --no-recheck), and each
+#   run must return 4.
+run_recheck() {
+    local rule="$1"; shift
+    local f=benchmarks/overtake/recheck.vcy out ret over passed failed bad=""
+    for _ in 1 2 3; do
+        out=$(cd "$REPO_ROOT" && timeout 60 "$VCY" interp --dswp --job-stats --overtake "$rule" "$@" "$f" 20000000 2>&1)
+        ret=$(printf '%s\n' "$out" | grep -o 'Return: [-0-9]*' | tail -1)
+        over=$(printf '%s\n' "$out" | sed -n 's/^Overtakes: //p')
+        passed=$(printf '%s\n' "$out" | sed -n 's/^Re-checks passed: //p')
+        failed=$(printf '%s\n' "$out" | sed -n 's/^Re-checks failed: \([0-9]*\).*/\1/p')
+        [[ "$ret" == "Return: 4" ]] || bad="[$ret]"
+        if [[ " $* " == *" --no-recheck "* ]]; then
+            [[ "$passed$failed" == 00 ]] || bad="[re-checked with --no-recheck]"
+        elif [[ "$passed" != 0 || "$failed" != "$over" ]]; then
+            bad="[overtakes=$over passed=$passed failed=$failed]"
+        fi
+    done
+    if [[ -z "$bad" ]]; then _record pass "overtake/recheck $rule $*" "[ok x3]"
+    else _record fail "overtake/recheck $rule $*" "$bad"; fi
+}
+
+for rule in not-started hybrid hybrid-locked; do run_recheck "$rule"; done
+run_recheck hybrid-locked --no-recheck
+
 # Servois2 looks for cvc5 only at fixed paths (see Provers.ProverCVC5), so
 # being on $PATH is not enough.
 if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]; then

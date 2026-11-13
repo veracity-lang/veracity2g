@@ -1,9 +1,10 @@
+hashtable[int,int] tbl = new hashtable[int,int];
+
 commutativity {
-    {f1(tbl,v,g,a,x)}, {f2(tbl,v,z,y)}: (x + a != z && 3 == tbl[z] && y != z)
+    {f1(a,x)}, {f2(z,y)}: (x + a != z && 3 == tbl[z] && y != z)
 }
 
 int main(int argc, string[] argv) {
-	hashtable[int,int] tbl = new hashtable[int,int];
 	int n = int_of_string(argv[1]);
 	int x = int_of_string(argv[2]);
 	int y = int_of_string(argv[3]);
@@ -14,14 +15,14 @@ int main(int argc, string[] argv) {
 	
 	tbl[z] = 3;
 
-	f1(tbl,v,g,a,x):{ 
+	f1(a,x):{ 
 		busy_wait(n);
 		v = ht_get(tbl, z);
 		v = v + 3;
 		g = x + a;
 		ht_put(tbl, g, v);
 	}
-	f2(tbl,v,z,y):{ 
+	f2(z,y):{ 
 		v = ht_get(tbl, z);
 		v = v * 2;
 		ht_put(tbl, y, v); 

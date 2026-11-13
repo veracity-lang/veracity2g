@@ -1,7 +1,7 @@
 /* https://www.whitman.edu/documents/Academics/Mathematics/SeniorProject_CodyClifton.pdf */
 
 commutativity{
-    {f1}, {f2}: ((!s1 && !s2) || (s1 && !s2 && (r2 == 0 || (n % 2 == 0 && r2 == n / 2))) || (!s1 && s2
+    {f1(r1,s1)}, {f2(r2,s2)}: ((!s1 && !s2) || (s1 && !s2 && (r2 == 0 || (n % 2 == 0 && r2 == n / 2))) || (!s1 && s2
 && (r1 == 0 || (n % 2 == 0 && r1 == n / 2))) || (s1 && s2 && r1 == r2))
 }
 
@@ -105,10 +105,10 @@ int main(int argc, string[] argv) {
     /*print(phi ? "true\n" : "false\n");*/
 
    
-    f1:{ mrk(a, r1, true);
+    f1(r1,s1):{ mrk(a, r1, true);
         if (s1) { ms(a, true); }
     }
-    f2:{ mrk(a, r2, false);
+    f2(r2,s2):{ mrk(a, r2, false);
         if (s2) { ms(a, false); }
     }
     
