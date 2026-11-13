@@ -374,3 +374,54 @@ let verify_of_block e genv cv blks vars pre post : bool option * bool option =
   Servois2.Solve.extra_models := [];
   Servois2.Util.finalize_examine m1 m2 "verify";
   result
+
+(* Stability of three conditions (Def. stable in the paper; Rocq stable3):
+   if the conditions between h and f, h and g, and f and g hold in a state,
+   then after h runs the condition between f and g still holds.  [body] is
+   h's block, its parameters already renamed to h's instance; the four
+   conditions are over the three instances' parameters and the state.
+   [p_*] are the premises, [q_fg] the conclusion.  Returns Some true when
+   no counterexample exists, Some false when one does. *)
+let stable_of_triple genv (vars : ty bindlist) (body : block node)
+    (p_hf : exp node) (p_hg : exp node) (p_fg : exp node) (q_fg : exp node) : bool option =
+  let embedding = generate_embedding_map vars in
+  let blks = unroll_loops [body] in
+  let spec, mnames = Spec_generator.compile_blocks_to_spec genv blks embedding None None in
+  let m = Servois2.Spec.get_method spec (List.hd mnames)
+          |> Servois2.Spec.mangle_method_vars true in
+  let tr e =
+    Spec_generator.translating_condition := true;
+    Fun.protect ~finally:(fun () -> Spec_generator.translating_condition := false)
+      (fun () -> fst @@ Spec_generator.exp_to_smt_exp e 1 Spec_generator.variable_ctr_list) in
+  let state_names = List.map (fun (v, _) -> Servois2.Smt.string_of_var v) spec.state in
+  let after e = subst_sfx "_stab1" state_names e in
+  let s = Servois2.Smt.string_of_smt in
+  let names sfx = String.concat " " (List.map (fun n -> n ^ sfx) state_names) in
+  let results = List.mapi (fun i (_, ty) -> (sp "stab_result_%d" i, ty)) m.ret in
+  let query = String.concat "\n" @@
+    [ "(set-logic ALL)"
+    ; "(define-fun havoc  ( (vpre Int) (vpost Int) ) Bool true)"
+    ; Servois2.Solve.smt_of_spec spec ]
+    @ List.map (fun (v, ty) -> sp "(declare-fun %s_stab1 () %s)"
+                  (Servois2.Smt.string_of_var v) (Servois2.Smt.string_of_ty ty)) spec.state
+    @ List.map (fun (n, ty) -> sp "(declare-fun %s () %s)" n (Servois2.Smt.string_of_ty ty)) results
+    @ [ sp "(assert %s)" (s spec.precond)
+      ; sp "(assert (%s_pre_condition %s))" m.name (names "")
+      ; sp "(assert (%s_post_condition %s %s %s))" m.name (names "") (names "_stab1")
+          (String.concat " " (List.map fst results))
+      ; sp "(assert %s)" (s (tr p_hf))
+      ; sp "(assert %s)" (s (tr p_hg))
+      ; sp "(assert %s)" (s (tr p_fg))
+      ; sp "(assert (not %s))" (s (after (tr q_fg)))
+      ; "(check-sat)" ] in
+  if !Servois2.Util.dump_queries then begin
+    try
+      let oc = open_out (Servois2.Util.outfile "stability.smt2") in
+      output_string oc query; close_out oc
+    with _ -> ()
+  end;
+  let prover = (!Util.servois2_verify_option).prover in
+  match Servois2.Provers.parse_prover_output prover (Servois2.Provers.run_prover prover query) with
+  | Servois2.Provers.Unsat -> Some true
+  | Servois2.Provers.Sat _ -> Some false
+  | Servois2.Provers.Unknown -> None

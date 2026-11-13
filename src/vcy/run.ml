@@ -737,6 +737,7 @@ module RunVerify : Runner = struct
     ; "-ae", Arg.Unit (fun () -> use_ae := true), " Use the forall/exists Servois2 mode"
     ; "--prover", Arg.Set_string prover_name, "<name> Use a particular prover (default: CVC5)"
     ; "--cond", Arg.Set cond, " Display provided commute condition"
+    ; "--with-stability", Arg.Set Interp.with_stability, " Also check that the global commutativity specification is stable (needed when a job overtakes several others)"
     ; "--html", Arg.Unit (fun () -> generate_html := true), " Generate self-contained HTML report in ./veracity_output/run_NNNN/"
     ; "--htmlopen", Arg.Unit (fun () -> generate_html := true; open_html := true), " Like --html, but also opens the report in the browser"
     ; "--out-dir", Arg.String (fun d -> Util.output_root := Some d), "<dir> Write this run's output to <dir> instead of ./veracity_output/run_NNNN/"

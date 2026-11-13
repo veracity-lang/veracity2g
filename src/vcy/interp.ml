@@ -17,6 +17,9 @@ let print_cond = ref false
 
 let force_sequential = ref false
 let force_infer = ref false
+(* verify --with-stability: also check that the global commutativity
+   specification is stable (check_stability) *)
+let with_stability = ref false
 
 let dswp_mode = ref false
 let synthesize_locks_flag = ref false
@@ -1838,6 +1841,95 @@ let rec verify_phis_of_block (g : global_env) (defs : ty bindlist) (body : block
       (verify_phis_of_block g defs t)  
   | SendDep (_, _) | SendEOP(_) | Require(_) -> failwith "sendDep/sendEOP/require should not be present in verify_phis."
 
+(* Stability (Def. stable in the paper, Rocq Stability.stable3): for NCBs h,
+   f, g, not necessarily distinct, with entries for all three pairs, running
+   h from a state where the three conditions hold keeps the condition
+   between f and g.  The runtime may let a job overtake several others only
+   if this holds.  Each of the three is a separate instance, with its
+   parameters renamed apart.  An entry between a label and itself may be
+   evaluated with either instance first, so a premise is that either
+   orientation holds and the conclusion that both do; for a symmetric
+   condition the two coincide.  Only entries with one label on each side
+   are considered. *)
+let check_stability (g : global_env) (defs : ty bindlist) : unit =
+  let entries = List.filter_map (fun gc ->
+      match gc.elt with
+      | [[(l1, a1)]; [(l2, a2)]], PhiExp e ->
+        Some (l1, Option.value ~default:[] a1, l2, Option.value ~default:[] a2, e)
+      | _ ->
+        Printf.eprintf "Stability: skipping the entry at %s (not one label on each side)\n"
+          (Range.string_of_range gc.loc);
+        None) g.group_commute in
+  let labels = List.sort_uniq String.compare (List.concat_map (fun (l1, _, l2, _, _) -> [l1; l2]) entries) in
+  let formals l = Option.value ~default:[] (fst (find_labeled_block l)) in
+  let id_of (a : exp node) = match a.elt with Id x -> Some x | _ -> None in
+  (* A name that an entry passes on both sides (e.g. argv, or a shared
+     table) is the same variable for every instance: such a parameter is
+     not renamed apart.  [shared] lists (label, position, name). *)
+  let shared = List.concat_map (fun (l1, a1, l2, a2, _) ->
+      let both = List.filter_map (fun a -> match id_of a with
+          | Some x when List.exists (fun b -> id_of b = Some x) a2 -> Some x
+          | _ -> None) a1 in
+      let pos l args = List.concat (List.mapi (fun i a -> match id_of a with
+          | Some x when List.mem x both -> [(l, i, x)]
+          | _ -> []) args) in
+      pos l1 a1 @ pos l2 a2) entries in
+  (* the parameters of label l as instance k *)
+  let inst l k = List.mapi (fun i (a : exp node) ->
+      match List.find_map (fun (l', i', x) -> if l' = l && i' = i then Some x else None) shared,
+            a.elt with
+      | Some x, _ -> node_up a (Id x)
+      | None, Id x -> node_up a (Id (x ^ "__" ^ k))
+      | None, _ -> a) (formals l) in
+  let ty_of (a : exp node) = match a.elt with
+    | Id x -> List.assoc_opt x defs | _ -> None in
+  (* the condition of the entry between labels x and y for instances kx, ky,
+     in both orientations when x = y *)
+  let conds x kx y ky =
+    List.concat_map (fun (l1, a1, l2, a2, e) ->
+      let sub new1 new2 =
+        let pairs = List.filter (fun (_, o) -> match id_of o with
+            | Some x -> not (List.exists (fun (_, _, y) -> y = x) shared)
+            | None -> true) (List.combine (new1 @ new2) (a1 @ a2)) in
+        substitute_vars_exp (List.map fst pairs) (List.map snd pairs) e in
+      (if l1 = x && l2 = y then [sub (inst x kx) (inst y ky)] else [])
+      @ (if l1 = y && l2 = x then [sub (inst y ky) (inst x kx)] else []))
+      entries in
+  let disj = function
+    | [] -> None
+    | c :: cs -> Some (List.fold_left (fun a b -> node_up c (Bop (Or, a, b))) c cs) in
+  let conj = function
+    | [] -> None
+    | c :: cs -> Some (List.fold_left (fun a b -> node_up c (Bop (And, a, b))) c cs) in
+  let vars =
+    defs @ List.concat_map (fun l -> List.concat_map (fun k ->
+        List.filter_map (fun (a, a') -> match a.elt, ty_of a' with
+          | Id x, Some t -> Some (x, t) | Id x, None -> Some (x, TInt) | _ -> None)
+          (List.combine (inst l k) (formals l))) ["h"; "f"; "g"]) labels
+    |> List.fold_left (fun acc (x, t) -> if List.mem_assoc x acc then acc else acc @ [(x, t)]) [] in
+  let all_ok = ref true in
+  List.iter (fun h -> List.iter (fun f -> List.iter (fun gl ->
+    if String.compare f gl <= 0 then
+    match disj (conds f "f" h "h"), disj (conds gl "g" h "h"),
+          disj (conds f "f" gl "g"), conj (conds f "f" gl "g") with
+    | Some p_hf, Some p_hg, Some p_fg, Some q_fg ->
+      let args', bl = find_labeled_block h in
+      let body = match args' with
+        | Some a' -> node_up bl (substitute_vars_block (inst h "h") a' bl.elt)
+        | None -> bl in
+      let result =
+        try Analyze.stable_of_triple g vars body p_hf p_hg p_fg q_fg
+        with e -> Printf.eprintf "Stability of (%s, %s, %s): %s\n" h f gl (Printexc.to_string e); None in
+      let status = match result with
+        | Some true -> "stable"
+        | Some false -> all_ok := false; "NOT stable (counterexample exists)"
+        | None -> all_ok := false; "unknown" in
+      if !emit_quiet then Printf.printf "%s\n" status
+      else Printf.printf "Stability of %s, %s after %s: %s\n" f gl h status
+    | _ -> ()) labels) labels) labels;
+  if not !emit_quiet then
+    Printf.printf "Specification %s stable\n" (if !all_ok then "is" else "is not shown to be")
+
 let verify_phis_of_prog (g : global_env) : global_env =
   let globals : ty bindlist =
     List.map (fun (i,(ty,_)) -> i,ty) g.globals 
@@ -1849,6 +1941,7 @@ let verify_phis_of_prog (g : global_env) : global_env =
   in
   let m = List.map map_method g.methods in
   verify_phis_of_global_commutativity g !global_defs;
+  if !with_stability then check_stability g !global_defs;
   { g with methods = m }
 (* TODO: The above is mostly copy pasted from infer. Could just be a _ -> () pass of the AST instead of typed as a transformation. *)
 

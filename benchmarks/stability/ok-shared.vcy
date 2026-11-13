@@ -1,0 +1,20 @@
+/* The condition reads only the parameters and a, which no block writes, so
+   it cannot change.  a is passed under the same name on both sides of the
+   entry, so it is the same variable for every instance.  Expect: stable */
+int[] a = new int[10];
+int[] out = new int[10];
+
+commutativity {
+    {f(i_1, a)}, {f(i_2, a)}: (a[2*i_1] != a[2*i_2])
+}
+
+int main(int argc, string[] argv) {
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    while (i < 5) {
+        f(i, a): { out[i] = a[2*i]; }
+        i = i + 1;
+    }
+    return out[0];
+}

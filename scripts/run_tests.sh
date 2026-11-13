@@ -516,6 +516,33 @@ for f in "$REPO_ROOT"/benchmarks/wellformed/*.vcy; do
     run_wellformed "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
 done
 
+# run_stability BENCH_PATH
+#   verify --with-stability.  The benchmark's "Expect:" line is "stable", or
+#   the triple "f, g after h" that must be reported as not stable.
+run_stability() {
+    local label; label=$(_label "$1")
+    local expect out
+    expect=$(sed -n 's/.*Expect: \(.*\)$/\1/p' "$REPO_ROOT/$1" | head -1 | sed 's/ *\*\/$//')
+    out=$(cd "$REPO_ROOT" && timeout 120 "$VCY" verify --prover cvc5 --with-stability "$1" 2>&1)
+    if [[ "$expect" == stable ]]; then
+        if printf '%s\n' "$out" | grep -q '^Specification is stable'; then
+            _record pass "$label" "[stable]"
+        else
+            _record fail "$label" "[$(printf '%s\n' "$out" | grep -m1 'NOT stable\|unknown' | cut -c1-60)]"
+        fi
+    elif printf '%s\n' "$out" | grep -qF "Stability of $expect: NOT stable"; then
+        _record pass "$label" "[not stable: $expect]"
+    else
+        _record fail "$label" "[want not stable: $expect]"
+    fi
+}
+
+echo ""
+echo "=== benchmarks/stability (verify --with-stability) ==="
+for f in "$REPO_ROOT"/benchmarks/stability/*.vcy; do
+    run_stability "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
+done
+
 # run_overtake BENCH_PATH RULE MAY_SKIP_RUNNING
 #   Run the benchmark 3 times under --overtake RULE.  Each run must return 3,
 #   and if MAY_SKIP_RUNNING is no, --job-stats must report that no running job

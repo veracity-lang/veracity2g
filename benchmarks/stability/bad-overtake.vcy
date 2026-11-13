@@ -1,0 +1,26 @@
+/* The paper's counterexample to overtaking without stability (Def. stable).
+   The entry for g and f is sound: g only reads arr[0], and while
+   0 < k < arr[0] one f keeps it positive.  But it is not stable: after one
+   f, arr[0] may be at most k, so the condition between g and a second f no
+   longer holds.  Expect: f, g after f */
+int[] arr = new int[1];
+int x = 0;
+
+commutativity {
+    {g()}, {f(k_1)}: (0 < k_1 && k_1 < arr[0]);
+    {f(k_1)}, {f(k_2)}: (true)
+}
+
+int main(int argc, string[] argv) {
+    int n = 0;
+    int k = 3;
+    int k_1 = 0;
+    int k_2 = 0;
+    arr[0] = 5;
+    while (n < 2) {
+        f(k): { arr[0] = arr[0] - k; }
+        n = n + 1;
+    }
+    g(): { if (arr[0] > 0) { x = 1; } else { } }
+    return x;
+}
