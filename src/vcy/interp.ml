@@ -1286,10 +1286,28 @@ and recheck w =
     (* Only the later task of a pair records the dependence, with the entry's
        condition when there is one; an entry is valid in both orders, so one
        evaluation suffices. *)
+    let between x y = List.filter (fun d -> d.pred_task = y) (load_task_def x).deps_in in
     let unordered a b =
-      let between x y = List.filter (fun d -> d.pred_task = y.tid) (load_task_def x.tid).deps_in in
-      List.for_all (fun d -> d.commute_cond.condition <> None && holds d a b) (between a b)
-      && List.for_all (fun d -> d.commute_cond.condition <> None && holds d b a) (between b a) in
+      List.for_all (fun d -> d.commute_cond.condition <> None && holds d a b) (between a.tid b.tid)
+      && List.for_all (fun d -> d.commute_cond.condition <> None && holds d b a) (between b.tid a.tid) in
+    (* The closure's jobs, grouped by task.  For two groups, a condition that
+       reads nothing has the same value for every pair of their jobs, so it
+       is evaluated once; only the other conditions are checked pair by pair. *)
+    let groups = List.fold_left (fun acc m ->
+      match List.assoc_opt m.tid acc with
+      | Some l -> (m.tid, m :: l) :: List.remove_assoc m.tid acc
+      | None -> (m.tid, [m]) :: acc) [] closure |> List.map snd in
+    let groups_unordered ga gb same =
+      let pairs = if same then
+          let rec go = function [] -> [] | a :: rest -> List.map (fun b -> (a, b)) rest @ go rest in go ga
+        else List.concat_map (fun a -> List.map (fun b -> (a, b)) gb) ga in
+      match pairs with
+      | [] -> true
+      | (a0, b0) :: _ ->
+        let ab = between a0.tid b0.tid and ba = between b0.tid a0.tid in
+        if ab = [] && ba = [] then true
+        else if List.for_all (fun d -> Overtake.constant d.commute_cond) (ab @ ba) then unordered a0 b0
+        else List.for_all (fun (a, b) -> unordered a b) pairs in
     (* m will wait for every job of a task, and some may not be spawned yet *)
     let unknown_jobs m = not (Atomic.get m.started) &&
       List.exists (fun d -> not d.make_new_job && not (waits_on_older m.tid d)
@@ -1298,7 +1316,10 @@ and recheck w =
     let still_ok () =
       let fail part = Atomic.incr recheck_failed_parts.(part); false in
       (List.for_all (fun (j', d, _) -> holds d w j') overtaken || fail 0)
-      && (List.for_all (fun a -> List.for_all (fun b -> a == b || unordered a b) closure) closure || fail 1)
+      && (let rec go = function
+            | [] -> true
+            | g :: rest -> groups_unordered g g true && List.for_all (fun g' -> groups_unordered g g' false) rest && go rest in
+          go groups || fail 1)
       && (not (List.exists unknown_jobs closure) || fail 2) in
     let locks = List.filter_map (fun x -> List.assoc_opt x !Lock_synthesis.task_locks) !Overtake.cond_vars
       |> List.sort_uniq Stdlib.compare |> List.map (fun i -> get_mutex (Int64.of_int i)) in

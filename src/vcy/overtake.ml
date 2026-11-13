@@ -63,6 +63,11 @@ let cond_vars : id list ref = ref []
 let reads_written (c : commute_condition) : id list =
   List.filter (fun x -> List.mem x !written) (shared_reads c)
 
+(* Whether a condition reads no variable at all, so that it has the same
+   value for every pair of jobs; None (no condition) counts as constant. *)
+let constant (c : commute_condition) : bool =
+  match c.condition with None -> true | Some phi -> reads phi = []
+
 let dirty_marker = "__phi_dirty"
 
 (* Put the dirty marker before every statement that may assign a variable in
