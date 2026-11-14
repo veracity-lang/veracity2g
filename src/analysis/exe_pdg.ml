@@ -1355,18 +1355,59 @@ let fill_task_dependency (dag: dag_scc) (tasks: (int * dswp_task) list) =
     | _ ->()
   ) dag.edges;
 
-  let out_tasks = (snd (List.split !res)) in 
+  let out_tasks = (snd (List.split !res)) in
 
-  let update_sendDep_of_task (task: dswp_task) : dswp_task = 
-    let rec update_body (body: block) : block = 
+  (* The spawn tree: the tasks each task's body sends to. *)
+  let rec sends_in (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, _) -> [i]
+      | If (_, b1, b2) -> sends_in b1.elt @ sends_in b2.elt
+      | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sends_in b.elt
+      | _ -> []) stmts in
+  let succs id = match List.find_opt (fun tk -> tk.id = id) out_tasks with
+    | Some tk -> sends_in tk.body.elt | None -> [] in
+  let rec reach seen = function
+    | [] -> seen
+    | id :: rest when List.mem id seen -> reach seen rest
+    | id :: rest -> reach (id :: seen) (succs id @ rest) in
+  let subtree id = reach [] [id] in
+  let ancestors id = List.filter (fun a -> List.mem id (subtree a)) (List.map (fun tk -> tk.id) out_tasks) in
+
+  (* What a job of [child], spawned by a job of [spawner], must get by value
+     for its subtree: the spawning dependences of the subtree's tasks on the
+     spawner or its ancestors.  A copy taken at the spawn is the value the
+     sequential run passes only if no one else writes it in between, so
+     dependences on other tasks are left to wait_deps, and variables the
+     subtree writes stay shared, as senddep_extend_env does for one job.
+     Without this, a task between the two (an [if] around a newJob) that does
+     not read the variable itself passes nothing, and the job reads the
+     spawner's live variable. *)
+  let pass_through spawner child =
+    let sub = subtree child in
+    let up = spawner :: ancestors spawner in
+    let sub_tasks = List.filter (fun tk -> List.mem tk.id sub) out_tasks in
+    let vars = List.concat_map (fun tk ->
+      List.concat_map (fun d ->
+        if d.make_new_job && List.mem d.pred_task up && not (List.mem d.pred_task sub)
+        then d.vars else []) tk.deps_in) sub_tasks
+      |> List.sort_uniq compare in
+    let written = Lock_synthesis.conflicting_writes_in_stmts (List.map snd vars) []
+      (List.concat_map (fun tk -> tk.body.elt) sub_tasks) in
+    List.filter (fun (_, id) -> not (List.mem id written)) vars in
+
+  let update_sendDep_of_task (task: dswp_task) : dswp_task =
+    let rec update_body (body: block) : block =
       match body with
       | [] -> body
       | stmt::tl ->
         let s' = begin match stmt.elt with
-        | SendDep (i, vars) -> 
+        | SendDep (i, vars) ->
           let t = (List.find (fun tk -> tk.id == i) out_tasks)
           in
-          SendDep (i, vars @ (List.concat_map (fun d -> if d.pred_task == task.id then d.vars else []) t.deps_in))
+          let direct = List.concat_map (fun d -> if d.pred_task == task.id then d.vars else []) t.deps_in in
+          let have = List.map snd (vars @ direct) in
+          let extra = List.filter (fun (_, id) -> not (List.mem id have)) (pass_through task.id i) in
+          SendDep (i, vars @ direct @ extra)
         | If(e,bl1,bl2) -> If(e, node_up bl1 (update_body bl1.elt), node_up bl2 (update_body bl2.elt))
         | While(e,inv,bl) -> While(e,inv, node_up bl (update_body bl.elt))
         | s -> s 

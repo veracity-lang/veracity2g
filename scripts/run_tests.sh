@@ -226,6 +226,7 @@ run_dswp_vs_seq "erc20_state_hash (dswp == seq)"     10 "$GC/test/erc20_state_ha
 run_dswp_vs_seq "multi-blocks (dswp == seq)"         10 "$GC/multi-blocks.vcy"         1
 run_dswp_vs_seq "vote_state_hash (dswp == seq)"      10 "$GC/test/vote_state_hash.vcy" 1
 run_dswp_vs_seq "motivation_state_hash (dswp == seq)" 10 "$GC/test/motivation_state_hash.vcy" 100 50
+run_dswp_vs_seq "guarded_spawn (dswp == seq)"        5  "$GC/test/guarded_spawn.vcy"
 
 # run_dswp_output_vs_seq LABEL RUNS BENCH_PATH [ARGS...]
 #   Like run_dswp_vs_seq, but the whole stdout must match, not just the result.

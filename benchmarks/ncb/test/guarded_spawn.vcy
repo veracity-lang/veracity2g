@@ -1,0 +1,30 @@
+/* A newJob under an if: the if becomes its own task, which does not read i
+   itself but must pass it on to f1 by value (Exe_pdg.pass_through). Before
+   the fix f1 read the loop's live i and indexed out[200]. */
+int[] out = new int[200];
+
+int main(int argc, string[] argv) {
+    int i = 0;
+    int flag = 0;
+    int m = 0;
+    int s = 0;
+    int q = 0;
+    while (m < 5) {
+        flag = flag + m;
+        m = m + 1;
+    }
+    while (i < 200) {
+        if (flag > 0) {
+            f1(i):{
+                busy_wait(20000);
+                out[i] = i;
+            }
+        }
+        i = i + 1;
+    }
+    while (q < 200) {
+        s = s + out[q] * q;
+        q = q + 1;
+    }
+    return s;
+}
