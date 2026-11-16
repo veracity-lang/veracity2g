@@ -1446,6 +1446,46 @@ let combine_dependencies (deps: Dswp_task.dependency list) : Dswp_task.dependenc
   |> List.sort (fun d1 d2 -> compare d1.pred_task d2.pred_task)
   |> combine_helper
 
+(* A job waits on the jobs of a mutually dependent task, or of a stage of
+   the same loop, registered before it (Interp.waits_on_older), and so
+   relies on jobs being registered in program order.  They are when their
+   spawner's jobs run one at a time: give each such spawner an unconditional
+   dependence on itself, and repeat, since its own jobs then rely on the
+   same.  A task spawned only by the init task has a single job. *)
+let order_spawners (tasks : dswp_task list) : dswp_task list =
+  let rec sends (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, _) -> [i]
+      | If (_, b1, b2) -> sends b1.elt @ sends b2.elt
+      | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sends b.elt
+      | _ -> []) stmts in
+  let rec fix tasks =
+    let find id = List.find_opt (fun tk -> tk.id = id) tasks in
+    let spawners id = List.filter_map (fun tk -> if List.mem id (sends tk.body.elt) then Some tk.id else None) tasks in
+    let deps id = match find id with Some tk -> tk.deps_in | None -> [] in
+    let waits_on_older c d =
+      d.pred_task = c
+      || List.exists (fun d' -> d'.pred_task = c) (deps d.pred_task)
+      || List.exists (fun s -> List.mem s (spawners c)) (spawners d.pred_task) in
+    let serial s = List.exists (fun d -> d.pred_task = s && not d.make_new_job && d.commute_cond.condition = None) (deps s) in
+    let needs c = List.exists (fun d -> not d.make_new_job && waits_on_older c d) (deps c) in
+    let todo = List.concat_map (fun tk -> if needs tk.id then spawners tk.id else []) tasks
+      |> List.filter (fun s -> not (serial s)) |> List.sort_uniq compare in
+    if todo = [] then tasks
+    else fix (List.map (fun tk ->
+      if not (List.mem tk.id todo) then tk else begin
+        debug_print (lazy (Printf.sprintf "order_spawners: task %d runs its jobs in order\n" tk.id));
+        let self = {pred_task = tk.id; make_new_job = false; vars = [];
+                    commute_cond = {my_task_formals = []; other_task_formals = []; condition = None}} in
+        let unconditional ds = self :: List.filter (fun d -> d.pred_task <> tk.id || d.make_new_job) ds
+          @ List.filter_map (fun d -> if d.pred_task = tk.id && not d.make_new_job
+                                      then Some {d with commute_cond = self.commute_cond} else None) ds in
+        let ds_in = combine_dependencies (unconditional tk.deps_in) in
+        let ds_out = combine_dependencies (unconditional tk.deps_out) in
+        {tk with deps_in = ds_in; deps_out = ds_out; label = Dswp_task.Sequential}
+      end) tasks) in
+  fix tasks
+
 let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let dag_scc = ref dag_scc in 
   let generate_init_task () : init_task = 
@@ -1493,7 +1533,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
   let new_edges = List.filter (fun {dag_dst= s; _} -> match dag_scc.entry_node with | Some e -> not (compare_dag_nodes s e) | None -> true) new_edges in
   let tasks = fill_task_dependency {dag_scc with edges = new_edges} (List.map (fun t -> (t.id, t)) tasks) in
   let tasks = List.map (fun t-> {t with deps_in = combine_dependencies t.deps_in; deps_out = combine_dependencies t.deps_out}) tasks in
-  init_task, tasks
+  init_task, order_spawners tasks
 
 (* use empty data dependency edges intead of using SendEOP *)
 let add_empty_data_dep_edges dag_scc =
