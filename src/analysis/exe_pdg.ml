@@ -1649,6 +1649,65 @@ let spawners_ok (init_task : init_task) (tasks : dswp_task list) =
       "spawners_ok: task %d's jobs may not be registered in program order relative to task %d's\n" tk.id d.pred_task));
     ok) tk.deps_in) tasks
 
+(* (A1) for the conditions (Rocq Interleave.v, spawn_cond_ok_allb): after
+   its first spawn, a task writes no shared variable that a commutativity
+   condition of a task it can spawn, directly or not, reads.  A job may
+   then run alongside the jobs it spawns, and the conditions those jobs
+   re-check do not change under them.  The code after the first spawn
+   includes the whole body of a loop that spawns, as Footprint.after_wr. *)
+let spawn_cond_ok (init_task : init_task) (tasks : dswp_task list) =
+  let rec sends (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, _) -> [i]
+      | If (_, b1, b2) -> sends b1.elt @ sends b2.elt
+      | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sends b.elt
+      | _ -> []) stmts in
+  let rec lhs_base (e : exp node) = match e.elt with
+    | Id x -> [x]
+    | Index (b, _) | Proj (b, _) -> lhs_base b
+    | _ -> [] in
+  let rec writes stmts = List.concat_map write stmts
+  and write (s : stmt node) = match s.elt with
+    | Assn (lhs, _) -> lhs_base lhs
+    | Decl (id, _) -> [id]
+    | If (_, b1, b2) -> writes b1.elt @ writes b2.elt
+    | While (_, _, b) | SBlock (_, b) -> writes b.elt
+    | For (vd, _, so, b) -> List.map fst vd @ (match so with Some st -> write st | None -> []) @ writes b.elt
+    | Commute (_, _, bs, _, _) -> List.concat_map (fun b -> writes b.elt) bs
+    | SCallRaw ("ht_put", tbl :: _) | SCall (MethodL ("ht_put", _), tbl :: _) -> lhs_base tbl
+    | _ -> [] in
+  let rec after_wr = function
+    | [] -> []
+    | s :: rest -> if sends [s] = [] then after_wr rest else after_wr_stmt s @ writes rest
+  and after_wr_stmt (s : stmt node) = match s.elt with
+    | If (_, b1, b2) -> after_wr b1.elt @ after_wr b2.elt
+    | While _ | For _ -> write s
+    | SBlock (_, b) -> after_wr b.elt
+    | _ -> [] in
+  let body id = match List.find_opt (fun tk -> tk.id = id) tasks with Some tk -> tk.body.elt | None -> [] in
+  let rec below acc = function
+    | [] -> acc
+    | t :: rest -> if List.mem t acc then below acc rest else below (t :: acc) (sends (body t) @ rest) in
+  (* the shared variables read by the conditions of task u *)
+  let cond_reads u =
+    List.concat_map (fun tk -> List.concat_map (fun d ->
+      match d.commute_cond.condition with
+      | Some c when tk.id = u || d.pred_task = u ->
+        let formals = d.commute_cond.my_task_formals @ d.commute_cond.other_task_formals in
+        List.filter (fun x -> not (List.mem x formals)) (Lock_synthesis.ids_in_exp c.elt)
+      | _ -> []) tk.deps_in) tasks in
+  let check w stmts =
+    let aw = after_wr stmts in
+    List.for_all (fun u ->
+      match List.filter (fun x -> List.mem x aw) (cond_reads u) with
+      | [] -> true
+      | xs -> debug_print (lazy (Printf.sprintf
+                "spawn_cond_ok: task %s writes %s after spawning, which a condition of task %d reads\n"
+                w (String.concat ", " xs) u)); false)
+      (below [] (sends stmts)) in
+  check "init" (init_task.decls.elt)
+  && List.for_all (fun tk -> check (string_of_int tk.id) tk.body.elt) tasks
+
 (* The fallback when no valid partition was found: everything in one
    sequential task, apart from a top-level return. *)
 let sequentialize ctx dag_scc =
@@ -1686,6 +1745,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
     if List.for_all (fun b -> single_context ctx b.n) merged_dag.nodes
        && spawns_well_formed init_task tasks
        && spawners_ok init_task tasks
+       && spawn_cond_ok init_task tasks
     then init_task, tasks
     else begin
       debug_print (lazy "No valid partition: falling back to one sequential task\n");

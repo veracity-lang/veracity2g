@@ -319,6 +319,25 @@ check_self_dep() {
 check_self_dep "banking max loop keeps its self-dep" "if (accounts[i] > max_balance)" \
     "$GC/banking.vcy" 1 100 1000
 
+# check_sequential LABEL MESSAGE BENCH_PATH [ARGS...]
+#   The partition check must reject the program with MESSAGE and fall back to
+#   one sequential task, and the result must match the sequential run.
+check_sequential() {
+    local label="$1" msg="$2"; shift 2
+    local out seq par
+    out=$(cd "$RUNDIR" && "$VCY" interp --dswp --debug "$@" 2>&1) || true
+    seq=$(cd "$RUNDIR" && "$VCY" interp "$@" 2>&1 | tail -1) || true
+    par=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks "$@" 2>&1 | tail -1) || true
+    if printf '%s\n' "$out" | grep -qF "$msg" \
+        && printf '%s\n' "$out" | grep -q 'No valid partition' && [[ "$seq" == "$par" ]]; then
+        _record pass "$label" ""
+    else
+        _record fail "$label" "[not rejected, or result differs]"
+    fi
+}
+check_sequential "cond_write: (A1) for conditions rejects" "spawn_cond_ok: task 1 writes lim" \
+    "$GC/test/cond_write.vcy"
+
 # Verify pre-DSWP lock counts.
 # ls_noncb_1: counter IS in the NCB conflict_set (incr blocks share it),
 #   so pre-DSWP synthesis adds 2 locks — one in each of incr and adjust.

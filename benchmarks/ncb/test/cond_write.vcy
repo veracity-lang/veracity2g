@@ -1,0 +1,21 @@
+/* The loop writes lim after spawning g, and the condition between g's
+   jobs reads lim: (A1) for conditions fails. */
+int[] arr = new int[50];
+int lim = 0;
+
+commutativity {
+    {g(i_1)}, {g(i_2)}: (i_1 != i_2 || lim > 100)
+}
+
+int main(int argc, string[] argv) {
+    int i = 0;
+    while (i < 50) {
+        g(i):{
+            busy_wait(1000);
+            arr[i % 5] = arr[i % 5] + 1;
+        }
+        lim = lim + 3;
+        i = i + 1;
+    }
+    return arr[0];
+}
