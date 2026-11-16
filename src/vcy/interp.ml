@@ -50,6 +50,8 @@ type job = {
   (* the jobs this job overtook while waiting, each with the dependence and
      a way to wait for it; read by other jobs' re-checks (closure) *)
   over: (job * dependency * (unit -> unit)) list Atomic.t;
+  (* every job this job overtook, kept after its first step *)
+  overtook_all: job list Atomic.t;
   (* set once the job's body has run *)
   finished: bool Atomic.t;
   (* the environment will have in the stack the input variables:
@@ -60,7 +62,7 @@ type job = {
 
 let make_job tid env =
   { tid; env; started = Atomic.make false; dirty = Atomic.make false; guard = Mutex.create ();
-    over = Atomic.make []; finished = Atomic.make false }
+    over = Atomic.make []; overtook_all = Atomic.make []; finished = Atomic.make false }
 
 (* The job whose body this domain is running, for the dirty marker. *)
 let current_job : job option Domain.DLS.key = Domain.DLS.new_key (fun () -> None)
@@ -922,9 +924,10 @@ and overtake_dirty = Atomic.make 0
    that the job waited for the jobs it overtook. *)
 and recheck_passed = Atomic.make 0
 and recheck_failed = Atomic.make 0
-(* which part failed first: the condition, unordered, or a closure job that
-   still waits for a task that may spawn more jobs *)
-and recheck_failed_parts = Array.init 3 (fun _ -> Atomic.make 0)
+(* which part failed first: the condition, unordered, a closure job that
+   still waits for a task that may spawn more jobs, or a running job that
+   writes what the conditions read *)
+and recheck_failed_parts = Array.init 4 (fun _ -> Atomic.make 0)
 and run_job jb initial_waits deps = 
     let t0 = Unix.gettimeofday () in
     wait_deps jb initial_waits deps (load_task_def jb.tid).body;
@@ -1170,7 +1173,8 @@ and wait_deps j init_waits deps self_body =
        which the re-check covers, but it was not a running job when skipped. *)
     let skip started =
       if Overtake.recheck () then
-        Atomic.set j.over ((j', d, wait) :: Atomic.get j.over);
+        (Atomic.set j.over ((j', d, wait) :: Atomic.get j.over);
+         Atomic.set j.overtook_all (j' :: Atomic.get j.overtook_all));
       if started then Atomic.incr overtake_running;
       Atomic.incr overtake_count;
       debug_print (lazy (Printf.sprintf "%d: Commute condition with %d met. Skipping.\n" my_id j'.tid)) in
@@ -1253,9 +1257,15 @@ and waits_on_older tid d =
        closure still waits for, and every job one has overtaken, are pairwise
        unordered: no dependence relates them, or their conditions hold both
        ways; and
-   (3) no job of the closure still waits for a task that may spawn more jobs.
-   (2) and (3) are skipped when each condition in (1) reads only the two
-   jobs' parameters: then no job can change it.
+   (3) no job of the closure still waits for a task that may spawn more jobs;
+   (4) every other running job leaves alone what (1) and (2) read: its task
+       writes no shared variable that those conditions read (Rocq quiet).
+       The whole task body stands in for what the job may still write.  A
+       job that w overtook, or that overtook w, is not checked: lock
+       synthesis is taken to make the two atomic with respect to each other
+       (Rocq over_atomic), so it counts as done before w starts.
+   (2), (3) and (4) for (2) are skipped when each condition in (1) reads
+   only the two jobs' parameters: then no job can change it.
    The conditions are read under the synthesized locks of the variables they
    read, as the bodies read them.  If the check fails, w waits for the jobs it
    overtook, which then precede it in program order as they would have had it
@@ -1323,6 +1333,18 @@ and recheck w =
       List.exists (fun d -> not (spawn_dep m.tid d) && not (waits_on_older m.tid d)
         && not (List.for_all task_done (spawners_of d.pred_task)))
         (load_task_def m.tid).deps_in in
+    let cond_reads () =
+      List.concat_map (fun (_, d, _) -> Overtake.shared_reads d.commute_cond) overtaken
+      @ List.concat_map (fun a -> List.concat_map (fun b ->
+          if a == b then [] else
+          List.concat_map (fun d -> Overtake.shared_reads d.commute_cond) (between a.tid b.tid)) closure)
+          closure
+      |> List.sort_uniq Stdlib.compare in
+    let quiet () = let cond_reads = cond_reads () in cond_reads = [] ||
+      List.for_all (fun (r, _) ->
+        r == w || not (Atomic.get r.started) || Atomic.get r.finished
+        || List.memq r (Atomic.get w.overtook_all) || List.memq w (Atomic.get r.overtook_all)
+        || List.for_all (fun x -> not (List.mem x cond_reads)) (Overtake.task_writes r.tid)) jobs in
     let still_ok () =
       let fail part = Atomic.incr recheck_failed_parts.(part); false in
       (List.for_all (fun (j', d, _) -> holds d w j') overtaken || fail 0)
@@ -1330,7 +1352,8 @@ and recheck w =
             | [] -> true
             | g :: rest -> groups_unordered g g true && List.for_all (fun g' -> groups_unordered g g' false) rest && go rest in
           go groups || fail 1)
-      && (params_only || not (List.exists unknown_jobs closure) || fail 2) in
+      && (params_only || not (List.exists unknown_jobs closure) || fail 2)
+      && (quiet () || fail 3) in
     let locks = List.filter_map (fun x -> List.assoc_opt x !Lock_synthesis.task_locks) !Overtake.cond_vars
       |> List.sort_uniq Stdlib.compare |> List.map (fun i -> get_mutex (Int64.of_int i)) in
     List.iter Mutex.lock locks;
@@ -2211,12 +2234,12 @@ let print_job_stats tasks =
   if !job_stats_flag then begin
     let n = !job_count in
     let avg t = if n = 0 then 0. else t /. float_of_int n in
-    Printf.eprintf "Tasks: %d\nJobs: %d\nAvg job exec (pure): %f s\nAvg job exec (+deps): %f s\nOvertakes: %d\nOvertakes of running jobs: %d\nOvertakes denied (started): %d\nOvertakes denied (dirty): %d\nRe-checks passed: %d\nRe-checks failed: %d (condition %d, unordered %d, unspawned jobs %d)\n%!"
+    Printf.eprintf "Tasks: %d\nJobs: %d\nAvg job exec (pure): %f s\nAvg job exec (+deps): %f s\nOvertakes: %d\nOvertakes of running jobs: %d\nOvertakes denied (started): %d\nOvertakes denied (dirty): %d\nRe-checks passed: %d\nRe-checks failed: %d (condition %d, unordered %d, unspawned jobs %d, running jobs write a condition's variables %d)\n%!"
       (List.length tasks) n (avg !job_pure_time) (avg !job_with_deps_time)
       (Atomic.get overtake_count) (Atomic.get overtake_running)
       (Atomic.get overtake_denied) (Atomic.get overtake_dirty)
       (Atomic.get recheck_passed) (Atomic.get recheck_failed)
-      (Atomic.get recheck_failed_parts.(0)) (Atomic.get recheck_failed_parts.(1)) (Atomic.get recheck_failed_parts.(2));
+      (Atomic.get recheck_failed_parts.(0)) (Atomic.get recheck_failed_parts.(1)) (Atomic.get recheck_failed_parts.(2)) (Atomic.get recheck_failed_parts.(3));
     List.iter prerr_endline (Overtake.describe tasks)
   end
 

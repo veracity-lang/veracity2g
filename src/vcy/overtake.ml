@@ -58,6 +58,12 @@ let shared_reads (c : commute_condition) : id list =
 let written : id list ref = ref []
 let cond_vars : id list ref = ref []
 
+(* The variables each task may assign, by task id; set by prepare.  The
+   re-check uses them for what a running job may still write. *)
+let task_writes_tbl : (int * id list) list ref = ref []
+let task_writes (tid : int) : id list =
+  Option.value ~default:[] (List.assoc_opt tid !task_writes_tbl)
+
 (* The written variables a condition reads.  Empty means that no job can
    change the condition's value while it runs. *)
 let reads_written (c : commute_condition) : id list =
@@ -89,9 +95,9 @@ and guard_stmt g watched (s : stmt node) : stmt node list =
 (* Classify the conditions and, under Hybrid_locked, add the dirty markers to
    each task that a condition reading written state may have to skip. *)
 let prepare (g : global_env) (tasks : dswp_task list) : dswp_task list =
-  written := List.concat_map (fun t ->
-    List.map fst (Wellformed.writes_of_block g [] [] t.body.elt)) tasks
-    |> List.sort_uniq compare;
+  task_writes_tbl := List.map (fun t ->
+    (t.id, List.map fst (Wellformed.writes_of_block g [] [] t.body.elt) |> List.sort_uniq compare)) tasks;
+  written := List.concat_map snd !task_writes_tbl |> List.sort_uniq compare;
   cond_vars := List.concat_map (fun t ->
     List.concat_map (fun d -> shared_reads d.commute_cond) t.deps_in) tasks
     |> List.sort_uniq compare;
