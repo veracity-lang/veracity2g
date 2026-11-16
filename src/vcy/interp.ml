@@ -961,7 +961,7 @@ and new_job ?(wait_on_init = false) j deps =
      of the jobs that its predecessor will spawn later. *)
   let first, first_rest = match deps' with
     | [] -> [], []
-    | l :: _ -> List.partition (fun d -> d.make_new_job) l in
+    | l :: _ -> List.partition (spawn_dep j.tid) l in
   let deps' = if List.is_empty deps' then [] else first :: List.tl deps' in
   let deps'' = if List.is_empty deps' then [] else first_rest @ List.concat (List.tl deps') in
   (* Snapshot the jobs to wait on and register this one in a single critical
@@ -1274,7 +1274,7 @@ and recheck w =
       let rec older = function
         | [] -> [] | (j', _) :: rest -> if j' == m then rest else older rest in
       List.concat_map (fun d ->
-        if d.make_new_job then [] else
+        if spawn_dep m.tid d then [] else
         List.filter_map (fun (j', _) ->
           if j'.tid = d.pred_task && j' != m && not (Atomic.get j'.finished) then Some j' else None)
           (if waits_on_older m.tid d then older jobs else jobs))
@@ -1320,7 +1320,7 @@ and recheck w =
         else List.for_all (fun (a, b) -> unordered a b) pairs in
     (* m will wait for every job of a task, and some may not be spawned yet *)
     let unknown_jobs m = not (Atomic.get m.started) &&
-      List.exists (fun d -> not d.make_new_job && not (waits_on_older m.tid d)
+      List.exists (fun d -> not (spawn_dep m.tid d) && not (waits_on_older m.tid d)
         && not (List.for_all task_done (spawners_of d.pred_task)))
         (load_task_def m.tid).deps_in in
     let still_ok () =
@@ -1351,6 +1351,17 @@ and task_done tid =
   || (List.for_all task_done (spawners_of tid)
       && List.for_all (fun (j', _) -> j'.tid <> tid || Atomic.get j'.finished)
            (Mutex.protect jobs_mutex (fun () -> !all_jobs)))
+
+(* Whether d is a dependence on a task that spawns tid's jobs, or one
+   above it, whose registered jobs new_job snapshots.  The analysis marks
+   as make_new_job every dependence from a task that spawns to a task that
+   is spawned, also when the one does not spawn the other: those are waited
+   on like any other dependence (Rocq: sp_later, or Spawners.v). *)
+and spawn_dep tid d =
+  let rec up acc = function
+    | [] -> acc
+    | t :: rest -> if List.mem t acc then up acc rest else up (t :: acc) (spawners_of t @ rest) in
+  d.make_new_job && List.mem d.pred_task (up [] (spawners_of tid))
 
 (* Tasks that spawn jobs of tid, i.e. whose body has a SendDep to it. *)
 and spawners_of tid =

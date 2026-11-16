@@ -1468,7 +1468,11 @@ let order_spawners (tasks : dswp_task list) : dswp_task list =
       || List.exists (fun d' -> d'.pred_task = c) (deps d.pred_task)
       || List.exists (fun s -> List.mem s (spawners c)) (spawners d.pred_task) in
     let serial s = List.exists (fun d -> d.pred_task = s && not d.make_new_job && d.commute_cond.condition = None) (deps s) in
-    let needs c = List.exists (fun d -> not d.make_new_job && waits_on_older c d) (deps c) in
+    let rec up acc = function
+      | [] -> acc
+      | t :: rest -> if List.mem t acc then up acc rest else up (t :: acc) (spawners t @ rest) in
+    let spawn_dep c d = d.make_new_job && List.mem d.pred_task (up [] (spawners c)) in
+    let needs c = List.exists (fun d -> not (spawn_dep c d) && waits_on_older c d) (deps c) in
     let todo = List.concat_map (fun tk -> if needs tk.id then spawners tk.id else []) tasks
       |> List.filter (fun s -> not (serial s)) |> List.sort_uniq compare in
     if todo = [] then tasks
@@ -1586,6 +1590,65 @@ let spawns_well_formed (init_task : init_task) (tasks : dswp_task list) =
   List.for_all (acyclic []) init_task.jobs
   && List.for_all (fun t -> List.mem t.id !finished) tasks
 
+(* A job waits on the jobs registered before it of each task it depends
+   on mutually, or that shares a spawner with its own (Interp.waits_on_older),
+   and of each task above it that it depends on (Interp.spawn_dep), so they
+   must be registered in program order.  The Rocq proof (Spawners.v,
+   spawners_ok) shows they are when each such dependence of a task t on a
+   task u has one of three shapes, where a task's spawners form a chain if
+   it is spawned by init only, or by a single serial task (order_spawners)
+   whose spawners form a chain:
+   (A) t and u have the same single spawner, and t's spawners form a chain;
+   (C) u is above t (t's single spawner, or above it along single
+       spawners), and u's spawners form a chain; or
+   (B) t is above u, and init spawns t once and nothing else does.
+   Run after spawns_well_formed: chain and above follow spawns upwards. *)
+let spawners_ok (init_task : init_task) (tasks : dswp_task list) =
+  let rec sends (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, _) -> [i]
+      | If (_, b1, b2) -> sends b1.elt @ sends b2.elt
+      | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sends b.elt
+      | _ -> []) stmts in
+  (* the tasks spawning id, with init as -1 *)
+  let init = -1 in
+  let spawners id =
+    (if List.mem id init_task.jobs then [init] else [])
+    @ List.filter_map (fun tk -> if List.mem id (sends tk.body.elt) then Some tk.id else None) tasks
+    |> List.sort_uniq compare in
+  let deps id = match List.find_opt (fun tk -> tk.id = id) tasks with Some tk -> tk.deps_in | None -> [] in
+  let serial s = List.exists (fun d -> d.pred_task = s && not d.make_new_job && d.commute_cond.condition = None) (deps s) in
+  let rec chain t = match spawners t with
+    | [] -> true
+    | [s] -> s = init || (serial s && chain s)
+    | _ -> false in
+  let once t = spawners t = [init] && List.length (List.filter ((=) t) init_task.jobs) <= 1 in
+  (* as Interp.waits_on_older, where init is not a spawner *)
+  let task_spawners id = List.filter ((<>) init) (spawners id) in
+  let waits_on_older c d =
+    d.pred_task = c
+    || List.exists (fun d' -> d'.pred_task = c) (deps d.pred_task)
+    || List.exists (fun s -> List.mem s (task_spawners c)) (task_spawners d.pred_task) in
+  (* u spawns t, or a task above it, each task on the way having a single spawner *)
+  let rec above t u = match spawners t with
+    | [s] when s <> init -> s = u || above s u
+    | _ -> false in
+  (* as Interp.spawn_dep *)
+  let rec up acc = function
+    | [] -> acc
+    | t :: rest -> if List.mem t acc then up acc rest else up (t :: acc) (task_spawners t @ rest) in
+  let spawn_dep c d = d.make_new_job && List.mem d.pred_task (up [] (task_spawners c)) in
+  let pair_ok t u =
+    (spawners t = spawners u && List.length (spawners t) <= 1 && chain t)
+    || (above t u && chain u)
+    || (above u t && once t) in
+  List.for_all (fun tk -> List.for_all (fun d ->
+    let ok = if spawn_dep tk.id d then pair_ok tk.id d.pred_task
+      else not (waits_on_older tk.id d) || pair_ok tk.id d.pred_task in
+    if not ok then debug_print (lazy (Printf.sprintf
+      "spawners_ok: task %d's jobs may not be registered in program order relative to task %d's\n" tk.id d.pred_task));
+    ok) tk.deps_in) tasks
+
 (* The fallback when no valid partition was found: everything in one
    sequential task, apart from a top-level return. *)
 let sequentialize ctx dag_scc =
@@ -1622,6 +1685,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
   let init_task, tasks =
     if List.for_all (fun b -> single_context ctx b.n) merged_dag.nodes
        && spawns_well_formed init_task tasks
+       && spawners_ok init_task tasks
     then init_task, tasks
     else begin
       debug_print (lazy "No valid partition: falling back to one sequential task\n");
