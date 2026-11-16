@@ -186,6 +186,27 @@ let find_global_by_name_opt name = List.find_opt (function (Gvdecl d) -> String.
    exists only in the PDG; task dependences do not carry it. *)
 let stdout_var = (TStr, "$stdout")
 
+(* The commutativity groups of the program, set by ps_dswp. *)
+let commute_groups : group_commute node list ref = ref []
+
+(* The shared variables that a commutativity condition involving the block
+   [label] reads: its identifiers other than the formals of the group.  A
+   named block counts them as reads (Rocq tdep_ok, cond_ok_b): a statement
+   that writes one changes the condition, so it must stay ordered with the
+   block. *)
+let cond_read_ids (label : id) : id list =
+  List.concat_map (fun {elt = (bls, cond); _} ->
+    let labels = List.concat bls in
+    if not (List.exists (fun (l, _) -> String.equal l label) labels) then []
+    else
+      let formals = List.concat_map (fun (_, args) -> match args with
+        | Some a -> List.filter_map (function {elt = Id s; _} -> Some s | _ -> None) a
+        | None -> []) labels in
+      match cond with
+      | PhiExp e -> List.filter (fun x -> not (List.mem x formals)) (Lock_synthesis.ids_in_exp e.elt)
+      | PhiInf -> []) !commute_groups
+  |> List.sort_uniq compare
+
 let rec find_block_vars block : ((ty * string) * int) list = 
   match block with 
   | [] -> []
@@ -219,8 +240,11 @@ and find_stmt_vars (stmt: enode_ast_elt) : ((ty * string) * int) list =
         decl_vars := decl :: !decl_vars;
       ((ty , id), lvalue) :: (set_vars_side (find_exp_vars e) rvalue)
     | Ret (Some e) -> set_vars_side (find_exp_vars e) rvalue
-    | SBlock (Some (_, None),body) | SBlock (None, body) -> find_block_vars body.elt
-    | SBlock (Some (_, Some bl),body) -> (List.concat_map (fun e -> (set_vars_side (find_exp_vars e) rvalue)) bl) @ find_block_vars body.elt 
+    | SBlock (None, body) -> find_block_vars body.elt
+    | SBlock (Some (label, args), body) ->
+      (match args with Some bl -> List.concat_map (fun e -> set_vars_side (find_exp_vars e) rvalue) bl | None -> [])
+      @ set_vars_side (List.concat_map (fun x -> find_exp_vars (no_loc (Id x))) (cond_read_ids label)) rvalue
+      @ find_block_vars body.elt
     | While (e, _, body) -> (set_vars_side (find_exp_vars e) rvalue) @ find_block_vars body.elt
     | For (vdecls,eoption,soption,body) -> 
       List.concat_map (fun v -> 
@@ -1858,6 +1882,7 @@ let ps_dswp (body: block node) m_loc m_args (g: global_env) globals =
   m_vars := m_args;
 
   commutativity_spec_exist := (List.length (g.group_commute) > 0);
+  commute_groups := g.group_commute;
 
   let pdg = build_pdg body.elt m_loc g.group_commute in
   print_pdg_debug pdg;

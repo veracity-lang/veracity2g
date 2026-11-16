@@ -337,6 +337,21 @@ check_sequential() {
 }
 check_sequential "cond_write: (A1) for conditions rejects" "spawn_cond_ok: task 1 writes lim" \
     "$GC/test/cond_write.vcy"
+# check_reads_var LABEL PATTERN VAR BENCH_PATH [ARGS...]
+#   The task containing PATTERN must depend on another task through VAR.
+check_reads_var() {
+    local label="$1" pattern="$2" var="$3"; shift 3
+    local task
+    task=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks --emit-tasks "$@" 2>&1 \
+          | awk -v p="$pattern" 'BEGIN{RS="=== Task "} index($0, p)') || true
+    if printf '%s\n' "$task" | grep -q "^deps_in:.*: [^}]*int $var"; then
+        _record pass "$label" ""
+    else
+        _record fail "$label" "[no dependence through $var]"
+    fi
+}
+check_reads_var "dict: a condition's reads count (f1 depends on y)" "t = c + x" y \
+    "$GC/veracity/dict.vcy" 1
 check_sequential "simple-vector: (A1) rejects" "spawn_a1_ok: task 2, after spawning, accesses x" \
     "$GC/other/simple-vector.vcy" 2
 
