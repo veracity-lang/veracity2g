@@ -337,6 +337,8 @@ check_sequential() {
 }
 check_sequential "cond_write: (A1) for conditions rejects" "spawn_cond_ok: task 1 writes lim" \
     "$GC/test/cond_write.vcy"
+check_sequential "simple-vector: (A1) rejects" "spawn_a1_ok: task 2, after spawning, accesses x" \
+    "$GC/other/simple-vector.vcy" 2
 
 # Verify pre-DSWP lock counts.
 # ls_noncb_1: counter IS in the NCB conflict_set (incr blocks share it),

@@ -1708,6 +1708,91 @@ let spawn_cond_ok (init_task : init_task) (tasks : dswp_task list) =
   check "init" (init_task.decls.elt)
   && List.for_all (fun tk -> check (string_of_int tk.id) tk.body.elt) tasks
 
+(* (A1) (Rocq Footprint.v, spawn_ok_allb): after its first spawn, a task
+   reads no variable that a task it can spawn, directly or not, writes, and
+   writes no variable that such a task mentions, outside that task's frame:
+   the variables it is passed by value and those it declares.  The code
+   after the first spawn includes the condition and the whole body of a
+   loop that spawns, as Footprint.after_rd and after_wr. *)
+let spawn_a1_ok (init_task : init_task) (tasks : dswp_task list) =
+  let rec sites (stmts : stmt node list) =
+    List.concat_map (fun s -> match s.elt with
+      | SendDep (i, vs) -> [(i, List.map snd vs)]
+      | If (_, b1, b2) -> sites b1.elt @ sites b2.elt
+      | While (_, _, b) | For (_, _, _, b) | SBlock (_, b) -> sites b.elt
+      | _ -> []) stmts in
+  let rec lhs_base (e : exp node) = match e.elt with
+    | Id x -> [x]
+    | Index (b, _) | Proj (b, _) -> lhs_base b
+    | _ -> [] in
+  let ids e = Lock_synthesis.ids_in_exp e.elt in
+  let rec writes stmts = List.concat_map write stmts
+  and write (s : stmt node) = match s.elt with
+    | Assn (lhs, _) -> lhs_base lhs
+    | Decl (id, _) -> [id]
+    | If (_, b1, b2) -> writes b1.elt @ writes b2.elt
+    | While (_, _, b) | SBlock (_, b) -> writes b.elt
+    | For (vd, _, so, b) -> List.map fst vd @ (match so with Some st -> write st | None -> []) @ writes b.elt
+    | Commute (_, _, bs, _, _) -> List.concat_map (fun b -> writes b.elt) bs
+    | SCallRaw ("ht_put", tbl :: _) | SCall (MethodL ("ht_put", _), tbl :: _) -> lhs_base tbl
+    | _ -> [] in
+  let rec mentions stmts = List.concat_map mention stmts
+  and mention (s : stmt node) = match s.elt with
+    | Decl (id, (_, e)) -> id :: ids e
+    | SendDep (_, vs) -> List.map snd vs
+    | If (c, b1, b2) -> ids c @ mentions b1.elt @ mentions b2.elt
+    | While (c, _, b) -> ids c @ mentions b.elt
+    | For (vd, eo, so, b) ->
+      List.concat_map (fun (x, (_, e)) -> x :: ids e) vd @ (match eo with Some e -> ids e | None -> [])
+      @ (match so with Some st -> mention st | None -> []) @ mentions b.elt
+    | SBlock (Some (_, Some ps), b) -> List.concat_map ids ps @ mentions b.elt
+    | SBlock (_, b) -> mentions b.elt
+    | Commute (_, _, bs, _, _) -> List.concat_map (fun b -> mentions b.elt) bs
+    | _ -> Lock_synthesis.ids_in_stmt s.elt in
+  let rec decls stmts = List.concat_map (fun (s : stmt node) -> match s.elt with
+    | Decl (id, _) -> [id]
+    | If (_, b1, b2) -> decls b1.elt @ decls b2.elt
+    | While (_, _, b) | SBlock (_, b) -> decls b.elt
+    | For (vd, _, _, b) -> List.map fst vd @ decls b.elt
+    | Commute (_, _, bs, _, _) -> List.concat_map (fun b -> decls b.elt) bs
+    | _ -> []) stmts in
+  let spawns (s : stmt node) = sites [s] <> [] in
+  let rec after f g = function
+    | [] -> []
+    | s :: rest -> if not (spawns s) then after f g rest else f s @ g rest
+  and after_rd stmts = after after_rd_stmt mentions stmts
+  and after_rd_stmt (s : stmt node) = match s.elt with
+    | If (_, b1, b2) -> after_rd b1.elt @ after_rd b2.elt
+    | While _ | For _ -> mention s
+    | SBlock (_, b) -> after_rd b.elt
+    | _ -> []
+  and after_wr stmts = after after_wr_stmt writes stmts
+  and after_wr_stmt (s : stmt node) = match s.elt with
+    | If (_, b1, b2) -> after_wr b1.elt @ after_wr b2.elt
+    | While _ | For _ -> write s
+    | SBlock (_, b) -> after_wr b.elt
+    | _ -> [] in
+  let body id = match List.find_opt (fun tk -> tk.id = id) tasks with Some tk -> tk.body.elt | None -> [] in
+  (* the spawn sites below a body, each with the variables passed there *)
+  let rec below acc = function
+    | [] -> acc
+    | (u, a) :: rest -> if List.mem (u, a) acc then below acc rest else below ((u, a) :: acc) (sites (body u) @ rest) in
+  let check w stmts =
+    let rd = after_rd stmts and wr = after_wr stmts in
+    List.for_all (fun (u, a) ->
+      let frame = a @ decls (body u) in
+      let outside xs = List.filter (fun x -> not (List.mem x frame)) xs in
+      let bad1 = List.filter (fun x -> List.mem x rd) (outside (writes (body u))) in
+      let bad2 = List.filter (fun x -> List.mem x wr) (outside (mentions (body u))) in
+      match List.sort_uniq compare (bad1 @ bad2) with
+      | [] -> true
+      | xs -> debug_print (lazy (Printf.sprintf
+                "spawn_a1_ok: task %s, after spawning, accesses %s, which task %d also accesses\n"
+                w (String.concat ", " xs) u)); false)
+      (below [] (sites stmts)) in
+  check "init" (init_task.decls.elt)
+  && List.for_all (fun tk -> check (string_of_int tk.id) tk.body.elt) tasks
+
 (* The fallback when no valid partition was found: everything in one
    sequential task, apart from a top-level return. *)
 let sequentialize ctx dag_scc =
@@ -1746,6 +1831,7 @@ let thread_partitioning dag_scc pdg (threads: int list) body =
        && spawns_well_formed init_task tasks
        && spawners_ok init_task tasks
        && spawn_cond_ok init_task tasks
+       && spawn_a1_ok init_task tasks
     then init_task, tasks
     else begin
       debug_print (lazy "No valid partition: falling back to one sequential task\n");
