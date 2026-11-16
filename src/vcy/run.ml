@@ -162,6 +162,7 @@ module RunInterp : Runner = struct
     ; "--timeout", Arg.Float (fun f -> timeout := Some f), "<name> Set timeout for servois2 queries"
     ; "--dswp", Arg.Set dswp_mode, " Enable PS-DSWP Interpretation"
     ; "--threads", Arg.Int (fun i -> Interp.pool_size := i), " Set number of threads for DSWP mode (default: 8)"
+    ; "--atomic-overtaking", Arg.Set Interp.atomic_overtaking, " In DSWP mode, run a job and each job it overtook one at a time, not alongside each other"
     ; "--overtake", Arg.Symbol (List.map fst Overtake.rule_names, Overtake.set_rule), " In DSWP mode, when a job may skip an earlier job whose condition holds (default hybrid-locked; any is the old, unsound scheduler; see src/vcy/overtake.ml)"
     ; "--no-recheck", Arg.Set Overtake.recheck_disabled, " In DSWP mode, skip the first-step re-check of a job that overtook others (on for every --overtake rule but any)"
     ; "--overtake-waiting-only", Arg.Unit (fun () -> Overtake.set_rule "not-started"), " Same as --overtake not-started"

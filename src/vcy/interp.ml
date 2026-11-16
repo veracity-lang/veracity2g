@@ -52,6 +52,10 @@ type job = {
   over: (job * dependency * (unit -> unit)) list Atomic.t;
   (* every job this job overtook, kept after its first step *)
   overtook_all: job list Atomic.t;
+  (* --atomic-overtaking: held while the job's body runs, by the job and by
+     every job that overtook it; uid orders the locks *)
+  uid: int;
+  atom: Mutex.t;
   (* set once the job's body has run *)
   finished: bool Atomic.t;
   (* the environment will have in the stack the input variables:
@@ -60,9 +64,16 @@ type job = {
   *)
 }
 
+let job_uid = Atomic.make 0
+
+(* Run a job and each job it overtook one at a time (Rocq over_atomic),
+   instead of relying on the locks lock synthesis puts around writes. *)
+let atomic_overtaking = ref false
+
 let make_job tid env =
   { tid; env; started = Atomic.make false; dirty = Atomic.make false; guard = Mutex.create ();
-    over = Atomic.make []; overtook_all = Atomic.make []; finished = Atomic.make false }
+    over = Atomic.make []; overtook_all = Atomic.make []; uid = Atomic.fetch_and_add job_uid 1;
+    atom = Mutex.create (); finished = Atomic.make false }
 
 (* The job whose body this domain is running, for the dirty marker. *)
 let current_job : job option Domain.DLS.key = Domain.DLS.new_key (fun () -> None)
@@ -932,11 +943,15 @@ and run_job jb initial_waits deps =
     let t0 = Unix.gettimeofday () in
     wait_deps jb initial_waits deps (load_task_def jb.tid).body;
     if Overtake.recheck () then recheck jb;
+    let atoms = if not !atomic_overtaking then [] else
+      List.sort_uniq (fun a b -> Int.compare a.uid b.uid) (jb :: Atomic.get jb.overtook_all)
+      |> List.map (fun j -> j.atom) in
+    List.iter Mutex.lock atoms;
     Atomic.set jb.started true;
     let t1 = Unix.gettimeofday () in
     let prev = Domain.DLS.get current_job in
     Domain.DLS.set current_job (Some jb);
-    let r = Fun.protect ~finally:(fun () -> Domain.DLS.set current_job prev)
+    let r = Fun.protect ~finally:(fun () -> Domain.DLS.set current_job prev; List.iter Mutex.unlock (List.rev atoms))
       (fun () -> interp_block {jb.env with tid = Some jb.tid} (load_task_def jb.tid).body) in
     Atomic.set jb.finished true;
     let t2 = Unix.gettimeofday () in
