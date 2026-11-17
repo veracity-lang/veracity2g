@@ -49,46 +49,34 @@ int main(int argc, string[] argv){
                 int deposit_amount = 100 + (i * 5);
                 
                 processDeposit(acc_id): {
-                    print("Processing deposit of ");
-                    print(string_of_int(deposit_amount));
-                    print(" to account ");
-                    print(string_of_int(acc_id));
-                    print("\n");
+                    /* one print per block, so that concurrent blocks do not
+                       interleave their output */
+                    string msg = "Processing deposit of " ^ string_of_int(deposit_amount)
+                        ^ " to account " ^ string_of_int(acc_id) ^ "\n";
                     
                     busy_wait(scalingfactor); 
                     
                     accounts[acc_id] = accounts[acc_id] + deposit_amount;
-                    print("Account ");
-                    print(string_of_int(acc_id));
-                    print(" new balance: ");
-                    print(string_of_int(accounts[acc_id]));
-                    print("\n");
+                    print(msg ^ "Account " ^ string_of_int(acc_id) ^ " new balance: "
+                        ^ string_of_int(accounts[acc_id]) ^ "\n");
                 }
             } else {
                 /* Process withdrawal */
                 int withdrawal_amount = 50 + (i * 10);
                 
                 processWithdrawal(acc_id): {
-                    print("Processing withdrawal of ");
-                    print(string_of_int(withdrawal_amount));
-                    print(" from account ");
-                    print(string_of_int(acc_id));
-                    print("\n");
+                    string msg = "Processing withdrawal of " ^ string_of_int(withdrawal_amount)
+                        ^ " from account " ^ string_of_int(acc_id) ^ "\n";
                     
                     busy_wait(scalingfactor); 
                     
                     /* Update account balance if sufficient funds */
                     if (accounts[acc_id] >= withdrawal_amount) {
                         accounts[acc_id] = accounts[acc_id] - withdrawal_amount;
-                        print("Account ");
-                        print(string_of_int(acc_id));
-                        print(" new balance: ");
-                        print(string_of_int(accounts[acc_id]));
-                        print("\n");
+                        print(msg ^ "Account " ^ string_of_int(acc_id) ^ " new balance: "
+                            ^ string_of_int(accounts[acc_id]) ^ "\n");
                     } else {
-                        print("Insufficient funds in account ");
-                        print(string_of_int(acc_id));
-                        print("\n");
+                        print(msg ^ "Insufficient funds in account " ^ string_of_int(acc_id) ^ "\n");
                     }
                 }
             }
@@ -103,13 +91,9 @@ int main(int argc, string[] argv){
     int transfer_amount = 250;
     
     processTransfer(from_account, to_account): {
-        print("Processing transfer of ");
-        print(string_of_int(transfer_amount));
-        print(" from account ");
-        print(string_of_int(from_account));
-        print(" to account ");
-        print(string_of_int(to_account));
-        print("\n");
+        string msg = "Processing transfer of " ^ string_of_int(transfer_amount)
+            ^ " from account " ^ string_of_int(from_account)
+            ^ " to account " ^ string_of_int(to_account) ^ "\n";
         
         busy_wait(scalingfactor); 
         
@@ -117,19 +101,11 @@ int main(int argc, string[] argv){
         if (accounts[from_account] >= transfer_amount) {
             accounts[from_account] = accounts[from_account] - transfer_amount;
             accounts[to_account] = accounts[to_account] + transfer_amount;
-            print("Transfer complete. New balances: Account ");
-            print(string_of_int(from_account));
-            print(": ");
-            print(string_of_int(accounts[from_account]));
-            print(", Account ");
-            print(string_of_int(to_account));
-            print(": ");
-            print(string_of_int(accounts[to_account]));
-            print("\n");
+            print(msg ^ "Transfer complete. New balances: Account " ^ string_of_int(from_account)
+                ^ ": " ^ string_of_int(accounts[from_account]) ^ ", Account " ^ string_of_int(to_account)
+                ^ ": " ^ string_of_int(accounts[to_account]) ^ "\n");
         } else {
-            print("Transfer failed: Insufficient funds in account ");
-            print(string_of_int(from_account));
-            print("\n");
+            print(msg ^ "Transfer failed: Insufficient funds in account " ^ string_of_int(from_account) ^ "\n");
         }
     }
 

@@ -229,6 +229,7 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
           let ret_typ_of_op = match op with
           | Add | Sub | Mul | Mod | Div | Exp -> ty1
           | Eq | Neq | Lt | Lte | Gt | Gte | And | Or | Implies -> TBool
+          | Concat -> TStr
           | _ -> failwith "unknown op type"
           in
 
@@ -247,6 +248,8 @@ let get_exp_terms (e: exp node) : (sexp * ty) list =
             (EUop (Not, EBop (bop_to_servoisBop Eq, t1, t2)), ret_typ_of_op)
           | Implies ->
             (EBop (Imp, t1, t2), TBool)
+          | Concat ->
+            (EFunc ("str.++", [t1; t2]), TStr)
           | _ -> failwith "unknown op type"
           end
       | Uop (op, e) -> 
@@ -491,6 +494,8 @@ let rec exp_to_smt_exp (e: exp node) (side: int) ?(indexed = true) (vctrs : (str
                  EUop (Not, EBop (bop_to_servoisBop Eq, rtn1, rtn2)), binds1 @ binds2)
         | Implies ->
             EBop (Imp, rtn1, rtn2), binds1 @ binds2
+        | Concat ->
+            EFunc ("str.++", [rtn1; rtn2]), binds1 @ binds2
         | _ -> failwith @@ sp "undefined op: %s" @@ AstML.string_of_binop op
         end
     | Uop (op, e) -> 
