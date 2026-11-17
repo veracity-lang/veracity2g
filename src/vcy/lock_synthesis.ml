@@ -105,22 +105,29 @@ let safe_positions_of_gc (gc : group_commute node) : int list =
     ) diseqs
     |> List.sort_uniq compare
 
-(* Build map: block_label_id -> safe_positions *)
+(* Build map: block_label_id -> safe_positions.  A position is safe for a
+   label only if every commutativity group the label belongs to keeps it
+   distinct: an instance may run alongside the instances of any label it
+   commutes with, so one group that allows equal arguments (f1/f2 :
+   i_1 != i_2 || ...) makes the position unsafe, even if another group
+   (f1/f1 : i_1 != i_2) keeps it distinct. *)
 let build_safe_pos_map (prog : prog) : (id * int list) list =
   let gcs =
     List.filter_map (function
       | Commutativity nodes -> Some nodes | _ -> None
     ) prog |> List.concat
   in
-  List.concat_map (fun gc ->
+  let per_group = List.concat_map (fun gc ->
     let (groups, _) = gc.elt in
     let safe_pos = safe_positions_of_gc gc in
-    if safe_pos = [] then []
-    else
-      List.concat_map (fun group ->
-        List.map (fun (label, _) -> (label, safe_pos)) group
-      ) groups
-  ) gcs
+    List.concat_map (fun group -> List.map (fun (label, _) -> (label, safe_pos)) group) groups) gcs in
+  let labels = List.map fst per_group |> List.sort_uniq compare in
+  List.filter_map (fun label ->
+    match List.filter_map (fun (l, sp) -> if l = label then Some sp else None) per_group with
+    | [] -> None
+    | sp :: rest ->
+      let common = List.filter (fun i -> List.for_all (List.mem i) rest) sp in
+      if common = [] then None else Some (label, common)) labels
 
 (* Map safe positions to actual argument names in a block instantiation *)
 let safe_arg_names (params : exp node list) (safe_pos : int list) : id list =

@@ -350,6 +350,21 @@ check_reads_var() {
         _record fail "$label" "[no dependence through $var]"
     fi
 }
+# check_locked LABEL PATTERN BENCH_PATH [ARGS...]
+#   The statement PATTERN must be inside a synthesized lock.
+check_locked() {
+    local label="$1" pattern="$2"; shift 2
+    local out
+    out=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks --emit-tasks "$@" 2>&1) || true
+    if printf '%s\n' "$out" | grep -B1 -F "$pattern" | grep -q 'mutex_lock'; then
+        _record pass "$label" ""
+    else
+        _record fail "$label" "[$pattern is not locked]"
+    fi
+}
+# f1(i) and f2(i) commute when i_1 == i_2 too, so i does not separate their
+# accesses to arr: a safe position must be safe in every group of the label.
+check_locked "motivation: f1's arr[i] update is locked" "arr[i] = arr[i] + x * x;" "$GC/motivation.vcy" 100 10
 check_reads_var "dict: a condition's reads count (f1 depends on y)" "t = c + x" y \
     "$GC/veracity/dict.vcy" 1
 check_sequential "simple-vector: (A1) rejects" "spawn_a1_ok: task 2, after spawning, accesses x" \
