@@ -261,9 +261,10 @@ module RunInterp : Runner = struct
             Printf.printf "%s\n" decl_str);
         List.iter (fun (task : Dswp_task.dswp_task) ->
           Printf.printf "\n=== Task %d (%s) ===\n" task.id
-            (match task.label with
+            ((match task.label with
             | Dswp_task.Doall -> "Doall"
-            | Dswp_task.Sequential -> "Sequential");
+            | Dswp_task.Sequential -> "Sequential")
+             ^ (if task.gated then ", gated" else ""));
           if task.Dswp_task.deps_in <> [] then
             Printf.printf "deps_in:  %s\n"
               (Dswp_task.str_of_task_deps task.Dswp_task.deps_in);

@@ -58,6 +58,8 @@ type job = {
   atom: Mutex.t;
   (* set once the job's body has run *)
   finished: bool Atomic.t;
+  (* set once a job of a gated task has passed its gate (Interp.gate) *)
+  gate_passed: bool Atomic.t;
   (* the environment will have in the stack the input variables:
   vals: (ty * id * value) list 
   exp will only be constants: CInt, CStr, CBool, etc
@@ -73,7 +75,7 @@ let atomic_overtaking = ref false
 let make_job tid env =
   { tid; env; started = Atomic.make false; dirty = Atomic.make false; guard = Mutex.create ();
     over = Atomic.make []; overtook_all = Atomic.make []; uid = Atomic.fetch_and_add job_uid 1;
-    atom = Mutex.create (); finished = Atomic.make false }
+    atom = Mutex.create (); finished = Atomic.make false; gate_passed = Atomic.make false }
 
 (* The job whose body this domain is running, for the dirty marker. *)
 let current_job : job option Domain.DLS.key = Domain.DLS.new_key (fun () -> None)
@@ -1453,9 +1455,29 @@ and send_dep calling_tid tid env vals =
     This is now handled during job creation.
   *)
   
+  gate calling_tid;
   (* 2  -- make the new job *)
   (* TODO: What env? All non-deps are just global, no? Just use outer env. *)
   new_job (make_job tid env') deps
+
+(* A job of a gated task (Exe_pdg.order_spawners) spawns only once the
+   earlier jobs of its task have finished, so that the jobs it spawns are
+   registered after theirs, in program order.  Its own jobs are registered
+   in program order, so the earlier ones are those registered before it.
+   The wait is an await, which may resume the job on another domain:
+   interp_tasks ungates a task whose body takes a lock, or every task under
+   --atomic-overtaking, as the job would then hold a mutex across it. *)
+and gate calling_tid =
+  match Domain.DLS.get current_job with
+  | Some jb when jb.tid = calling_tid && not (Atomic.get jb.gate_passed)
+                 && (load_task_def calling_tid).gated ->
+    let rec older = function
+      | [] -> [] | (j', _) :: rest -> if j' == jb then rest else older rest in
+    let jobs = Mutex.protect jobs_mutex (fun () -> older !all_jobs) in
+    List.iter (fun (j', p) -> if j'.tid = calling_tid then Domainslib.Task.await (get !pool) p |> ignore) jobs;
+    Domain.DLS.set current_job (Some jb);
+    Atomic.set jb.gate_passed true
+  | _ -> ()
 
 (* Draft of new scheduler that accumulates dependencies *)
 (*
@@ -2259,6 +2281,9 @@ let print_job_stats tasks =
   end
 
 let interp_tasks env0 decls init_task tasks : value =
+  let tasks = List.map (fun t ->
+    if t.gated && (!atomic_overtaking || Lock_synthesis.block_has_mutex t.body.elt)
+    then Exe_pdg.serialize t else t) tasks in
   let tasks = Overtake.prepare env0.g tasks in
   set_task_def tasks;
   job_count := 0; job_pure_time := 0.; job_with_deps_time := 0.;

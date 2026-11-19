@@ -23,6 +23,9 @@ type dswp_task = {
   deps_out : dependency list; (* a list of other tasks/vars that I provide for *)
   body: block node;
   label: exe_label;
+  (* each job spawns only once the earlier jobs of its task have finished
+     (Exe_pdg.order_spawners, Interp.gate) *)
+  gated: bool;
 }
 
 type init_task = {
@@ -52,7 +55,8 @@ let str_of_task_deps deplist =
 let str_of_task tsk = 
     Printf.sprintf "{Task %d:\n  deps_in:%s\n  deps_out:%s\n  label:%s}"
       tsk.id (str_of_task_deps tsk.deps_in) (str_of_task_deps tsk.deps_out)
-      (match tsk.label with | Doall -> "DOALL" | Sequential -> "Seq")
+      ((match tsk.label with | Doall -> "DOALL" | Sequential -> "Seq")
+       ^ (if tsk.gated then ", gated" else ""))
 
 let rec calculate_semaphores tlist : (dswp_taskid * dswp_taskid) list =
   match tlist with 
@@ -100,18 +104,21 @@ let example_tasks () : dswp_task list =
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[(mk_int_dep 1 "pnext");(mk_int_dep 2 "p");(mk_int_dep 3 "p")];
       body=no_loc [(no_loc (Ret(None)))];
-      label=Doall
+      label=Doall;
+      gated=false
     };
     { id=2; 
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[];
       body=no_loc [(no_loc (Ret(None)))];
-      label=Doall
+      label=Doall;
+      gated=false
     };
     { id=3; 
       deps_in=[(mk_int_dep 1 "p")]; 
       deps_out=[];
       body=no_loc [(no_loc (Ret(None)))];
-      label=Doall
+      label=Doall;
+      gated=false
     }
   ]

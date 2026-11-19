@@ -1470,12 +1470,30 @@ let combine_dependencies (deps: Dswp_task.dependency list) : Dswp_task.dependenc
   |> List.sort (fun d1 d2 -> compare d1.pred_task d2.pred_task)
   |> combine_helper
 
+(* Give a task an unconditional dependence on itself, so that its jobs run
+   one at a time, in program order. *)
+let serialize (tk : dswp_task) : dswp_task =
+  let self = {pred_task = tk.id; make_new_job = false; vars = [];
+              commute_cond = {my_task_formals = []; other_task_formals = []; condition = None}} in
+  let unconditional ds = self :: List.filter (fun d -> d.pred_task <> tk.id || d.make_new_job) ds
+    @ List.filter_map (fun d -> if d.pred_task = tk.id && not d.make_new_job
+                                then Some {d with commute_cond = self.commute_cond} else None) ds in
+  let ds_in = combine_dependencies (unconditional tk.deps_in) in
+  let ds_out = combine_dependencies (unconditional tk.deps_out) in
+  {tk with deps_in = ds_in; deps_out = ds_out; label = Dswp_task.Sequential; gated = false}
+
 (* A job waits on the jobs of a mutually dependent task, or of a stage of
    the same loop, registered before it (Interp.waits_on_older), and so
-   relies on jobs being registered in program order.  They are when their
-   spawner's jobs run one at a time: give each such spawner an unconditional
-   dependence on itself, and repeat, since its own jobs then rely on the
-   same.  A task spawned only by the init task has a single job. *)
+   relies on jobs being registered in program order.  They are when each
+   job of their spawner spawns only once the earlier jobs of its task have
+   finished: mark each such spawner gated (Interp.gate), and repeat, since
+   the gate in turn relies on the spawner's own jobs being registered in
+   program order.  The jobs still run their code up to the first spawn in
+   parallel.  A serial spawner, whose jobs already run one at a time, is
+   left alone, and so is a task spawned only by the init task, which has a
+   single job.  The gate is outside the Rocq proof, which instead has the
+   spawner serial (Spawners.v, chain); no task of the paper's benchmarks in
+   the theorem's scope is gated. *)
 let order_spawners (tasks : dswp_task list) : dswp_task list =
   let rec sends (stmts : stmt node list) =
     List.concat_map (fun s -> match s.elt with
@@ -1487,6 +1505,7 @@ let order_spawners (tasks : dswp_task list) : dswp_task list =
     let find id = List.find_opt (fun tk -> tk.id = id) tasks in
     let spawners id = List.filter_map (fun tk -> if List.mem id (sends tk.body.elt) then Some tk.id else None) tasks in
     let deps id = match find id with Some tk -> tk.deps_in | None -> [] in
+    let gated id = match find id with Some tk -> tk.gated | None -> false in
     let waits_on_older c d =
       d.pred_task = c
       || List.exists (fun d' -> d'.pred_task = c) (deps d.pred_task)
@@ -1496,21 +1515,14 @@ let order_spawners (tasks : dswp_task list) : dswp_task list =
       | [] -> acc
       | t :: rest -> if List.mem t acc then up acc rest else up (t :: acc) (spawners t @ rest) in
     let spawn_dep c d = d.make_new_job && List.mem d.pred_task (up [] (spawners c)) in
-    let needs c = List.exists (fun d -> not (spawn_dep c d) && waits_on_older c d) (deps c) in
+    let needs c = gated c || List.exists (fun d -> not (spawn_dep c d) && waits_on_older c d) (deps c) in
     let todo = List.concat_map (fun tk -> if needs tk.id then spawners tk.id else []) tasks
-      |> List.filter (fun s -> not (serial s)) |> List.sort_uniq compare in
+      |> List.filter (fun s -> not (serial s || gated s)) |> List.sort_uniq compare in
     if todo = [] then tasks
     else fix (List.map (fun tk ->
       if not (List.mem tk.id todo) then tk else begin
-        debug_print (lazy (Printf.sprintf "order_spawners: task %d runs its jobs in order\n" tk.id));
-        let self = {pred_task = tk.id; make_new_job = false; vars = [];
-                    commute_cond = {my_task_formals = []; other_task_formals = []; condition = None}} in
-        let unconditional ds = self :: List.filter (fun d -> d.pred_task <> tk.id || d.make_new_job) ds
-          @ List.filter_map (fun d -> if d.pred_task = tk.id && not d.make_new_job
-                                      then Some {d with commute_cond = self.commute_cond} else None) ds in
-        let ds_in = combine_dependencies (unconditional tk.deps_in) in
-        let ds_out = combine_dependencies (unconditional tk.deps_out) in
-        {tk with deps_in = ds_in; deps_out = ds_out; label = Dswp_task.Sequential}
+        debug_print (lazy (Printf.sprintf "order_spawners: task %d spawns in order\n" tk.id));
+        {tk with gated = true}
       end) tasks) in
   fix tasks
 
@@ -1551,7 +1563,7 @@ let generate_tasks dag_scc (block: block node) : init_task * dswp_task list =
       let taskID = incr_uid ctr in 
       let body = reconstructAST temp_dag node block taskID in
       let label = match node.label with | Doall -> Dswp_task.Doall | Sequential -> Dswp_task.Sequential in 
-      let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label } in 
+      let t = {id = taskID; deps_in = []; deps_out = []; body = node_up block body; label; gated = false } in 
       t :: (generate_tasks_from_dag {dag_scc with nodes = tl} block)
   in 
   let tasks = generate_tasks_from_dag dag_scc block in
@@ -1620,8 +1632,8 @@ let spawns_well_formed (init_task : init_task) (tasks : dswp_task list) =
    must be registered in program order.  The Rocq proof (Spawners.v,
    spawners_ok) shows they are when each such dependence of a task t on a
    task u has one of three shapes, where a task's spawners form a chain if
-   it is spawned by init only, or by a single serial task (order_spawners)
-   whose spawners form a chain:
+   it is spawned by init only, or by a single serial or gated task
+   (order_spawners) whose spawners form a chain:
    (A) t and u have the same single spawner, and t's spawners form a chain;
    (C) u is above t (t's single spawner, or above it along single
        spawners), and u's spawners form a chain; or
@@ -1641,7 +1653,8 @@ let spawners_ok (init_task : init_task) (tasks : dswp_task list) =
     @ List.filter_map (fun tk -> if List.mem id (sends tk.body.elt) then Some tk.id else None) tasks
     |> List.sort_uniq compare in
   let deps id = match List.find_opt (fun tk -> tk.id = id) tasks with Some tk -> tk.deps_in | None -> [] in
-  let serial s = List.exists (fun d -> d.pred_task = s && not d.make_new_job && d.commute_cond.condition = None) (deps s) in
+  let serial s = List.exists (fun d -> d.pred_task = s && not d.make_new_job && d.commute_cond.condition = None) (deps s)
+    || List.exists (fun tk -> tk.id = s && tk.gated) tasks in
   let rec chain t = match spawners t with
     | [] -> true
     | [s] -> s = init || (serial s && chain s)

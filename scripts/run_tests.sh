@@ -365,6 +365,29 @@ check_locked() {
 # f1(i) and f2(i) commute when i_1 == i_2 too, so i does not separate their
 # accesses to arr: a safe position must be safe in every group of the label.
 check_locked "motivation: f1's arr[i] update is locked" "arr[i] = arr[i] + x * x;" "$GC/motivation.vcy" 100 10
+# check_gated LABEL PATTERN RUNS BENCH_PATH [ARGS...]
+#   The task containing PATTERN must be a gated Doall task (it spawns in
+#   order, Exe_pdg.order_spawners), and RUNS runs under --atomic-overtaking,
+#   which serializes it instead, must give the sequential result.
+check_gated() {
+    local label="$1" pattern="$2" runs="$3"; shift 3
+    local task seq par bad=""
+    task=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks --emit-tasks "$@" 2>&1 \
+          | awk -v p="$pattern" 'BEGIN{RS="=== Task "} index($0, p)') || true
+    seq=$(cd "$RUNDIR" && "$VCY" interp "$@" 2>&1 | tail -1) || true
+    for _ in $(seq 1 "$runs"); do
+        par=$(cd "$RUNDIR" && "$VCY" interp --dswp --synthesize-locks --atomic-overtaking "$@" 2>&1 | tail -1) || true
+        [[ "$par" == "$seq" ]] || bad="$par"
+    done
+    if printf '%s\n' "$task" | head -1 | grep -q '(Doall, gated)' && [[ -z "$bad" ]]; then
+        _record pass "$label" ""
+    else
+        _record fail "$label" "[not gated, or seq=$seq | atomic=$bad]"
+    fi
+}
+check_gated "2d-array: the row search spawns in order (gated)" "busy_wait(scalingfactor);" 3 \
+    "$GC/other/2d-array.vcy" 20
+check_gated "nested_self_dep: spawner gated" "busy_wait(20000 * (6 - i));" 10 "$GC/test/nested_self_dep.vcy"
 check_reads_var "dict: a condition's reads count (f1 depends on y)" "t = c + x" y \
     "$GC/veracity/dict.vcy" 1
 check_sequential "simple-vector: (A1) rejects" "spawn_a1_ok: task 2, after spawning, accesses x" \
