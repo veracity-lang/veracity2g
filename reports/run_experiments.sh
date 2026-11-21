@@ -36,7 +36,7 @@ python3 ./speedup_dswp_nc.py   out-nc     "$TRIALS" "${BENCHES[@]}" $TEST   # Fa
 python3 ./speedup_dswp_noNB.py out-noNB   "$TRIALS" "${BENCHES[@]}" $TEST   # No-NCB.
 
 # Fig. 6
-python3 ./speedup_plot_compare.py out-ncbpar out-nc out-noNB fig6 --err
+python3 ./speedup_plot_compare.py out-ncbpar out-nc out-noNB out-dswp-comparison-all-lock --err
 
 # Table 3: Tasks, Jobs and Avg Job Exec at the N used for each row. The
 # arguments mirror the benchmarks list in speedup_dswp.py (motivation gets
