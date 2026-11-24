@@ -36,6 +36,22 @@ fi
 # benchmark paths below are written as ../benchmarks/... so we cd to src/.
 RUNDIR="$REPO_ROOT/src"
 
+# macOS has no GNU timeout(1).  Use coreutils' gtimeout if installed, else
+# a perl alarm that keeps the child's exit status (124 when it times out).
+if ! command -v timeout >/dev/null 2>&1; then
+    if command -v gtimeout >/dev/null 2>&1; then
+        timeout() { gtimeout "$@"; }
+    else
+        timeout() {
+            perl -e '$s = shift; $p = fork // die;
+                     if (!$p) { exec @ARGV or exit 127 }
+                     $SIG{ALRM} = sub { kill "TERM", $p; waitpid $p, 0; exit 124 };
+                     alarm $s; waitpid $p, 0;
+                     exit($? & 127 ? 128 + ($? & 127) : $? >> 8)' "$@"
+        }
+    fi
+fi
+
 # Temp files for benchmarks that take file-path arguments.
 TMPF=$(mktemp -d)
 # simple-io.vcy hardcodes open_in "a.txt" relative to its working directory
