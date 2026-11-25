@@ -1,9 +1,20 @@
 open OUnit2
 open Vcy
 
-(* Path helpers — tests run from the dune build directory, so we need to
-   reach the repo root. *)
-let bench path = "../" ^ path
+(* Path helpers — dune runs tests from src/_build/default/test, but they may
+   also be run by hand from elsewhere, so find the repo root by walking up
+   to the first directory that has a benchmarks/ in it. *)
+let repo_root =
+  let rec up dir =
+    if Sys.file_exists (Filename.concat dir "benchmarks") then dir
+    else
+      let parent = Filename.dirname dir in
+      if parent = dir then failwith "api_test: no benchmarks/ above the cwd"
+      else up parent
+  in
+  up (Sys.getcwd ())
+
+let bench path = Filename.concat repo_root path
 
 (* ------------------------------------------------------------------ helpers *)
 
@@ -34,7 +45,7 @@ let test_parse_string _ =
 
 let test_parse_file _ =
   assert_ok "parse pre.vcy from file"
-    (Veracity.parse (Veracity.File (bench "benchmarks/prepost/pre.vcy")))
+    (Veracity.parse (Veracity.File (bench "benchmarks/tests/prepost/pre.vcy")))
 
 let test_parse_ast _ =
   match Veracity.parse (Veracity.Source simple_src) with
@@ -72,16 +83,16 @@ let test_interp_basic _ =
 
 let test_infer_pre _ =
   assert_ok "infer pre.vcy"
-    (Veracity.infer (Veracity.File (bench "benchmarks/prepost/pre.vcy")))
+    (Veracity.infer (Veracity.File (bench "benchmarks/tests/prepost/pre.vcy")))
 
 let test_infer_hoare _ =
   assert_ok "infer hoare.vcy"
-    (Veracity.infer (Veracity.File (bench "benchmarks/prepost/hoare.vcy")))
+    (Veracity.infer (Veracity.File (bench "benchmarks/tests/prepost/hoare.vcy")))
 
 (* After inference the returned global_env should have non-empty methods list
    (the main method is always present). *)
 let test_infer_has_methods _ =
-  match Veracity.infer (Veracity.File (bench "benchmarks/prepost/pre.vcy")) with
+  match Veracity.infer (Veracity.File (bench "benchmarks/tests/prepost/pre.vcy")) with
   | Error _ -> assert_failure "infer returned Error"
   | Ok (g, _) -> assert_bool "methods non-empty" (g.Ast.methods <> [])
 

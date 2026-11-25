@@ -103,7 +103,7 @@ val interp : ?opts:options -> input -> string array -> int64 api_result
 Interprets the program. `argv.(0)` should be the program name (as with a normal C-style argv). Returns the integer value returned by `main`.
 
 ```ocaml
-match Veracity.interp (Veracity.File "benchmarks/movers/counter.vcy") [| "counter"; "5" |] with
+match Veracity.interp (Veracity.File "benchmarks/tests/movers/counter.vcy") [| "counter"; "5" |] with
 | Ok ret  -> Printf.printf "Return: %Ld\n" ret
 | Error (Veracity.InterpError msg) -> Printf.eprintf "Runtime error: %s\n" msg
 | Error _ -> assert false
@@ -121,7 +121,7 @@ If the program contains `havoc` statements and `opts.use_ae` is `false`, returns
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5 } in
-match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
+match Veracity.infer ~opts (Veracity.File "benchmarks/tests/prepost/pre.vcy") with
 | Ok (g, _) ->
     List.iter (fun (name, _m) ->
       Printf.printf "Method: %s\n" name) g.Ast.methods
@@ -140,7 +140,7 @@ Veracity.infer ~opts (Veracity.File "my_havoc_program.vcy")
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5; html = true } in
-match Veracity.infer ~opts (Veracity.File "benchmarks/prepost/pre.vcy") with
+match Veracity.infer ~opts (Veracity.File "benchmarks/tests/prepost/pre.vcy") with
 | Ok (_, Some path) -> Printf.printf "Report: %s\n" path
 | Ok (_, None)      -> assert false
 | Error _           -> ()
@@ -176,7 +176,7 @@ Returns `Ok ()` if all invariants hold, `Error (VerifyError _)` if any invariant
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5 } in
-match Veracity.check_invariants ~opts (Veracity.File "benchmarks/invariants/inc.vcy") with
+match Veracity.check_invariants ~opts (Veracity.File "benchmarks/tests/invariants/inc.vcy") with
 | Ok ()  -> print_endline "All invariants hold."
 | Error (Veracity.VerifyError msg) -> Printf.eprintf "Invariant failure: %s\n" msg
 | Error _ -> assert false
@@ -192,7 +192,7 @@ Checks that every `assert()` statement in the program holds. Uses forward symbol
 
 ```ocaml
 let opts = { Veracity.default_options with prover = `CVC5 } in
-match Veracity.check_assertions ~opts (Veracity.File "benchmarks/vcgen/assert.vcy") with
+match Veracity.check_assertions ~opts (Veracity.File "benchmarks/archive/vcgen/assert.vcy") with
 | Ok ((), _) -> print_endline "All assertions hold."
 | Error (Veracity.VerifyError msg) -> Printf.eprintf "Assertion failure: %s\n" msg
 | Error _ -> assert false

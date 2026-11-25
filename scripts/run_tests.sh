@@ -9,8 +9,8 @@
 # Usage: bash scripts/run_tests.sh [--all]
 # Usually invoked via:  make test   (or make test-all for --all)
 # --all also runs the loop-unroll and loop-abstract checks and
-# benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}
-# (formerly test.sh), which takes minutes.
+# benchmarks/tests/{loops,models,prepost,movers,invariants} and
+# benchmarks/{verify,inferred} (formerly test.sh), which takes minutes.
 # Set VCY=/path/to/binary to test a binary other than ./vcy.
 #
 # Exit code: 0 if all tests pass, 1 if any fail.
@@ -123,6 +123,7 @@ echo ""
 echo "=== speedup_dswp benchmarks (n=1, sequential) ==="
 
 GC="../benchmarks/ncb"
+TD="../benchmarks/tests"
 
 run_once "sollve_dotprod"       "$GC/other/sollve_dotprod.vcy"     1
 run_once "simple-vector"        "$GC/other/simple-vector.vcy"      1
@@ -147,7 +148,7 @@ run_once "commset-kmeans"       "$GC/commset-kmeans.vcy"           1
 echo ""
 echo "=== lock_synth benchmarks (baseline == --synthesize-locks) ==="
 
-LS="../benchmarks/lock_synth"
+LS="../benchmarks/tests/lock_synth"
 
 # No-lock: synthesis should add 0 locks and leave the output unchanged
 run_synth "ls_nolock_1"         "$LS/ls_nolock_1.vcy"  8
@@ -164,8 +165,8 @@ run_synth "ls_ncb_5"            "$LS/ls_ncb_5.vcy"     6
 run_synth "ls_ncb_6"            "$LS/ls_ncb_6.vcy"     8
 
 # New NCB benchmarks demonstrating three distinct lock patterns
-run_synth "ncb_histogram"       "$GC/test/ncb_histogram.vcy"   8
-run_synth "ncb_dot_product"     "$GC/test/ncb_dot_product.vcy" 4
+run_synth "ncb_histogram"       "$TD/ncb/ncb_histogram.vcy"   8
+run_synth "ncb_dot_product"     "$TD/ncb/ncb_dot_product.vcy" 4
 run_synth "ncb_max_reduce"      "$GC/other/ncb_max_reduce.vcy" 10
 
 # Non-NCB: pre-DSWP synthesis may or may not add locks; output unchanged
@@ -234,16 +235,16 @@ run_dswp_vs_seq "ls_ncb_shared_scalar (dswp == seq)" 10 "$LS/ls_ncb_shared_scala
 run_dswp_vs_seq "ls_noncb_1 (dswp == seq)"           5  "$LS/ls_noncb_1.vcy"           8
 run_dswp_vs_seq "ls_global_induction (dswp == seq)"  10 "$LS/ls_global_induction.vcy"  20
 run_dswp_vs_seq "2d-array (dswp == seq)"             5  "$GC/other/2d-array.vcy"       20
-run_dswp_vs_seq "hist_shared_index (dswp == seq)"    10 "$GC/test/hist_shared_index.vcy" 3000
-run_dswp_vs_seq "hist_shared_index_oneline (dswp == seq)" 10 "$GC/test/hist_shared_index_oneline.vcy" 3000
+run_dswp_vs_seq "hist_shared_index (dswp == seq)"    10 "$TD/ncb/hist_shared_index.vcy" 3000
+run_dswp_vs_seq "hist_shared_index_oneline (dswp == seq)" 10 "$TD/ncb/hist_shared_index_oneline.vcy" 3000
 run_dswp_vs_seq "banking (dswp == seq)"              10 "$GC/banking.vcy"              1 100 1000
-run_dswp_vs_seq "banking_state_hash (dswp == seq)"   10 "$GC/test/banking_state_hash.vcy" 1 100 1000
-run_dswp_vs_seq "erc20_state_hash (dswp == seq)"     10 "$GC/test/erc20_state_hash.vcy"                1 1 2
+run_dswp_vs_seq "banking_state_hash (dswp == seq)"   10 "$TD/ncb/banking_state_hash.vcy" 1 100 1000
+run_dswp_vs_seq "erc20_state_hash (dswp == seq)"     10 "$TD/ncb/erc20_state_hash.vcy"                1 1 2
 run_dswp_vs_seq "multi-blocks (dswp == seq)"         10 "$GC/multi-blocks.vcy"         1
-run_dswp_vs_seq "vote_state_hash (dswp == seq)"      10 "$GC/test/vote_state_hash.vcy" 1
-run_dswp_vs_seq "motivation_state_hash (dswp == seq)" 10 "$GC/test/motivation_state_hash.vcy" 100 50
-run_dswp_vs_seq "guarded_spawn (dswp == seq)"        5  "$GC/test/guarded_spawn.vcy"
-run_dswp_vs_seq "nested_self_dep (dswp == seq)"      5  "$GC/test/nested_self_dep.vcy"
+run_dswp_vs_seq "vote_state_hash (dswp == seq)"      10 "$TD/ncb/vote_state_hash.vcy" 1
+run_dswp_vs_seq "motivation_state_hash (dswp == seq)" 10 "$TD/ncb/motivation_state_hash.vcy" 100 50
+run_dswp_vs_seq "guarded_spawn (dswp == seq)"        5  "$TD/ncb/guarded_spawn.vcy"
+run_dswp_vs_seq "nested_self_dep (dswp == seq)"      5  "$TD/ncb/nested_self_dep.vcy"
 
 # run_dswp_output_vs_seq LABEL RUNS BENCH_PATH [ARGS...]
 #   Like run_dswp_vs_seq, but the whole stdout must match, not just the result.
@@ -261,7 +262,7 @@ run_dswp_output_vs_seq() {
         _record fail "$label" "[stdout differs from sequential]"
     fi
 }
-run_dswp_output_vs_seq "print_order (stdout == seq)"  10 "$GC/test/print_order.vcy"    50
+run_dswp_output_vs_seq "print_order (stdout == seq)"  10 "$TD/ncb/print_order.vcy"    50
 
 # run_simpleio_files_vs_seq RUNS
 #   simple-io's output is the files it writes, so compare those: every run
@@ -311,11 +312,11 @@ run_false_comm_vs_seq() {
         _record fail "$label" "[seq=$seq | dswp=$bad]"
     fi
 }
-run_false_comm_vs_seq "banking false-comm (dswp == seq)"      5 "$GC/test/banking_state_hash.vcy"    1 100 1000
-run_false_comm_vs_seq "erc20 false-comm (dswp == seq)"        5 "$GC/test/erc20_state_hash.vcy"      1 1 2
+run_false_comm_vs_seq "banking false-comm (dswp == seq)"      5 "$TD/ncb/banking_state_hash.vcy"    1 100 1000
+run_false_comm_vs_seq "erc20 false-comm (dswp == seq)"        5 "$TD/ncb/erc20_state_hash.vcy"      1 1 2
 run_false_comm_vs_seq "multi-blocks false-comm (dswp == seq)" 5 "$GC/multi-blocks.vcy"               1
-run_false_comm_vs_seq "vote false-comm (dswp == seq)"         5 "$GC/test/vote_state_hash.vcy"       1
-run_false_comm_vs_seq "motivation false-comm (dswp == seq)"   5 "$GC/test/motivation_state_hash.vcy" 100 50
+run_false_comm_vs_seq "vote false-comm (dswp == seq)"         5 "$TD/ncb/vote_state_hash.vcy"       1
+run_false_comm_vs_seq "motivation false-comm (dswp == seq)"   5 "$TD/ncb/motivation_state_hash.vcy" 100 50
 
 # check_self_dep LABEL PATTERN BENCH_PATH [ARGS...]
 #   The task containing PATTERN must depend on itself, or its jobs overlap. A
@@ -352,7 +353,7 @@ check_sequential() {
     fi
 }
 check_sequential "cond_write: (A1) for conditions rejects" "spawn_cond_ok: task 1 writes lim" \
-    "$GC/test/cond_write.vcy"
+    "$TD/ncb/cond_write.vcy"
 # check_reads_var LABEL PATTERN VAR BENCH_PATH [ARGS...]
 #   The task containing PATTERN must depend on another task through VAR.
 check_reads_var() {
@@ -403,7 +404,7 @@ check_gated() {
 }
 check_gated "2d-array: the row search spawns in order (gated)" "busy_wait(scalingfactor);" 3 \
     "$GC/other/2d-array.vcy" 20
-check_gated "nested_self_dep: spawner gated" "busy_wait(20000 * (6 - i));" 10 "$GC/test/nested_self_dep.vcy"
+check_gated "nested_self_dep: spawner gated" "busy_wait(20000 * (6 - i));" 10 "$TD/ncb/nested_self_dep.vcy"
 check_reads_var "dict: a condition's reads count (f1 depends on y)" "t = c + x" y \
     "$GC/veracity/dict.vcy" 1
 check_sequential "simple-vector: (A1) rejects" "spawn_a1_ok: task 2, after spawning, accesses x" \
@@ -520,8 +521,8 @@ run_loop_abs() {
 }
 
 # The helpers below run from the repo root, with benchmark paths written as
-# benchmarks/...; the label is the path without benchmarks/ and .vcy.
-_label() { local l="${1#benchmarks/}"; printf '%s' "${l%.vcy}"; }
+# benchmarks/...; the label is the path without benchmarks/[tests/] and .vcy.
+_label() { local l="${1#benchmarks/}"; l="${l#tests/}"; printf '%s' "${l%.vcy}"; }
 
 # run_exit BENCH_PATH CMD...
 #   Pass if CMD exits 0.
@@ -603,8 +604,8 @@ run_wellformed() {
 }
 
 echo ""
-echo "=== benchmarks/wellformed (W1 and condition scope static checks) ==="
-for f in "$REPO_ROOT"/benchmarks/wellformed/*.vcy; do
+echo "=== benchmarks/tests/wellformed (W1 and condition scope static checks) ==="
+for f in "$REPO_ROOT"/benchmarks/tests/wellformed/*.vcy; do
     run_wellformed "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
 done
 
@@ -630,8 +631,8 @@ run_stability() {
 }
 
 echo ""
-echo "=== benchmarks/stability (verify --with-stability) ==="
-for f in "$REPO_ROOT"/benchmarks/stability/*.vcy; do
+echo "=== benchmarks/tests/stability (verify --with-stability) ==="
+for f in "$REPO_ROOT"/benchmarks/tests/stability/*.vcy; do
     run_stability "benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
 done
 
@@ -654,7 +655,7 @@ run_overtake() {
 }
 
 echo ""
-echo "=== benchmarks/overtake (--overtake rules) ==="
+echo "=== benchmarks/tests/overtake (--overtake rules) ==="
 for rule in any not-started hybrid hybrid-locked; do
     case "$rule" in
         any)           late=yes early=yes fixed=yes ;;
@@ -662,18 +663,18 @@ for rule in any not-started hybrid hybrid-locked; do
         hybrid)        late=no  early=no  fixed=yes ;;
         hybrid-locked) late=yes early=yes fixed=yes ;;
     esac
-    run_overtake benchmarks/overtake/late.vcy  "$rule" "$late"
-    run_overtake benchmarks/overtake/early.vcy "$rule" "$early"
-    run_overtake benchmarks/overtake/fixed.vcy "$rule" "$fixed"
+    run_overtake benchmarks/tests/overtake/late.vcy  "$rule" "$late"
+    run_overtake benchmarks/tests/overtake/early.vcy "$rule" "$early"
+    run_overtake benchmarks/tests/overtake/fixed.vcy "$rule" "$fixed"
 done
 
 # run_recheck RULE [FLAGS...]
-#   benchmarks/overtake/recheck.vcy, 3 times: each overtake must end in a
+#   benchmarks/tests/overtake/recheck.vcy, 3 times: each overtake must end in a
 #   failed first-step re-check (none when FLAGS has --no-recheck), and each
 #   run must return 4.
 run_recheck() {
     local rule="$1"; shift
-    local f=benchmarks/overtake/recheck.vcy out ret over passed failed bad=""
+    local f=benchmarks/tests/overtake/recheck.vcy out ret over passed failed bad=""
     for _ in 1 2 3; do
         out=$(cd "$REPO_ROOT" && timeout 60 "$VCY" interp --dswp --job-stats --overtake "$rule" "$@" "$f" 20000000 2>&1)
         ret=$(printf '%s\n' "$out" | grep -o 'Return: [-0-9]*' | tail -1)
@@ -703,10 +704,10 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     run_verify "multi-blocks"       "$GC/multi-blocks.vcy"             11
     run_verify "vote"               "$GC/vote.vcy"                 6
     run_verify "simple-io"          "$GC/simple-io.vcy"                1
-    run_verify "ncb_dot_product"    "$GC/test/ncb_dot_product.vcy"          1
-    run_verify "ncb_histogram"      "$GC/test/ncb_histogram.vcy"            1
+    run_verify "ncb_dot_product"    "$TD/ncb/ncb_dot_product.vcy"          1
+    run_verify "ncb_histogram"      "$TD/ncb/ncb_histogram.vcy"            1
     # md5_lower and string_of_int have no model: uninterpreted functions.
-    run_verify "commset-verify"     "$GC/test/commset-verify.vcy"      1
+    run_verify "commset-verify"     "$TD/ncb/commset-verify.vcy"      1
     # The inner 10x / nFeatures loops have literal trip counts and are unrolled.
     run_verify "commset"            "$GC/commset.vcy"                  1
     run_verify "commset-potrace"    "$GC/commset-potrace.vcy"          1
@@ -737,7 +738,7 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
     if [[ "$ALL" -eq 1 ]]; then
         echo ""
         echo "=== Loop unrolling and block encoding (vcy verify --prover cvc5) ==="
-        LU="../benchmarks/loop-unroll"
+        LU="../benchmarks/tests/loop-unroll"
         run_loop_unroll "lu mid-block-ok"         "$LU/mid-block-ok.vcy"         correct
         run_loop_unroll "lu param-in-loop-bad"    "$LU/param-in-loop-bad.vcy"    incorrect
         run_loop_unroll "lu nested-block-bad"     "$LU/nested-block-bad.vcy"     incorrect
@@ -748,7 +749,7 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
 
         echo ""
         echo "=== Counter-loop abstraction (vcy verify --prover cvc5) ==="
-        LA="../benchmarks/loop-abstract"
+        LA="../benchmarks/tests/loop-abstract"
         run_loop_abs "la commute-ok"     "$LA/commute-ok.vcy"     correct
         run_loop_abs "la commute-cond"   "$LA/commute-cond.vcy"   correct
         run_loop_abs "la both-loops"     "$LA/both-loops.vcy"     correct
@@ -772,25 +773,25 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
         done
 
         echo ""
-        echo "=== benchmarks/loops (vcy verify --prover cvc5) ==="
-        for f in "$REPO_ROOT"/benchmarks/loops/*.vcy; do
+        echo "=== benchmarks/tests/loops (vcy verify --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/tests/loops/*.vcy; do
             f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
             run_exit "$f" "$VCY" verify "$f" --prover cvc5
         done
 
         echo ""
-        echo "=== benchmarks/models (counterexample tables) ==="
+        echo "=== benchmarks/tests/models (counterexample tables) ==="
         for f in seq-read-after-write array-write-conflict heap-read-after-write; do
-            run_table "benchmarks/models/$f.vcy"
+            run_table "benchmarks/tests/models/$f.vcy"
         done
         # Known limitation: the loop summarisation finds no counterexample, so
         # there is no model and no table.  Exit status only; see that file's header.
-        run_exit benchmarks/models/loop-read-after-write.vcy \
-            "$VCY" verify benchmarks/models/loop-read-after-write.vcy --prover cvc5
+        run_exit benchmarks/tests/models/loop-read-after-write.vcy \
+            "$VCY" verify benchmarks/tests/models/loop-read-after-write.vcy --prover cvc5
 
         echo ""
-        echo "=== benchmarks/prepost (vcy infer --prover cvc5) ==="
-        for f in "$REPO_ROOT"/benchmarks/prepost/*.vcy; do
+        echo "=== benchmarks/tests/prepost (vcy infer --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/tests/prepost/*.vcy; do
             f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
             run_exit "$f" "$VCY" infer "$f" --prover cvc5
         done
@@ -798,8 +799,8 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
         # These have no commute blocks, so they are interpreted, not inferred.
         MOVERS_INTERP=" parse1 test-heap-smt1 test-heap-write test-interp1 test-interp2 test-interp3 "
         echo ""
-        echo "=== benchmarks/movers (vcy infer --prover cvc5 -ae, or interp) ==="
-        for f in "$REPO_ROOT"/benchmarks/movers/*.vcy; do
+        echo "=== benchmarks/tests/movers (vcy infer --prover cvc5 -ae, or interp) ==="
+        for f in "$REPO_ROOT"/benchmarks/tests/movers/*.vcy; do
             f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
             name=$(basename "$f" .vcy)
             if [[ "$MOVERS_INTERP" == *" $name "* ]]; then
@@ -811,8 +812,8 @@ if [[ -x /usr/local/bin/cvc5 || -x /usr/bin/cvc5 || -x /opt/homebrew/bin/cvc5 ]]
         done
 
         echo ""
-        echo "=== benchmarks/invariants (vcy invariants --prover cvc5) ==="
-        for f in "$REPO_ROOT"/benchmarks/invariants/*.vcy; do
+        echo "=== benchmarks/tests/invariants (vcy invariants --prover cvc5) ==="
+        for f in "$REPO_ROOT"/benchmarks/tests/invariants/*.vcy; do
             f="benchmarks/${f#"$REPO_ROOT"/benchmarks/}"
             run_exit "$f" "$VCY" invariants "$f" --prover cvc5
         done

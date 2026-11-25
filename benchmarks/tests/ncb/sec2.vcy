@@ -1,0 +1,19 @@
+commutativity {
+   {f(x,y)}, {g(i)}: (x <= y || x != i )
+}
+
+int main(int argc, string[] argv) {
+    int x = int_of_string(argv[1]);
+    int[] arr = new int[20000];
+    int i = 0;
+    int y = 3;
+
+    f(x) : { if (x>y) {arr[x] =y;} }
+    x=y;
+    for(int i = 0; i<100; i = i+1;){
+        g(i): {arr[i] = arr[i] + 1;}
+    }
+
+    
+    return 0;
+}

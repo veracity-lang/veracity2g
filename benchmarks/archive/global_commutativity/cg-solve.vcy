@@ -1,0 +1,101 @@
+commutativity{
+
+}
+
+int main(int argc, string[] argv) {
+    hashtable[int, int[]] operatorTypeA = new hashtable_seq[int, int[]];
+    hashtable[int, int[]] b = new hashtable_seq[int, int[]];
+    hashtable[int, int[]] x = new hashtable_seq[int, int[]];
+    hashtable[int, int[]] r = new hashtable_seq[int, int[]];
+    hashtable[int, int[]] p = new hashtable_seq[int, int[]];
+    hashtable[int, int[]] vectorTypeAp = new hashtable_seq[int, int[]];
+    int n = 1000;
+
+    int[] normr = new int[1];
+    int[] rtrans = new int[1];
+    int[] oldrtrans = new int[1];
+    int[] p_ap_dot = new int[1];
+    int[] alpha = new int[1];
+    int[] beta = new int[1];
+
+    int tolerance = 1000000;
+    int max_iter = 100;
+    int iter = 0;
+    int print_freq = max_iter / 10;
+    if (print_freq > 50) {
+        print_freq = 50;
+    }
+    if (print_freq < 1) {
+        print_freq = 1;
+    }
+
+    
+    /*waxpby(1.0, x, 0.0, x, p); */
+    p = x;
+
+    /*matvec(operatorTypeA, p, vectorTypeAp);*/          
+    for (int i = 0; i < n; i= i+1;) {
+        ht_put(vectorTypeAp,i,[0]);
+        for (int j = 0; j < n; j=j+1;) {
+            vectorTypeAp[i] = vectorTypeAp[i] + (operatorTypeA[i][j] * p[j]);
+        }
+    }
+
+    /*waxpby(1.0, b, -1.0, vectorTypeAp, r); */
+    r = b - vectorTypeAp;
+
+    /*rtrans[0] = dot_r2(r); */
+    
+    for (int i = 0; i < 100; i = i + 1;) {
+        rtrans[0] = rtrans[0] + (r[i] * r[i]);
+    }
+
+    /*normr[0] = sqrt(rtrans[0]); ??? */
+
+    while (iter < max_iter && normr[0] > tolerance) {
+        iter = iter + 1;
+
+        if (iter == 1) {
+            /*waxpby(1.0, r, 0.0, r, p);*/ 
+            p = r;
+        } else {
+            oldrtrans[0] = rtrans[0];
+            /*rtrans[0] = dot_r2(r);*/
+            for (int i = 0; i < 100; i = i + 1;) {
+                rtrans[0] = rtrans[0] + (r[i] * r[i]);
+            }
+
+            beta[0] = rtrans[0] / oldrtrans[0];
+            /*daxpby(1.0, r, beta[0], p); */
+            p = beta * p;
+            p = r + p;
+        }
+
+        /*matvec(operatorTypeA, p, vectorTypeAp);       */     
+        vectorTypeAp = operatorTypeA * p;
+        
+        /*p_ap_dot[0] = dot(vectorTypeAp, p); */  
+        for (int i = 0; i < 100; i = i + 1;) {
+             p_ap_dot[0] =  p_ap_dot[0] + (vectorTypeAp[i] * p[i]);
+        }
+
+        if (p_ap_dot[0] < 1000000) {
+            return 1;
+        }
+
+        alpha[0] = rtrans[0] / p_ap_dot[0];
+        /*daxpby(alpha[0], p, 1.0, x);     */ 
+        x = x + alpha * p;
+
+        /*daxpby(-alpha[0], vectorTypeAp, 1.0, r); */  
+        r = r - alpha * vectorTypeAp;
+
+        /*normr[0] = sqrt(dot_r2(r)); ??? */
+
+        if (iter % print_freq == 0) {
+            print("Iter: " + iter + "  Residual: " + normr[0]);
+        }
+    }
+
+    return 0;
+}

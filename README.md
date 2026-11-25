@@ -610,11 +610,11 @@ Related commands are:
 Examples:
 
 ```bash
-./vcy infer benchmarks/prepost/pre.vcy --prover cvc5
+./vcy infer benchmarks/tests/prepost/pre.vcy --prover cvc5
 ./vcy verify benchmarks/verify/even-odd.vcy --prover cvc5
-./vcy verify benchmarks/loops/scan.vcy --prover cvc5
-./vcy invariants benchmarks/invariants/inc.vcy --prover cvc5
-./vcy assertions benchmarks/vcgen/assert.vcy --prover cvc5
+./vcy verify benchmarks/tests/loops/scan.vcy --prover cvc5
+./vcy invariants benchmarks/tests/invariants/inc.vcy --prover cvc5
+./vcy assertions benchmarks/archive/vcgen/assert.vcy --prover cvc5
 ```
 
 ### Loop invariants
@@ -631,7 +631,7 @@ The invariant is used by the SMT encoding to represent the loop's net
 effect. Check that an invariant is inductive with:
 
 ```bash
-./vcy invariants benchmarks/invariants/inc.vcy --prover cvc5
+./vcy invariants benchmarks/tests/invariants/inc.vcy --prover cvc5
 ```
 
 ### Loop support
@@ -644,12 +644,12 @@ Loops inside a block being verified are supported in one of three ways:
    times (a counter initialized to a literal, compared against a
    literal bound, and incremented by a constant)
    is replaced by that many copies of its body. Unrolling is exact.
-   Examples are in `benchmarks/loop-unroll/`.
+   Examples are in `benchmarks/tests/loop-unroll/`.
 3. **Per-iteration commutativity.** When the loop body does not depend on
    the loop counter, and each iteration commutes with the body of
    another NCB, `verify` checks a single iteration against the other
    block. By induction on swaps, the whole loop then commutes with that
-   block. Examples are in `benchmarks/loop-abstract/`.
+   block. Examples are in `benchmarks/tests/loop-abstract/`.
 
 Any other loop is rejected with an error rather than being encoded
 unsoundly. Commutativity of general loops is an open problem and is
@@ -683,8 +683,9 @@ execution orders produce different final states.
 | Path                                           | Contents                                             |
 | ---------------------------------------------- | ---------------------------------------------------- |
 | `benchmarks/ncb/`                              | NCB programs                                         |
-| `benchmarks/lock_synth/`                       | Lock-synthesis tests                                 |
-| `benchmarks/inferred/`, `verify/`, `loops/`, … | Original Veracity benchmarks                         |
+| `benchmarks/inferred/`, `verify/`, `manual/`, … | Original Veracity benchmarks                        |
+| `benchmarks/tests/`                            | Test-only programs (lock synthesis, overtake, loops, …) |
+| `benchmarks/archive/`                          | Programs no script runs                              |
 | `scripts/`                                     | Test and task-generation scripts                     |
 | `reports/`                                     | Speedup and inference/verification scripts and plots |
 | `src/vcy/`                                     | Lexer, parser, interpreter, and CLI                  |

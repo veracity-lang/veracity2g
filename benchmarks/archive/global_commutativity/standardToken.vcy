@@ -1,0 +1,94 @@
+commutativity{
+    {transferFrom(i_1)},{approve(i_2)}: (value == 0 || i_1 != i_2);
+    {approve},{approve}: (msg_sender != spender);
+    {allowance},{approve}: (from != msg_sender);
+    {increaseApproval},{decreaseApproval}: (0 == addedValue)
+}
+
+int main(int argc, string[] argv) {
+    int[] balances = new int[10];
+    int[] allowed = new int[100];
+    int allowed_size = 10;
+    int total_supply = 1000000;
+    
+    int from = int_of_string(argv[1]);
+    int to = int_of_string(argv[2]);
+    int spender = int_of_string(argv[3]);
+    int value = int_of_string(argv[4]);
+    int addedValue = int_of_string(argv[5]);
+    int subtractedValue = int_of_string(argv[6]);
+    int msg_sender = int_of_string(argv[7]);
+    
+    int i = 0;
+    int i_1 = 0;
+    int i_2 = 0;
+    int oldValue = 0;
+    int allowed_index = 0;
+    
+    balances[msg_sender] = total_supply / 2;
+    balances[from] = total_supply / 4;
+    balances[to] = total_supply / 4;
+    
+    assume (from >= 0 && from < 10);
+    assume (to >= 0 && to < 10);
+    assume (spender >= 0 && spender < 10);
+    assume (msg_sender >= 0 && msg_sender < 10);
+    
+    int[] workload = new int[]{0, 4, 1, 2, 3, 4, 1};
+    int n = 7;
+    
+    while (i < n) {
+        if (workload[i] == 1) {
+            transferFrom:{
+                i = allowed_size * from + msg_sender;
+                assume (to != 0);
+                assume (value <= balances[from]);
+                assume (value <= allowed[i]);
+                balances[from] = balances[from] - value;
+                balances[to] = balances[to] + value;
+                allowed[i] = allowed[i] - value;
+            }
+        }
+        if (workload[i] == 2) {
+            approve:{
+                i = allowed_size * msg_sender + spender;
+                allowed[i] = value;
+            }
+        }
+        if (workload[i] == 3) {
+            increaseApproval:{
+                i = allowed_size * msg_sender + spender;
+                allowed[i] = allowed[i] + addedValue;
+            }
+        }
+        if (workload[i] == 4) {
+            decreaseApproval:{
+                i = allowed_size * msg_sender + spender;
+                oldValue = allowed[i];
+                if (subtractedValue > oldValue) {
+                    allowed[i] = 0;
+                } else {
+                    allowed[i] = oldValue - subtractedValue;
+                }
+            }
+        }
+        if (workload[i] == 5) {
+            allowance:{
+                allowed_index = allowed_size * from + spender;
+                return allowed[allowed_index];
+            }
+        }
+        i = i + 1;
+    }
+    
+    int owner_balance = balances[msg_sender];
+    int temp = allowed_size * msg_sender + spender;
+    int sender_allowance = allowed[temp];
+    int recipient_balance = balances[to];
+    
+    if (owner_balance < 0 || recipient_balance < 0) {
+        return -1;
+    }
+    
+    return sender_allowance;
+}

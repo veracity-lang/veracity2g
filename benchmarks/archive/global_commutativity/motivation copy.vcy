@@ -1,0 +1,31 @@
+commutativity {
+    {f(x)}, {g(i)}: (arr[x] == 0 || i != x)
+}
+
+int main(int argc, string[] argv) {
+    int scalingfactor = int_of_string(argv[1]);
+    int x = 10;
+    int[] arr = new int[1000];
+    int size = int_of_string(argv[2]);
+    int[] out = new int[size];
+    int i = 0;
+    int j = 0;
+    int i_1 = 0;
+    int i_2 = 2;
+    int res = 0;
+    int t = 0;
+    
+    f(x):{ /* will only increase arr[i] */
+        arr[x] = arr[x] / 2;
+    }
+    int y = x;
+    for(int i = 0; i < size; i = i+1;){
+        g(i):{ /* only observes if arr[i]>0 */
+            arr[i] = arr[i] + y;
+        }
+    }
+    
+    
+
+    return arr[0];
+}

@@ -9,7 +9,11 @@ make          # build everything → installs ./vcy
 make clean    # remove build artifacts
 ```
 
-The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. `make test` runs `scripts/run_tests.sh` (DSWP interp runs, lock synthesis, and NCB verify benchmarks). `make test-all` runs `scripts/run_tests.sh --all`, which adds the `loop-unroll` and `loop-abstract` checks and the slow suites formerly in `test.sh`: `benchmarks/{verify,loops,models,prepost,movers,invariants,inferred}`. Benchmarks in those directories, in `loop-unroll` and `loop-abstract`, and in `manual`, `pre_post`, `qref`, `quotients`, `rhl` and `vcgen`, must never run under plain `make test`; add them to the `--all` section only.
+The top-level `Makefile` runs `cd src && dune build` and installs `src/_build/default/run.exe` as `./vcy`. `make test` runs `scripts/run_tests.sh` (DSWP interp runs, lock synthesis, and NCB verify benchmarks). `make test-all` runs `scripts/run_tests.sh --all`, which adds the `loop-unroll` and `loop-abstract` checks and the slow suites formerly in `test.sh`: `benchmarks/tests/{loops,models,prepost,movers,invariants}` and `benchmarks/{verify,inferred}`. Benchmarks in those directories, in `benchmarks/tests/loop-unroll` and `benchmarks/tests/loop-abstract`, and in `benchmarks/manual` and `benchmarks/archive/`, must never run under plain `make test`; add them to the `--all` section only.
+
+### Benchmark layout
+
+`benchmarks/` holds the programs the paper and `reports/*.py` use (`ncb/`, `inferred/`, `inference_output/`, `inferred_loops/`, `verify/`, `manual/`, `io/`). `benchmarks/tests/` holds programs that only the test harness (`scripts/run_tests.sh`, `src/test/api_test.ml`) uses; the NCB regression programs that were `benchmarks/ncb/test/` are `benchmarks/tests/ncb/`. `benchmarks/archive/` holds programs nothing runs (`pre_post`, `qref`, `quotients`, `rhl`, `vcgen`, and the old `global_commutativity/` leftovers). A new test fixture goes in `benchmarks/tests/`; a program a report script reads stays in `benchmarks/`, even if the harness also runs it.
 
 ## Tests
 
@@ -45,7 +49,7 @@ The shared mechanism is `Servois2.Rundir` (`src/servois2/src/rundir.ml`); the ro
 
 ### Counterexample model table (`src/analysis/model_table.ml`)
 
-A SAT model comes back in terms of Servois2's state variables, which is not what the user wrote. `Model_table` re-keys it by the expressions appearing in the commute block and writes `expr_table.html` into the commute subdir. See `benchmarks/models/`.
+A SAT model comes back in terms of Servois2's state variables, which is not what the user wrote. `Model_table` re-keys it by the expressions appearing in the commute block and writes `expr_table.html` into the commute subdir. See `benchmarks/tests/models/`.
 
 The values come from `Solve.extra_model_exprs`: `Analyze.verify_of_block` sets that ref to a probe for each expression at each state version before the query runs, and Servois2 appends them to its `(get-value ...)` and records the answers in `Solve.extra_models`. Three things constrain what can be probed:
 
@@ -72,9 +76,9 @@ Veracity is an OCaml project built with dune. The source lives entirely under `s
 - `spec_generator.ml` — generates YAML-format Servois2 specs from `commute` blocks
 - `interface.ml` — thin wrapper around the Servois2 OCaml library
 - `loop_abstract.ml` — two loop rewrites, applied in `Analyze` before the spec is built:
-  - `unroll` (`verify` and `infer`): a `while` loop with a literal trip count (`x = c0; …; while (x < N) { …; x = x + c; }`, with x written only by its increment, and at most `unroll_limit` = 128 iterations) is replaced by that many copies of its body. It is exact, so completeness still holds. Each iteration is its own scope in the interpreter but the copies are inlined, so a body that declares a name also used before its declaration or outside the loop is not unrolled. Tests: `benchmarks/loop-unroll/` (`make test-all`).
+  - `unroll` (`verify` and `infer`): a `while` loop with a literal trip count (`x = c0; …; while (x < N) { …; x = x + c; }`, with x written only by its increment, and at most `unroll_limit` = 128 iterations) is replaced by that many copies of its body. It is exact, so completeness still holds. Each iteration is its own scope in the interpreter but the copies are inlined, so a body that declares a name also used before its declaration or outside the loop is not unrolled. Tests: `benchmarks/tests/loop-unroll/` (`make test-all`).
   - `check_scopes`: the encoder inlines nested `{ ... }` blocks and `if` branches into the statements after them, so a name declared inside one and then used afterwards, meaning an outer variable, is rejected rather than misencoded.
-  - `abstract` (`verify` only): a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/loop-abstract/` (`make test-all`).
+  - `abstract` (`verify` only): a commute block that is nothing but a loop over a pure iteration counter is checked one iteration at a time (sound by induction on swaps). It fires only when the iteration count and φ cannot be changed by either block; when it fires, the completeness check is skipped. Tests: `benchmarks/tests/loop-abstract/` (`make test-all`).
 
   Any other loop without an invariant (and any other `for` loop, which cannot carry one) is an error in `Spec_generator.compile_block_to_smt`; it used to be silently dropped.
 
